@@ -7,8 +7,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.jaustinjr.employeeattendance.ui.home.AttendanceFragment
+import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
+import kotlinx.serialization.Serializable
+
+@Serializable
+object Attendance
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -18,8 +22,8 @@ class MainActivity : ComponentActivity() {
             EmployeeAttendanceTheme {
                 val navController = rememberNavController()
                 // Host your navigation graph here
-                NavHost(navController, startDestination = "home") {
-                    composable("home") { AttendanceFragment() }
+                NavHost(navController, startDestination = Attendance) {
+                    composable<Attendance> { AttendanceScreen() }
                 }
             }
         }

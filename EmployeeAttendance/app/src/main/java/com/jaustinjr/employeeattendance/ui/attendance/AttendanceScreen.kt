@@ -1,4 +1,4 @@
-package com.jaustinjr.employeeattendance.ui.home
+package com.jaustinjr.employeeattendance.ui.attendance
 
 import androidx.fragment.app.viewModels
 import android.os.Bundle
@@ -14,35 +14,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.tooling.preview.Preview
-import com.jaustinjr.employeeattendance.R
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 
-class AttendanceFragment : Fragment() {
-
-    companion object {
-        fun newInstance() = AttendanceFragment()
-    }
-
-    private val viewModel: AttendanceViewModel by viewModels()
-
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        super.onCreateView(inflater, container, savedInstanceState)
-
-        return ComposeView(requireContext()).apply {
-            setContent {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
-            }
-        }
-    }
+@Composable
+fun AttendanceScreen(
+    attendanceViewModel: AttendanceViewModel = viewModel()
+) {
+    Greeting(attendanceViewModel.message)
 }
 
 @Composable
