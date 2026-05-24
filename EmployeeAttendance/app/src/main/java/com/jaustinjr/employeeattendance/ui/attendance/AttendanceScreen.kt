@@ -1,11 +1,15 @@
 package com.jaustinjr.employeeattendance.ui.attendance
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 
@@ -18,7 +22,12 @@ fun AttendanceScreen(
 
 @Composable
 fun Greeting(todayDate: String, modifier: Modifier = Modifier) {
-    Text(text = todayDate, modifier = modifier)
+    Column(
+        modifier = modifier
+    ) {
+        Text(text = todayDate)
+        Text(text = "Good morning, Superstar", fontWeight = FontWeight.Bold, fontSize = 40.sp, lineHeight = 1.em)
+    }
 }
 
 @Preview(showBackground = true)
