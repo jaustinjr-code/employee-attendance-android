@@ -27,7 +27,7 @@ fun GreetingPreview() {
     EmployeeAttendanceTheme {
         Greeting(
             todayDate = "Sunday, May 24",
-            modifier = Modifier.padding(4.dp)
+            modifier = Modifier.padding(20.dp)
         )
     }
 }
