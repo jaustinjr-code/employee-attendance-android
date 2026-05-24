@@ -1,11 +1,14 @@
 package com.jaustinjr.employeeattendance.ui.attendance
 
-import android.util.Log
+import android.icu.util.Calendar
 import androidx.lifecycle.ViewModel
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class AttendanceViewModel : ViewModel() {
-    val message = "Hello"
-
-    // Business logic
-    fun sendMessage(message: String) { Log.d("Attendance", message)}
+    fun getTodayDateName(): String {
+        val format = SimpleDateFormat("EEEE, MMM dd", Locale.US)
+        val date = Calendar.getInstance().time
+        return format.format(date)
+    }
 }
