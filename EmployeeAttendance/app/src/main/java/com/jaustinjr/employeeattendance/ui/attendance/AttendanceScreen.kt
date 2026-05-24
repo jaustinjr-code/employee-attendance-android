@@ -17,7 +17,19 @@ import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 fun AttendanceScreen(
     attendanceViewModel: AttendanceViewModel = viewModel()
 ) {
-    Greeting(todayDate = attendanceViewModel.getTodayDateName(), modifier = Modifier.padding(20.dp))
+    AttendanceScreen(todayDate = attendanceViewModel.getTodayDateName())
+}
+
+@Composable
+fun AttendanceScreen(
+    todayDate: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Greeting(todayDate = todayDate, modifier = Modifier.padding(20.dp))
+        // TODO clock in and out component
+        // TODO location bubble component
+    }
 }
 
 @Composable
