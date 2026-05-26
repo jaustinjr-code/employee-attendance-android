@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,10 +77,19 @@ fun GreetingPreview() {
 fun TimeCheck(
     modifier: Modifier = Modifier
 ) {
+    var isClockedIn by remember { mutableStateOf(false) }
+
     ElevatedCard(modifier = modifier.fillMaxWidth().height(300.dp)) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize().padding(20.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize().padding(20.dp)) {
             Text("Current Time")
             LiveClock()
+            Button(
+                shape = RoundedCornerShape(5.dp),
+                onClick = {isClockedIn = !isClockedIn},
+                modifier = Modifier.fillMaxWidth(0.75f)
+            ) {
+                Text(text = if (isClockedIn) "Clock out" else "Clock in")
+            }
         }
     }
 }
@@ -94,7 +105,7 @@ fun TimeCheckPreview() {
 }
 
 @Composable
-fun LiveClock() {
+fun LiveClock(modifier: Modifier = Modifier) {
     var timeText by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
@@ -105,5 +116,5 @@ fun LiveClock() {
         }
     }
 
-    Text(text = "Live Time: $timeText")
+    Text(text = timeText, fontWeight = FontWeight.Bold, fontSize = 10.em, modifier = modifier)
 }
