@@ -78,14 +78,26 @@ fun TimeCheck(
     modifier: Modifier = Modifier
 ) {
     var isClockedIn by remember { mutableStateOf(false) }
+    var clockInTime by remember { mutableStateOf("") }
+    var clockOutTime by remember { mutableStateOf("") }
 
     ElevatedCard(modifier = modifier.fillMaxWidth().height(300.dp)) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize().padding(20.dp)) {
             Text("Current Time")
             LiveClock()
+            if (clockInTime.isNotEmpty() || clockOutTime.isNotEmpty())
+                Text(if (isClockedIn) "Clock In: $clockInTime" else "Clock Out: $clockOutTime")
             Button(
                 shape = RoundedCornerShape(5.dp),
-                onClick = {isClockedIn = !isClockedIn},
+                onClick = {
+                    isClockedIn = !isClockedIn
+                    val now = Calendar.getInstance().time
+                    val formattedTime = SimpleDateFormat("HH:mm:ss", Locale.US).format(now)
+                    if (isClockedIn)
+                        clockInTime = formattedTime
+                    else
+                        clockOutTime = formattedTime
+                },
                 modifier = Modifier.fillMaxWidth(0.75f)
             ) {
                 Text(text = if (isClockedIn) "Clock out" else "Clock in")
