@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,7 +39,10 @@ class MainActivity : ComponentActivity() {
                 ) { padding ->
                     NavHost(navController, startDestination = Attendance, modifier = Modifier.padding(padding)) {
                         composable<Attendance> {
-                            appBarTitle = "Attendance"
+                            // side-effect: state change during composition
+                            LaunchedEffect(Unit) {
+                                appBarTitle = "Attendance"
+                            }
                             AttendanceScreen()
                         }
                     }
