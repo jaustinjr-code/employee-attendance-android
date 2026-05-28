@@ -124,12 +124,13 @@ fun TimeCheckPreview() {
 
 @Composable
 fun LiveClock(modifier: Modifier = Modifier) {
+    val formatter = SimpleDateFormat("HH:mm:ss", Locale.US)
     var timeText by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         while (true) {
             val now = Calendar.getInstance().time
-            timeText = SimpleDateFormat("HH:mm:ss", Locale.US).format(now)
+            timeText = formatter.format(now)
             delay(1000) // Update every secondary
         }
     }
