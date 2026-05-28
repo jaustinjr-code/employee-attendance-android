@@ -34,7 +34,7 @@ import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
-import java.util.Calendar
+import android.icu.util.Calendar
 import java.util.Locale
 
 @Composable
