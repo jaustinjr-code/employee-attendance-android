@@ -48,15 +48,11 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.fragment.ktx)
-    implementation(libs.androidx.legacy.support.v4)
-    implementation(libs.androidx.lifecycle.livedata.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
 
     // Navigation
     implementation(libs.androidx.navigation.compose)
-    implementation(libs.androidx.navigation.dynamic.features.fragment)
     implementation(libs.kotlinx.serialization.json)
     androidTestImplementation(libs.androidx.navigation.testing)
 
