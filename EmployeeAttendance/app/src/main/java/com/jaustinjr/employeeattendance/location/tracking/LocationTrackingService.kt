@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
@@ -60,10 +61,9 @@ class LocationTrackingService : Service() {
     }
 
     private fun startTracking() {
-        if (trackingJob != null) return
-
-        // Once started via startForegroundService(), we must call startForeground() promptly or the
-        // OS kills us with a "did not start in time" crash. Promote first, then guard.
+        // Every startForegroundService() delivery must be matched by a prompt startForeground() call
+        // or the OS crashes us with "did not start in time". startForeground is idempotent, so do it
+        // before any early return — including when we're already tracking and just re-notified.
         promoteToForeground()
 
         // The service can be restarted by the OS (START_STICKY) after the user revoked location
@@ -73,6 +73,9 @@ class LocationTrackingService : Service() {
             stopTracking()
             return
         }
+
+        // Already collecting; the notification was refreshed above, so nothing more to do.
+        if (trackingJob != null) return
 
         locationState.updateStatus(TrackingStatus.BACKGROUND_ACTIVE)
 
@@ -126,6 +129,7 @@ class LocationTrackingService : Service() {
     }
 
     companion object {
+        private const val TAG = "LocationTrackingSvc"
         private const val CHANNEL_ID = "location_tracking"
         private const val NOTIFICATION_ID = 42
         private const val ACTION_STOP = "com.jaustinjr.employeeattendance.action.STOP_TRACKING"
@@ -140,7 +144,13 @@ class LocationTrackingService : Service() {
         fun stop(context: Context) {
             val intent = Intent(context, LocationTrackingService::class.java)
                 .setAction(ACTION_STOP)
-            context.startService(intent)
+            try {
+                context.startService(intent)
+            } catch (e: IllegalStateException) {
+                // startService is disallowed from the background on Android 8+. If we're
+                // backgrounded the service isn't running anyway, so there is nothing to stop.
+                Log.w(TAG, "Could not deliver stop command; service likely not running", e)
+            }
         }
 
         private fun ensureChannel(context: Context) {
