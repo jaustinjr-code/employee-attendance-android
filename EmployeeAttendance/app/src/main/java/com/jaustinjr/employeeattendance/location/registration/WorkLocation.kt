@@ -22,6 +22,16 @@ data class WorkLocation(
     val longitudeDegrees: Double,
     val radiusMeters: Float,
 ) {
+    init {
+        // Validate here so an invalid location can never be constructed and later blow up deep in
+        // the proximity/geofencing pipeline (some call sites project to a target outside try/catch).
+        require(id.isNotBlank()) { "WorkLocation id must not be blank" }
+        require(name.isNotBlank()) { "WorkLocation name must not be blank" }
+        require(latitudeDegrees in -90.0..90.0) { "latitude out of range: $latitudeDegrees" }
+        require(longitudeDegrees in -180.0..180.0) { "longitude out of range: $longitudeDegrees" }
+        require(radiusMeters > 0f) { "radiusMeters must be positive" }
+    }
+
     /** Projects this registered location down to the geometric target the proximity engine uses. */
     fun toGeofenceTarget(): GeofenceTarget = GeofenceTarget(
         id = id,

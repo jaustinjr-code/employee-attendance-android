@@ -58,6 +58,10 @@ class ProximityRepository(
         _proximity.value = ProximityState.UNKNOWN
     }
 
+    // setState is a read-modify-write over _proximity plus event emission, and it is reached from
+    // two threads: OS geofence callbacks (main) and the foreground location pipeline (background).
+    // Guard it so transitions can't interleave and double-emit or drop events.
+    @Synchronized
     private fun setState(next: ProximityState, targetId: String) {
         val previous = _proximity.value
         if (next == previous) return
