@@ -12,6 +12,7 @@ import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -66,6 +67,9 @@ class FusedLocationTracker(
 
         awaitClose { client.removeLocationUpdates(callback) }
     }
+        // Conflate so a slow consumer always processes the freshest fix and never works through a
+        // backlog of stale positions — keeps proximity decisions low-latency.
+        .conflate()
 
     @SuppressLint("MissingPermission")
     override suspend fun currentLocation(priority: LocationPriority): LocationSample? {

@@ -13,7 +13,7 @@ import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
 import com.jaustinjr.employeeattendance.location.proximity.ProximityState
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
-import com.jaustinjr.employeeattendance.location.tracking.LocationRequestConfig
+import com.jaustinjr.employeeattendance.location.tracking.LocationPowerPolicy
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.TrackingStatus
@@ -76,30 +76,34 @@ class LocationViewModel(
     )
 
     init {
-        collectForegroundFixesWhilePermitted()
+        collectForegroundFixesWhenDegraded()
     }
 
     /**
-     * Streams foreground fixes into the shared state repository whenever location permission is
-     * held. Uses distinctUntilChanged on the granted flag so the collector is torn down/recreated
-     * only when access is gained or lost, not on every permission emission.
+     * Supplies foreground fixes only under When-In-Use access. Under full (ALWAYS) access the
+     * background service and OS geofences already produce fixes and proximity, so running a second
+     * foreground stream there would waste battery — hence this collector is gated off in that case.
+     *
+     * The request config is chosen adaptively from the current proximity via [LocationPowerPolicy],
+     * and collectLatest restarts the stream when the gate or the appropriate cadence changes.
      */
-    private fun collectForegroundFixesWhilePermitted() {
+    private fun collectForegroundFixesWhenDegraded() {
         viewModelScope.launch {
-            permissionRepository.permissionState
-                .map { it.isGranted }
+            combine(
+                permissionRepository.permissionState.map { it.isDegraded },
+                proximityRepository.proximity,
+            ) { degraded, proximity -> degraded to proximity }
                 .distinctUntilChanged()
-                // collectLatest so losing permission cancels the (infinite) inner update stream.
-                .collectLatest { granted ->
-                    if (!granted) return@collectLatest
+                .collectLatest { (degraded, proximity) ->
+                    if (!degraded) return@collectLatest
                     try {
-                        locationTracker.locationUpdates(LocationRequestConfig.Foreground)
+                        locationTracker.locationUpdates(LocationPowerPolicy.foregroundConfig(proximity))
                             .collect(locationStateRepository::publishLocation)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
                         // Location may be momentarily unavailable; ignore and let the next
-                        // permission change or ViewModel recreation retry.
+                        // state change or ViewModel recreation retry.
                     }
                 }
         }

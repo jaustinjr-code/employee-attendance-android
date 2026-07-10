@@ -68,14 +68,16 @@ data class LocationRequestConfig(
         )
 
         /**
-         * Periodic, batched, balanced-power updates for background tracking. Longer interval and a
-         * generous batching window let the OS coalesce fixes to conserve battery.
+         * Periodic, low-power, heavily-batched updates for background tracking. Precise arrival and
+         * departure are handled by OS geofences, so this stream only needs to keep a roughly-current
+         * location for display; a long interval and generous batching window let the OS coalesce
+         * fixes across apps to conserve battery.
          */
         val Background = LocationRequestConfig(
-            priority = LocationPriority.BALANCED,
-            intervalMillis = 60_000L,
-            minUpdateIntervalMillis = 30_000L,
-            maxUpdateDelayMillis = 120_000L,
+            priority = LocationPriority.LOW_POWER,
+            intervalMillis = 120_000L,
+            minUpdateIntervalMillis = 60_000L,
+            maxUpdateDelayMillis = 300_000L,
         )
     }
 }

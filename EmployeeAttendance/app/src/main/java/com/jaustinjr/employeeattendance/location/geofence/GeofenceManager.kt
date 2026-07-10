@@ -68,9 +68,15 @@ class GeofenceManager(
         .setCircularRegion(latitudeDegrees, longitudeDegrees, radiusMeters)
         .setExpirationDuration(Geofence.NEVER_EXPIRE)
         .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT)
+        // Let the OS batch transition notifications within this window instead of reporting them
+        // instantly, so it can use lower-power location sources — a key battery optimization.
+        // Tuned as a balance: long enough to save power, short enough that auto clock-in isn't
+        // noticeably late. Raise it to favor battery further, lower it for snappier clock-ins.
+        .setNotificationResponsiveness(NOTIFICATION_RESPONSIVENESS_MILLIS)
         .build()
 
     companion object {
         private const val GEOFENCE_REQUEST_CODE = 1001
+        private const val NOTIFICATION_RESPONSIVENESS_MILLIS = 120_000 // 2 minutes
     }
 }
