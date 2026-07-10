@@ -23,4 +23,13 @@
     <string name="location_tracking_channel_description">Shows when the app is checking your location to record attendance.</string>
     <string name="location_tracking_notification_title">Tracking work location</string>
     <string name="location_tracking_notification_body">Checking when you arrive at and leave your work location.</string>
+
+    <!-- Location feature UI -->
+    <string name="location_section_title">Work Location</string>
+    <string name="location_change_action">Change</string>
+    <string name="location_status_inside">You\'re at your work location</string>
+    <string name="location_status_outside">Away from your work location</string>
+    <string name="location_status_unknown">Checking your location…</string>
+    <string name="location_status_no_location">No work location set</string>
+    <string name="cd_map">Map preview of your work location</string>
 </resources>
