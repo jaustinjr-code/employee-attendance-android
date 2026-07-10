@@ -17,4 +17,10 @@
 
     <!-- Content descriptions -->
     <string name="cd_location_icon">Location</string>
+
+    <!-- Background location tracking foreground-service notification -->
+    <string name="location_tracking_channel_name">Location tracking</string>
+    <string name="location_tracking_channel_description">Shows when the app is checking your location to record attendance.</string>
+    <string name="location_tracking_notification_title">Tracking work location</string>
+    <string name="location_tracking_notification_body">Checking when you arrive at and leave your work location.</string>
 </resources>
