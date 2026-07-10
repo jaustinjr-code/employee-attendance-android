@@ -3,6 +3,8 @@ package com.jaustinjr.employeeattendance.di
 import android.content.Context
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.SystemLocationPermissionRepository
+import com.jaustinjr.employeeattendance.location.geofence.GeofenceManager
+import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
 import com.jaustinjr.employeeattendance.location.tracking.FusedLocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
@@ -19,6 +21,8 @@ interface AppContainer {
     val locationTracker: LocationTracker
     val locationStateRepository: LocationStateRepository
     val locationTrackingController: LocationTrackingController
+    val proximityRepository: ProximityRepository
+    val geofenceManager: GeofenceManager
 }
 
 /** Default [AppContainer] wiring the real, platform-backed implementations. */
@@ -42,5 +46,13 @@ class DefaultAppContainer(context: Context) : AppContainer {
 
     override val locationTrackingController: LocationTrackingController by lazy {
         LocationTrackingController(appContext, locationStateRepository)
+    }
+
+    override val proximityRepository: ProximityRepository by lazy {
+        ProximityRepository()
+    }
+
+    override val geofenceManager: GeofenceManager by lazy {
+        GeofenceManager(appContext)
     }
 }
