@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.jaustinjr.employeeattendance.location.ui.LocationPermissionHost
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 
 class MainActivity : ComponentActivity() {
@@ -24,6 +25,9 @@ class MainActivity : ComponentActivity() {
                         name = "Android",
                         modifier = Modifier.padding(innerPadding)
                     )
+                    // Hosts the location permission rationale flow and system prompt. Renders
+                    // nothing until a rationale dialog is due. UI retrofit follows in a later task.
+                    LocationPermissionHost()
                 }
             }
         }

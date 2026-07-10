@@ -1,3 +1,20 @@
 <resources>
     <string name="app_name">Employee Attendance</string>
+
+    <!-- Location permission rationale: initial "enable" prompt -->
+    <string name="location_permission_enable_title">Enable Auto Clock-In?</string>
+    <string name="location_permission_enable_body">When you\'re near a designated work location, we can clock you in automatically. When you leave, we\'ll clock you out. This helps ensure your hours are recorded accurately.</string>
+    <string name="location_permission_enable_confirm">Enable Location Services</string>
+    <string name="location_permission_dismiss">Maybe Later</string>
+
+    <!-- Location permission rationale: upgrade from "While Using App" to "Allow all the time" -->
+    <string name="location_permission_upgrade_title">Allow Location All the Time?</string>
+    <string name="location_permission_upgrade_body">Auto clock-in works best when the app can check your location in the background. With “While Using the App” access, we can only detect your work location while the app is open, so clock-ins may be missed or delayed. To turn this on, choose “Allow all the time” in Settings.</string>
+    <string name="location_permission_upgrade_confirm">Open Settings</string>
+
+    <!-- Degraded-mode messaging -->
+    <string name="location_permission_degraded_notice">Limited location access: auto clock-in only works while the app is open.</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_location_icon">Location</string>
 </resources>
