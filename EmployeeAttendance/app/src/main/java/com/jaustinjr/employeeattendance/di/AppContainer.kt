@@ -1,10 +1,13 @@
 package com.jaustinjr.employeeattendance.di
 
 import android.content.Context
+import com.jaustinjr.employeeattendance.location.LocationFeatureCoordinator
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.SystemLocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.geofence.GeofenceManager
 import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
+import com.jaustinjr.employeeattendance.location.registration.StubWorkLocationRepository
+import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.FusedLocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
@@ -23,6 +26,8 @@ interface AppContainer {
     val locationTrackingController: LocationTrackingController
     val proximityRepository: ProximityRepository
     val geofenceManager: GeofenceManager
+    val workLocationRepository: WorkLocationRepository
+    val locationFeatureCoordinator: LocationFeatureCoordinator
 }
 
 /** Default [AppContainer] wiring the real, platform-backed implementations. */
@@ -54,5 +59,20 @@ class DefaultAppContainer(context: Context) : AppContainer {
 
     override val geofenceManager: GeofenceManager by lazy {
         GeofenceManager(appContext)
+    }
+
+    override val workLocationRepository: WorkLocationRepository by lazy {
+        StubWorkLocationRepository()
+    }
+
+    override val locationFeatureCoordinator: LocationFeatureCoordinator by lazy {
+        LocationFeatureCoordinator(
+            permissionRepository = locationPermissionRepository,
+            workLocationRepository = workLocationRepository,
+            trackingController = locationTrackingController,
+            geofenceManager = geofenceManager,
+            locationState = locationStateRepository,
+            proximityRepository = proximityRepository,
+        )
     }
 }
