@@ -26,7 +26,6 @@
 
     <!-- Location feature UI -->
     <string name="location_section_title">Work Location</string>
-    <string name="location_change_action">Change</string>
     <string name="location_status_inside">You\'re at your work location</string>
     <string name="location_status_outside">Away from your work location</string>
     <string name="location_status_unknown">Checking your location…</string>

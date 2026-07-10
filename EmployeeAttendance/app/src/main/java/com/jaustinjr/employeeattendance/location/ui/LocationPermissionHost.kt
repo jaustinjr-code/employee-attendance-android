@@ -60,7 +60,9 @@ fun LocationPermissionHost(
                     // Suppress the in-app rationale for the rest of the session before handing off
                     // to the system prompt, so a denial doesn't immediately re-nag.
                     viewModel.onPromptDismissed(LocationPermissionPrompt.EnableForeground)
-                    foregroundLauncher.launch(LocationPermissions.foreground)
+                    // Request foreground location plus (API 33+) notifications, so the tracking
+                    // notification that discloses background location use can be shown.
+                    foregroundLauncher.launch(LocationPermissions.initialRequest)
                 },
                 onDismiss = { viewModel.onPromptDismissed(LocationPermissionPrompt.EnableForeground) },
             )

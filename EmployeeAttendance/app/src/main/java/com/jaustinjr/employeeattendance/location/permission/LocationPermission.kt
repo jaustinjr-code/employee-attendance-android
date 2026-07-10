@@ -78,12 +78,25 @@ object LocationPermissions {
     const val FINE = Manifest.permission.ACCESS_FINE_LOCATION
     const val COARSE = Manifest.permission.ACCESS_COARSE_LOCATION
     const val BACKGROUND = Manifest.permission.ACCESS_BACKGROUND_LOCATION
+    const val POST_NOTIFICATIONS = Manifest.permission.POST_NOTIFICATIONS
 
     /**
      * The foreground permissions requested together in the first prompt. Both are requested so the
      * system can offer the user precise/approximate choice on Android 12+.
      */
     val foreground: Array<String> = arrayOf(FINE, COARSE)
+
+    /**
+     * The permissions to request in the first prompt: foreground location plus, on Android 13+, the
+     * notification permission. The latter is needed so the background-tracking foreground-service
+     * notification is actually shown — the app's key transparency signal that location is in use.
+     */
+    val initialRequest: Array<String>
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            foreground + POST_NOTIFICATIONS
+        } else {
+            foreground
+        }
 
     /**
      * Whether background location is a distinct grant on this device. Below API 29 a foreground

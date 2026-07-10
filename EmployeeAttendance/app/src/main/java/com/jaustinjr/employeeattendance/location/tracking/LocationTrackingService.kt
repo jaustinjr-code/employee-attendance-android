@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.R
@@ -114,13 +115,9 @@ class LocationTrackingService : Service() {
         }
     }
 
-    @Suppress("DEPRECATION")
     private fun stopForegroundCompat() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            stopForeground(true)
-        }
+        // STOP_FOREGROUND_REMOVE exists since API 24 (== minSdk), so no version branch is needed.
+        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     override fun onDestroy() {
@@ -137,7 +134,9 @@ class LocationTrackingService : Service() {
         /** Starts background tracking. Caller must hold background location permission. */
         fun start(context: Context) {
             val intent = Intent(context, LocationTrackingService::class.java)
-            context.startForegroundService(intent)
+            // ContextCompat routes to startForegroundService on API 26+ and startService below it,
+            // where startForegroundService does not exist (minSdk is 24).
+            ContextCompat.startForegroundService(context, intent)
         }
 
         /** Stops background tracking and dismisses the notification. */
