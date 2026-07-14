@@ -13,8 +13,9 @@
 
     <!-- Location permission rationale: upgrade from "While Using App" to "Allow all the time" -->
     <string name="location_permission_upgrade_title">Allow Location All the Time?</string>
-    <string name="location_permission_upgrade_body">Auto clock-in works best when the app can check your location in the background. With “While Using the App” access, we can only detect your work location while the app is open, so clock-ins may be missed or delayed. To turn this on, choose “Allow all the time” in Settings.</string>
+    <string name="location_permission_upgrade_body">Auto clock-in works best when the app can check your location in the background. With “While Using the App” access, we can only detect your work location while the app is open, so clock-ins may be missed or delayed. Turn on “Allow all the time” to enable it.</string>
     <string name="location_permission_upgrade_confirm">Open Settings</string>
+    <string name="location_permission_upgrade_confirm_inline">Allow All the Time</string>
 
     <!-- Degraded-mode messaging -->
     <string name="location_permission_degraded_notice">Limited location access: auto clock-in only works while the app is open.</string>

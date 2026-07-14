@@ -65,6 +65,11 @@ fun LocationPermissionHost(
         }
     }
 
+    // Used on API 29 only, where background location can still be granted via a runtime dialog.
+    val backgroundLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { viewModel.onPermissionResult() }
+
     when (uiState.visiblePrompt) {
         LocationPermissionPrompt.EnableForeground -> {
             val blocked = uiState.requiresSettingsForForeground
@@ -100,14 +105,24 @@ fun LocationPermissionHost(
             LocationPermissionRationaleDialog(
                 title = stringResource(R.string.location_permission_upgrade_title),
                 description = stringResource(R.string.location_permission_upgrade_body),
-                confirmLabel = stringResource(R.string.location_permission_upgrade_confirm),
+                confirmLabel = stringResource(
+                    if (LocationPermissions.backgroundMustBeRequestedSeparately)
+                        R.string.location_permission_upgrade_confirm // "Open Settings" (API 30+)
+                    else
+                        R.string.location_permission_upgrade_confirm_inline, // dialog (API 29)
+                ),
                 dismissLabel = stringResource(R.string.location_permission_dismiss),
                 onConfirm = {
                     viewModel.onPromptDismissed(LocationPermissionPrompt.UpgradeToAlways)
-                    // Background ("Allow all the time") cannot be requested via a runtime dialog
-                    // once foreground is granted on modern Android; the user must choose it in the
-                    // app's system settings. onPermissionResult() on resume will pick up the change.
-                    context.startActivity(appSettingsIntent(context.packageName))
+                    if (LocationPermissions.backgroundMustBeRequestedSeparately) {
+                        // Android 11+: background ("Allow all the time") can only be granted from
+                        // the app's system settings once foreground is already granted.
+                        // onPermissionResult() on resume picks up the change.
+                        context.startActivity(appSettingsIntent(context.packageName))
+                    } else {
+                        // Android 10: background location can still be granted via a runtime dialog.
+                        backgroundLauncher.launch(LocationPermissions.BACKGROUND)
+                    }
                 },
                 onDismiss = { viewModel.onPromptDismissed(LocationPermissionPrompt.UpgradeToAlways) },
             )
