@@ -4,58 +4,51 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import com.jaustinjr.employeeattendance.location.ui.LocationPermissionHost
-import com.jaustinjr.employeeattendance.location.ui.LocationSection
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
+import com.jaustinjr.employeeattendance.ui.main.MainAppBar
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
+import kotlinx.serialization.Serializable
+
+@Serializable
+object Attendance
 
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             EmployeeAttendanceTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    HomeContent(modifier = Modifier.padding(innerPadding))
-                    // Hosts the location permission rationale flow and system prompt. Renders
-                    // nothing until a rationale dialog is due.
-                    LocationPermissionHost()
+                val navController = rememberNavController()
+                var appBarTitle by remember { mutableStateOf("Attendance") }
+
+                Scaffold(
+                    topBar = { MainAppBar(appBarTitle) }
+                ) { padding ->
+                    NavHost(navController, startDestination = Attendance, modifier = Modifier.padding(padding)) {
+                        composable<Attendance> {
+                            // side-effect: state change during composition
+                            LaunchedEffect(Unit) {
+                                appBarTitle = "Attendance"
+                            }
+                            AttendanceScreen()
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-/**
- * Minimal home layout that hosts the retrofitted [LocationSection]. This intentionally stays small:
- * the feature under development is the location logic and its displays, not the broader attendance
- * UI.
- */
-@Composable
-private fun HomeContent(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(
-            text = stringResource(R.string.app_name),
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        LocationSection()
-    }
-}
