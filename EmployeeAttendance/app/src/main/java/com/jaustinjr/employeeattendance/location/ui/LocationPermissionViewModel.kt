@@ -1,8 +1,10 @@
 package com.jaustinjr.employeeattendance.location.ui
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -40,9 +42,18 @@ enum class LocationPermissionPrompt {
 data class LocationPermissionUiState(
     val permission: LocationPermissionState = LocationPermissionState.Denied,
     val visiblePrompt: LocationPermissionPrompt? = null,
+    val foregroundPermanentlyDenied: Boolean = false,
 ) {
     /** Whether to surface the persistent "limited access" degraded-mode notice. */
     val showDegradedNotice: Boolean get() = permission.isDegraded
+
+    /**
+     * Whether the "Enable" action must route to app settings rather than the system dialog: the
+     * user permanently denied foreground location, so the OS would silently auto-deny another
+     * runtime request.
+     */
+    val requiresSettingsForForeground: Boolean
+        get() = !permission.isGranted && foregroundPermanentlyDenied
 }
 
 /**
@@ -54,16 +65,26 @@ data class LocationPermissionUiState(
  */
 class LocationPermissionViewModel(
     private val repository: LocationPermissionRepository,
+    private val savedState: SavedStateHandle,
 ) : ViewModel() {
 
-    /** Prompts the user dismissed this session; suppressed until the process is restarted. */
-    private val dismissedPrompts = MutableStateFlow<Set<LocationPermissionPrompt>>(emptySet())
+    // Dismissals and the permanent-denial flag are persisted in SavedStateHandle so they survive
+    // process death; otherwise the rationale would resurface on every cold start even after the user
+    // said "Maybe Later" or permanently denied the permission.
+    private val dismissedPrompts = MutableStateFlow(loadDismissedPrompts())
+    private val foregroundPermanentlyDenied =
+        MutableStateFlow(savedState[KEY_FOREGROUND_DENIED] ?: false)
 
     val uiState: StateFlow<LocationPermissionUiState> =
-        combine(repository.permissionState, dismissedPrompts) { permission, dismissed ->
+        combine(
+            repository.permissionState,
+            dismissedPrompts,
+            foregroundPermanentlyDenied,
+        ) { permission, dismissed, permanentlyDenied ->
             LocationPermissionUiState(
                 permission = permission,
                 visiblePrompt = computePrompt(permission, dismissed),
+                foregroundPermanentlyDenied = permanentlyDenied,
             )
         }.stateIn(
             scope = viewModelScope,
@@ -90,22 +111,55 @@ class LocationPermissionViewModel(
 
     /** Re-reads the current permission state; call on lifecycle resume and after any request. */
     fun onPermissionResult() {
-        repository.refresh()
+        val state = repository.refresh()
+        // If access was granted (e.g. the user relented in Settings), clear the permanent-denial
+        // flag so the normal runtime-request flow is offered again next time.
+        if (state.isGranted && foregroundPermanentlyDenied.value) {
+            foregroundPermanentlyDenied.value = false
+            savedState[KEY_FOREGROUND_DENIED] = false
+        }
     }
 
-    /** User chose "Maybe Later" on the given prompt; suppress it for the rest of the session. */
-    fun onPromptDismissed(prompt: LocationPermissionPrompt) {
-        dismissedPrompts.value = dismissedPrompts.value + prompt
+    /**
+     * Records the outcome of a foreground permission request that did NOT grant access.
+     *
+     * @param canRetryWithRationale the value of shouldShowRequestPermissionRationale after the
+     *   denial. When false, the OS will no longer show the runtime dialog (a permanent denial), so
+     *   the only way forward is app settings.
+     */
+    fun onForegroundDenied(canRetryWithRationale: Boolean) {
+        if (!canRetryWithRationale) {
+            foregroundPermanentlyDenied.value = true
+            savedState[KEY_FOREGROUND_DENIED] = true
+        }
     }
+
+    /** User chose "Maybe Later" on the given prompt; suppress it (persisted across process death). */
+    fun onPromptDismissed(prompt: LocationPermissionPrompt) {
+        val updated = dismissedPrompts.value + prompt
+        dismissedPrompts.value = updated
+        savedState[KEY_DISMISSED] = ArrayList(updated.map { it.name })
+    }
+
+    private fun loadDismissedPrompts(): Set<LocationPermissionPrompt> =
+        savedState.get<ArrayList<String>>(KEY_DISMISSED)
+            ?.mapNotNull { name -> runCatching { LocationPermissionPrompt.valueOf(name) }.getOrNull() }
+            ?.toSet()
+            ?: emptySet()
 
     companion object {
         private const val STOP_TIMEOUT_MILLIS = 5_000L
+        private const val KEY_DISMISSED = "dismissed_prompts"
+        private const val KEY_FOREGROUND_DENIED = "foreground_permanently_denied"
 
         /** Factory that pulls the permission repository from the application container. */
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as EmployeeAttendanceApplication
-                LocationPermissionViewModel(app.container.locationPermissionRepository)
+                LocationPermissionViewModel(
+                    repository = app.container.locationPermissionRepository,
+                    savedState = createSavedStateHandle(),
+                )
             }
         }
     }

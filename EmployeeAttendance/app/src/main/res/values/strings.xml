@@ -7,6 +7,10 @@
     <string name="location_permission_enable_confirm">Enable Location Services</string>
     <string name="location_permission_dismiss">Maybe Later</string>
 
+    <!-- Location permission rationale: foreground permanently denied, must go to Settings -->
+    <string name="location_permission_blocked_body">Location permission is turned off for this app, so auto clock-in can\'t run. To enable it, allow location access in Settings.</string>
+    <string name="location_permission_open_settings">Open Settings</string>
+
     <!-- Location permission rationale: upgrade from "While Using App" to "Allow all the time" -->
     <string name="location_permission_upgrade_title">Allow Location All the Time?</string>
     <string name="location_permission_upgrade_body">Auto clock-in works best when the app can check your location in the background. With “While Using the App” access, we can only detect your work location while the app is open, so clock-ins may be missed or delayed. To turn this on, choose “Allow all the time” in Settings.</string>

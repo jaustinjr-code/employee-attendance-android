@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.location.ui
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -10,6 +11,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -45,24 +47,50 @@ fun LocationPermissionHost(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val activity = context as? Activity
     val foregroundLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { viewModel.onPermissionResult() }
+    ) { result ->
+        viewModel.onPermissionResult()
+        val granted = result[LocationPermissions.FINE] == true ||
+            result[LocationPermissions.COARSE] == true
+        if (!granted && activity != null) {
+            // If the OS will no longer show the runtime dialog, the denial is permanent and the only
+            // path forward is app settings.
+            val canRetry = ActivityCompat.shouldShowRequestPermissionRationale(
+                activity,
+                LocationPermissions.FINE,
+            )
+            viewModel.onForegroundDenied(canRetry)
+        }
+    }
 
     when (uiState.visiblePrompt) {
         LocationPermissionPrompt.EnableForeground -> {
+            val blocked = uiState.requiresSettingsForForeground
             LocationPermissionRationaleDialog(
                 title = stringResource(R.string.location_permission_enable_title),
-                description = stringResource(R.string.location_permission_enable_body),
-                confirmLabel = stringResource(R.string.location_permission_enable_confirm),
+                description = stringResource(
+                    if (blocked) R.string.location_permission_blocked_body
+                    else R.string.location_permission_enable_body,
+                ),
+                confirmLabel = stringResource(
+                    if (blocked) R.string.location_permission_open_settings
+                    else R.string.location_permission_enable_confirm,
+                ),
                 dismissLabel = stringResource(R.string.location_permission_dismiss),
                 onConfirm = {
                     // Suppress the in-app rationale for the rest of the session before handing off
                     // to the system prompt, so a denial doesn't immediately re-nag.
                     viewModel.onPromptDismissed(LocationPermissionPrompt.EnableForeground)
-                    // Request foreground location plus (API 33+) notifications, so the tracking
-                    // notification that discloses background location use can be shown.
-                    foregroundLauncher.launch(LocationPermissions.initialRequest)
+                    if (blocked) {
+                        // Runtime dialog would be silently auto-denied; send the user to settings.
+                        context.startActivity(appSettingsIntent(context.packageName))
+                    } else {
+                        // Request foreground location plus (API 33+) notifications, so the tracking
+                        // notification that discloses background location use can be shown.
+                        foregroundLauncher.launch(LocationPermissions.initialRequest)
+                    }
                 },
                 onDismiss = { viewModel.onPromptDismissed(LocationPermissionPrompt.EnableForeground) },
             )
