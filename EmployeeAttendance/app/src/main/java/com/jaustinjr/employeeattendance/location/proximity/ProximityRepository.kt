@@ -49,7 +49,11 @@ class ProximityRepository(
     }
 
     /** Feed from the foreground location stream; computes the transition with hysteresis. */
+    @Synchronized
     fun onLocation(sample: LocationSample, target: GeofenceTarget) {
+        // Read current state, compute, and commit all under the monitor so a concurrent
+        // geofence-driven commit can't slip in between the read and the write and get clobbered by
+        // a decision made from stale state.
         val distance = ProximityCalculator.distanceMeters(sample, target)
         val next = ProximityCalculator.evaluate(
             current = _proximity.value,
@@ -60,9 +64,21 @@ class ProximityRepository(
         setState(next, target.id)
     }
 
-    /** Clears proximity, e.g. when tracking stops or no target is registered. */
+    /**
+     * Clears proximity, e.g. when tracking stops or no target is registered. Goes through the same
+     * monitor as [setState] so it can't race an in-flight commit, and emits Departed if the state
+     * being cleared was INSIDE (leaving a work location by de-registering it is still a departure).
+     */
+    @Synchronized
     fun reset() {
+        val previous = _proximity.value
+        if (previous == ProximityState.UNKNOWN) return
         _proximity.value = ProximityState.UNKNOWN
+        val departedFrom = lastTargetId
+        store.save(ProximityState.UNKNOWN, departedFrom)
+        if (previous == ProximityState.INSIDE && departedFrom != null) {
+            _events.tryEmit(ProximityEvent.Departed(departedFrom))
+        }
     }
 
     // setState is a read-modify-write over _proximity plus event emission, and it is reached from
