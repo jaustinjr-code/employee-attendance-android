@@ -21,14 +21,21 @@ import kotlinx.coroutines.flow.asStateFlow
  * regardless of which producer is active. Transitions emit [ProximityEvent]s — the seam an
  * attendance/clock-in system consumes.
  *
+ * @param store persistence for the proximity state so it survives process death (see below).
  * @param exitBufferMeters hysteresis band for the foreground evaluator (see [ProximityCalculator]).
  */
 class ProximityRepository(
+    private val store: ProximityStateStore,
     private val exitBufferMeters: Float = DEFAULT_EXIT_BUFFER_METERS,
 ) {
 
-    private val _proximity = MutableStateFlow(ProximityState.UNKNOWN)
+    // Seed from persisted state so that when Android cold-starts the process purely to deliver a
+    // geofence EXIT, the previous state is restored (e.g. INSIDE) and Departed is emitted rather
+    // than swallowed.
+    private val _proximity = MutableStateFlow(store.load())
     val proximity: StateFlow<ProximityState> = _proximity.asStateFlow()
+
+    private var lastTargetId: String? = store.loadTargetId()
 
     private val _events = MutableSharedFlow<ProximityEvent>(
         replay = 0,
@@ -66,6 +73,8 @@ class ProximityRepository(
         val previous = _proximity.value
         if (next == previous) return
         _proximity.value = next
+        lastTargetId = targetId
+        store.save(next, targetId)
         when (next) {
             ProximityState.INSIDE -> _events.tryEmit(ProximityEvent.Arrived(targetId))
             // Only a genuine inside -> outside move is a "departure"; leaving UNKNOWN is not.
