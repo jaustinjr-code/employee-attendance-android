@@ -46,11 +46,16 @@ class StubWorkLocationRepository : WorkLocationRepository {
     private val _activeWorkLocation = MutableStateFlow<WorkLocation?>(DEFAULT_OFFICE)
     override val activeWorkLocation: StateFlow<WorkLocation?> = _activeWorkLocation.asStateFlow()
 
+    // These mutations are read-modify-write sequences over the two StateFlows and can be called from
+    // any thread (the future registration flow, UI, coordinator). Synchronize them so concurrent
+    // register/remove/setActive calls don't clobber each other or leave active/list inconsistent.
+    @Synchronized
     override fun setActiveWorkLocation(id: String) {
         _activeWorkLocation.value = _workLocations.value.firstOrNull { it.id == id }
             ?: _activeWorkLocation.value
     }
 
+    @Synchronized
     override fun registerWorkLocation(location: WorkLocation) {
         _workLocations.value = _workLocations.value.filterNot { it.id == location.id } + location
         if (_activeWorkLocation.value == null) {
@@ -58,6 +63,7 @@ class StubWorkLocationRepository : WorkLocationRepository {
         }
     }
 
+    @Synchronized
     override fun removeWorkLocation(id: String) {
         _workLocations.value = _workLocations.value.filterNot { it.id == id }
         if (_activeWorkLocation.value?.id == id) {
