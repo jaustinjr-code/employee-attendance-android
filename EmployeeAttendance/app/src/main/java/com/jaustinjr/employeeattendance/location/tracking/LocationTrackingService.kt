@@ -37,7 +37,11 @@ import kotlinx.coroutines.Dispatchers
  */
 class LocationTrackingService : Service() {
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // Confine the service's coroutine work to the main thread. onStartCommand already runs there, so
+    // this makes trackingJob (and the .catch { stopTracking() } continuation) single-threaded,
+    // removing the read/write race on trackingJob between a start and a stream-failure stop. The work
+    // itself is trivial (forwarding fixes to a StateFlow), so the main thread is fine.
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var trackingJob: Job? = null
 
     private val tracker: LocationTracker
