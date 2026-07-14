@@ -62,15 +62,24 @@ class LocationTrackingService : Service() {
     }
 
     private fun startTracking() {
-        // Every startForegroundService() delivery must be matched by a prompt startForeground() call
-        // or the OS crashes us with "did not start in time". startForeground is idempotent, so do it
-        // before any early return — including when we're already tracking and just re-notified.
-        promoteToForeground()
-
-        // The service can be restarted by the OS (START_STICKY) after the user revoked location
-        // access from settings. Requesting updates without permission throws SecurityException, so
-        // bail out gracefully instead of crashing.
+        // Check permission BEFORE promoting to a location foreground service. START_STICKY can
+        // redeliver an intent after the user revoked location access from Settings; calling
+        // startForeground() with FOREGROUND_SERVICE_TYPE_LOCATION while holding no location
+        // permission can throw SecurityException under Android 14+ FGS-type enforcement. In the
+        // redelivery case there is no startForegroundService() obligation to satisfy, so stopping
+        // without ever promoting is safe.
         if (!permissionRepository.refresh().supportsBackgroundTracking) {
+            stopTracking()
+            return
+        }
+
+        // startForeground is idempotent; call it on every delivery (including when already tracking)
+        // to satisfy the startForegroundService() obligation. Guard against a permission revocation
+        // that races between the check above and this call.
+        try {
+            promoteToForeground()
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Location permission missing while promoting foreground service; stopping", e)
             stopTracking()
             return
         }
