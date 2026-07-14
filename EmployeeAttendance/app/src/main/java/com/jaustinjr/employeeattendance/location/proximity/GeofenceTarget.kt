@@ -20,6 +20,15 @@ data class GeofenceTarget(
         require(id.isNotBlank()) { "GeofenceTarget id must not be blank" }
         require(latitudeDegrees in -90.0..90.0) { "latitude out of range: $latitudeDegrees" }
         require(longitudeDegrees in -180.0..180.0) { "longitude out of range: $longitudeDegrees" }
-        require(radiusMeters > 0f) { "radiusMeters must be positive" }
+        // Guard against non-finite (NaN/Infinity, which pass a naive > 0 check) and absurd radii
+        // before they reach Geofence.Builder().setCircularRegion(...).
+        require(radiusMeters > 0f && radiusMeters <= MAX_RADIUS_METERS) {
+            "radiusMeters must be in (0, $MAX_RADIUS_METERS]: $radiusMeters"
+        }
+    }
+
+    companion object {
+        /** Upper bound on a geofence radius (100 km) — anything larger is a data error, not a fence. */
+        const val MAX_RADIUS_METERS = 100_000f
     }
 }

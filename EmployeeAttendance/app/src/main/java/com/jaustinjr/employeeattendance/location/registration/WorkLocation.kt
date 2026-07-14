@@ -29,7 +29,10 @@ data class WorkLocation(
         require(name.isNotBlank()) { "WorkLocation name must not be blank" }
         require(latitudeDegrees in -90.0..90.0) { "latitude out of range: $latitudeDegrees" }
         require(longitudeDegrees in -180.0..180.0) { "longitude out of range: $longitudeDegrees" }
-        require(radiusMeters > 0f) { "radiusMeters must be positive" }
+        // Reject non-finite/absurd radii (Infinity passes a naive > 0 check) up front.
+        require(radiusMeters > 0f && radiusMeters <= GeofenceTarget.MAX_RADIUS_METERS) {
+            "radiusMeters must be in (0, ${GeofenceTarget.MAX_RADIUS_METERS}]: $radiusMeters"
+        }
     }
 
     /** Projects this registered location down to the geometric target the proximity engine uses. */

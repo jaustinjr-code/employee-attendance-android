@@ -59,4 +59,25 @@ class WorkLocationTest {
             validLocation().copy(radiusMeters = 0f)
         }
     }
+
+    @Test
+    fun `infinite radius is rejected`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            validLocation().copy(radiusMeters = Float.POSITIVE_INFINITY)
+        }
+    }
+
+    @Test
+    fun `NaN radius is rejected`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            validLocation().copy(radiusMeters = Float.NaN)
+        }
+    }
+
+    @Test
+    fun `absurdly large radius is rejected`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            validLocation().copy(radiusMeters = 1_000_000f)
+        }
+    }
 }
