@@ -21,6 +21,18 @@ import kotlinx.coroutines.flow.asStateFlow
  * regardless of which producer is active. Transitions emit [ProximityEvent]s — the seam an
  * attendance/clock-in system consumes.
  *
+ * ### Single active target
+ * This class holds ONE global [ProximityState], not per-target state, even though the API threads a
+ * `targetId` through every event. That is safe only because exactly one target is ever registered at
+ * a time (enforced by [com.jaustinjr.employeeattendance.location.LocationFeatureCoordinator], which
+ * registers a single active work location). If multiple concurrent targets were ever registered, an
+ * EXIT for target B while still INSIDE target A would incorrectly flip the global state to OUTSIDE
+ * and fire a spurious Departed(B).
+ *
+ * TODO: If multi-target tracking is introduced, replace the single global state with per-target
+ *   membership (e.g. the set of target ids currently INSIDE) and derive aggregate proximity/events
+ *   from it.
+ *
  * @param store persistence for the proximity state so it survives process death (see below).
  * @param exitBufferMeters hysteresis band for the foreground evaluator (see [ProximityCalculator]).
  */
