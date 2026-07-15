@@ -134,6 +134,19 @@ class LocationPermissionViewModel(
         }
     }
 
+    /**
+     * The user explicitly asked to set up location (e.g. tapped the "Setup Location" chip). Clears
+     * any prior "Maybe Later" dismissals so the appropriate rationale — the initial enable prompt,
+     * the background upgrade, or (if permanently denied) the settings path — surfaces again. If the
+     * required access is already fully granted, [computePrompt] yields null and nothing is shown.
+     */
+    fun onSetupRequested() {
+        if (dismissedPrompts.value.isNotEmpty()) {
+            dismissedPrompts.value = emptySet()
+            savedState[KEY_DISMISSED] = ArrayList<String>()
+        }
+    }
+
     /** User chose "Maybe Later" on the given prompt; suppress it (persisted across process death). */
     fun onPromptDismissed(prompt: LocationPermissionPrompt) {
         val updated = dismissedPrompts.value + prompt

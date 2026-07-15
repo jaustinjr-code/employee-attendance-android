@@ -7,6 +7,7 @@ import com.jaustinjr.employeeattendance.location.permission.SystemLocationPermis
 import com.jaustinjr.employeeattendance.location.geofence.GeofenceManager
 import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
 import com.jaustinjr.employeeattendance.location.proximity.SharedPrefsProximityStateStore
+import com.jaustinjr.employeeattendance.location.registration.LocationClockInRepository
 import com.jaustinjr.employeeattendance.location.registration.StubWorkLocationRepository
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.FusedLocationTracker
@@ -28,6 +29,7 @@ interface AppContainer {
     val proximityRepository: ProximityRepository
     val geofenceManager: GeofenceManager
     val workLocationRepository: WorkLocationRepository
+    val locationClockInRepository: LocationClockInRepository
     val locationFeatureCoordinator: LocationFeatureCoordinator
 }
 
@@ -64,6 +66,10 @@ class DefaultAppContainer(context: Context) : AppContainer {
 
     override val workLocationRepository: WorkLocationRepository by lazy {
         StubWorkLocationRepository()
+    }
+
+    override val locationClockInRepository: LocationClockInRepository by lazy {
+        LocationClockInRepository()
     }
 
     override val locationFeatureCoordinator: LocationFeatureCoordinator by lazy {

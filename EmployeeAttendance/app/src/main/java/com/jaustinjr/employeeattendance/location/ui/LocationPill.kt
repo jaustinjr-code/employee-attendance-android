@@ -22,14 +22,17 @@ import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 
 /**
  * A compact, outlined pill showing the active work location's name with a location marker, matching
- * the badge on the home screen. Purely presentational.
+ * the badge on the home screen. Tapping it invokes [onClick] (e.g. to open the location detail
+ * screen).
  */
 @Composable
 fun LocationPill(
     locationName: String,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
+        onClick = onClick,
         modifier = modifier,
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surface,
@@ -63,6 +66,6 @@ fun LocationPill(
 @Composable
 private fun LocationPillPreview() {
     EmployeeAttendanceTheme {
-        LocationPill(locationName = "Downtown Office", modifier = Modifier.padding(16.dp))
+        LocationPill(locationName = "Downtown Office", onClick = {}, modifier = Modifier.padding(16.dp))
     }
 }
