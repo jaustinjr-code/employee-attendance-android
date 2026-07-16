@@ -1,0 +1,135 @@
+package com.jaustinjr.employeeattendance.location.proximity
+
+import android.util.Log
+import com.jaustinjr.employeeattendance.location.tracking.LocationSample
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * App-scoped source of truth for the user's proximity to their work location. It is fed by two
+ * producers depending on permission level:
+ *
+ * - Background ([android.location.Location] geofences via [GeofenceBroadcastReceiver]) call
+ *   [onGeofenceTransition] when the OS reports an enter/exit.
+ * - Foreground-only tracking calls [onLocation] with each fix, and this class computes the
+ *   transition itself using [ProximityCalculator].
+ *
+ * Both paths converge here so consumers see a single [proximity] state and a single [events] stream
+ * regardless of which producer is active. Transitions emit [ProximityEvent]s — the seam an
+ * attendance/clock-in system consumes.
+ *
+ * ### Single active target
+ * This class holds ONE global [ProximityState], not per-target state, even though the API threads a
+ * `targetId` through every event. That is safe only because exactly one target is ever registered at
+ * a time (enforced by [com.jaustinjr.employeeattendance.location.LocationFeatureCoordinator], which
+ * registers a single active work location). If multiple concurrent targets were ever registered, an
+ * EXIT for target B while still INSIDE target A would incorrectly flip the global state to OUTSIDE
+ * and fire a spurious Departed(B).
+ *
+ * TODO: If multi-target tracking is introduced, replace the single global state with per-target
+ *   membership (e.g. the set of target ids currently INSIDE) and derive aggregate proximity/events
+ *   from it.
+ *
+ * @param store persistence for the proximity state so it survives process death (see below).
+ * @param exitBufferMeters hysteresis band for the foreground evaluator (see [ProximityCalculator]).
+ */
+class ProximityRepository(
+    private val store: ProximityStateStore,
+    private val exitBufferMeters: Float = DEFAULT_EXIT_BUFFER_METERS,
+) : ProximityUpdater {
+
+    // Seed from persisted state so that when Android cold-starts the process purely to deliver a
+    // geofence EXIT, the previous state is restored (e.g. INSIDE) and Departed is emitted rather
+    // than swallowed.
+    private val _proximity = MutableStateFlow(store.load())
+    val proximity: StateFlow<ProximityState> = _proximity.asStateFlow()
+
+    private var lastTargetId: String? = store.loadTargetId()
+
+    init {
+        Log.d(TAG, "seeded from store: state=${_proximity.value} target=$lastTargetId")
+    }
+
+    private val _events = MutableSharedFlow<ProximityEvent>(
+        replay = 0,
+        extraBufferCapacity = EVENT_BUFFER,
+    )
+    val events: SharedFlow<ProximityEvent> = _events.asSharedFlow()
+
+    /** Feed from OS geofence transitions (background path). */
+    fun onGeofenceTransition(targetId: String, state: ProximityState) {
+        setState(state, targetId)
+    }
+
+    /** Feed from the foreground location stream; computes the transition with hysteresis. */
+    @Synchronized
+    override fun onLocation(sample: LocationSample, target: GeofenceTarget) {
+        // Read current state, compute, and commit all under the monitor so a concurrent
+        // geofence-driven commit can't slip in between the read and the write and get clobbered by
+        // a decision made from stale state.
+        val distance = ProximityCalculator.distanceMeters(sample, target)
+        val next = ProximityCalculator.evaluate(
+            current = _proximity.value,
+            distanceMeters = distance,
+            radiusMeters = target.radiusMeters,
+            exitBufferMeters = exitBufferMeters,
+        )
+        Log.v(TAG, "onLocation: distance=${distance}m radius=${target.radiusMeters}m -> $next")
+        setState(next, target.id)
+    }
+
+    /**
+     * Clears proximity, e.g. when tracking stops or no target is registered. Goes through the same
+     * monitor as [setState] so it can't race an in-flight commit, and emits Departed if the state
+     * being cleared was INSIDE (leaving a work location by de-registering it is still a departure).
+     */
+    @Synchronized
+    override fun reset() {
+        val previous = _proximity.value
+        if (previous == ProximityState.UNKNOWN) return
+        _proximity.value = ProximityState.UNKNOWN
+        val departedFrom = lastTargetId
+        store.save(ProximityState.UNKNOWN, departedFrom)
+        Log.d(TAG, "reset: $previous -> UNKNOWN")
+        if (previous == ProximityState.INSIDE && departedFrom != null) {
+            Log.d(TAG, "emit Departed($departedFrom) on reset")
+            _events.tryEmit(ProximityEvent.Departed(departedFrom))
+        }
+    }
+
+    // setState is a read-modify-write over _proximity plus event emission, and it is reached from
+    // two threads: OS geofence callbacks (main) and the foreground location pipeline (background).
+    // Guard it so transitions can't interleave and double-emit or drop events.
+    @Synchronized
+    private fun setState(next: ProximityState, targetId: String) {
+        val previous = _proximity.value
+        if (next == previous) return
+        _proximity.value = next
+        lastTargetId = targetId
+        store.save(next, targetId)
+        Log.d(TAG, "state: $previous -> $next (target=$targetId)")
+        when (next) {
+            ProximityState.INSIDE -> {
+                Log.d(TAG, "emit Arrived($targetId)")
+                _events.tryEmit(ProximityEvent.Arrived(targetId))
+            }
+            // Only a genuine inside -> outside move is a "departure"; leaving UNKNOWN is not.
+            ProximityState.OUTSIDE ->
+                if (previous == ProximityState.INSIDE) {
+                    Log.d(TAG, "emit Departed($targetId)")
+                    _events.tryEmit(ProximityEvent.Departed(targetId))
+                }
+            ProximityState.UNKNOWN -> Unit
+        }
+    }
+
+    companion object {
+        private const val TAG = "ProxRepo"
+        private const val DEFAULT_EXIT_BUFFER_METERS = 50f
+        private const val EVENT_BUFFER = 8
+    }
+}
