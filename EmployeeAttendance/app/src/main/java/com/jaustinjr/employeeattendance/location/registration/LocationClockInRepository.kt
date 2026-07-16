@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.location.registration
 
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +20,11 @@ class LocationClockInRepository {
     /** Records a clock-in for [locationId] at [epochMillis] (defaults to now). */
     @Synchronized
     fun recordClockIn(locationId: String, epochMillis: Long = System.currentTimeMillis()) {
+        Log.d(TAG, "recordClockIn: location=$locationId at=$epochMillis")
         _lastClockIns.value = _lastClockIns.value + (locationId to epochMillis)
+    }
+
+    private companion object {
+        const val TAG = "ClockIn"
     }
 }

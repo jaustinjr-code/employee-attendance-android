@@ -1,6 +1,7 @@
 package com.jaustinjr.employeeattendance.location.proximity
 
 import android.content.Context
+import android.util.Log
 
 /**
  * Persists the last known proximity state so it survives process death.
@@ -38,6 +39,7 @@ class SharedPrefsProximityStateStore(
     override fun loadTargetId(): String? = prefs.getString(KEY_TARGET_ID, null)
 
     override fun save(state: ProximityState, targetId: String?) {
+        Log.v(TAG, "save: state=$state target=$targetId")
         prefs.edit()
             .putString(KEY_STATE, state.name)
             .putString(KEY_TARGET_ID, targetId)
@@ -45,6 +47,7 @@ class SharedPrefsProximityStateStore(
     }
 
     private companion object {
+        const val TAG = "ProxStore"
         const val PREFS_NAME = "proximity_state"
         const val KEY_STATE = "state"
         const val KEY_TARGET_ID = "target_id"

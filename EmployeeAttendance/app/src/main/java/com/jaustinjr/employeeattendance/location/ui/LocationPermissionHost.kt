@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -19,6 +20,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissions
+
+private const val TAG = "PermHost"
 
 /**
  * Hosts the location permission rationale flow: it observes [LocationPermissionViewModel], keeps
@@ -90,10 +93,12 @@ fun LocationPermissionHost(
                     viewModel.onPromptDismissed(LocationPermissionPrompt.EnableForeground)
                     if (blocked) {
                         // Runtime dialog would be silently auto-denied; send the user to settings.
+                        Log.d(TAG, "enable confirmed (blocked): opening app settings")
                         context.startActivity(appSettingsIntent(context.packageName))
                     } else {
                         // Request foreground location plus (API 33+) notifications, so the tracking
                         // notification that discloses background location use can be shown.
+                        Log.d(TAG, "enable confirmed: launching foreground permission request")
                         foregroundLauncher.launch(LocationPermissions.initialRequest)
                     }
                 },
@@ -118,9 +123,11 @@ fun LocationPermissionHost(
                         // Android 11+: background ("Allow all the time") can only be granted from
                         // the app's system settings once foreground is already granted.
                         // onPermissionResult() on resume picks up the change.
+                        Log.d(TAG, "upgrade confirmed: opening app settings for background access")
                         context.startActivity(appSettingsIntent(context.packageName))
                     } else {
                         // Android 10: background location can still be granted via a runtime dialog.
+                        Log.d(TAG, "upgrade confirmed: launching inline background request")
                         backgroundLauncher.launch(LocationPermissions.BACKGROUND)
                     }
                 },

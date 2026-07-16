@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.location.tracking
 
+import android.util.Log
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
 
@@ -25,6 +26,7 @@ class LocationTrackingController(
      * permission refresh); it only acts on the transitions that matter.
      */
     fun sync(permission: LocationPermissionState) {
+        Log.d(TAG, "sync: access=${permission.accessLevel}")
         when (permission.accessLevel) {
             LocationAccessLevel.ALWAYS -> {
                 serviceLauncher.start()
@@ -46,7 +48,12 @@ class LocationTrackingController(
 
     /** Stops all tracking regardless of permission (e.g. a user-facing "pause tracking" action). */
     fun stop() {
+        Log.d(TAG, "stop")
         serviceLauncher.stop()
         locationState.updateStatus(TrackingStatus.STOPPED)
+    }
+
+    private companion object {
+        const val TAG = "TrackCtl"
     }
 }

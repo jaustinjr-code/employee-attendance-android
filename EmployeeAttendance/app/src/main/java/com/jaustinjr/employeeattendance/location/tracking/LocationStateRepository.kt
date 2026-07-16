@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.location.tracking
 
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,10 +34,18 @@ class LocationStateRepository {
     val trackingStatus: StateFlow<TrackingStatus> = _trackingStatus.asStateFlow()
 
     fun publishLocation(sample: LocationSample) {
+        Log.v(TAG, "publishLocation: lat=${sample.latitudeDegrees} lon=${sample.longitudeDegrees}")
         _latestLocation.value = sample
     }
 
     fun updateStatus(status: TrackingStatus) {
+        if (status != _trackingStatus.value) {
+            Log.d(TAG, "trackingStatus: ${_trackingStatus.value} -> $status")
+        }
         _trackingStatus.value = status
+    }
+
+    private companion object {
+        const val TAG = "LocState"
     }
 }

@@ -37,6 +37,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             .container.proximityRepository
 
         event.triggeringGeofences?.forEach { geofence ->
+            Log.d(TAG, "transition=$state for geofence=${geofence.requestId}")
             repository.onGeofenceTransition(geofence.requestId, state)
         }
     }
@@ -44,6 +45,6 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_GEOFENCE_EVENT =
             "com.jaustinjr.employeeattendance.action.GEOFENCE_EVENT"
-        private const val TAG = "GeofenceReceiver"
+        private const val TAG = "GeoRcvr"
     }
 }

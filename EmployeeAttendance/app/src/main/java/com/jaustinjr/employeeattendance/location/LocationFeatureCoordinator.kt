@@ -41,6 +41,7 @@ class LocationFeatureCoordinator(
 
     /** Starts the coordination pipelines on [scope]; call once with an app-lifetime scope. */
     fun start(scope: CoroutineScope) {
+        Log.d(TAG, "start: launching coordination pipelines")
         scope.launch {
             combine(
                 permissionRepository.permissionState,
@@ -72,6 +73,7 @@ class LocationFeatureCoordinator(
         permission: LocationPermissionState,
         activeLocation: WorkLocation?,
     ) {
+        Log.d(TAG, "reconcile: access=${permission.accessLevel} location=${activeLocation?.id}")
         trackingController.sync(permission)
 
         // Geofences require background access to be useful; register them only then, and only when
@@ -93,6 +95,6 @@ class LocationFeatureCoordinator(
     }
 
     private companion object {
-        private const val TAG = "LocationCoordinator"
+        private const val TAG = "LocCoord"
     }
 }

@@ -3,6 +3,7 @@ package com.jaustinjr.employeeattendance.location.permission
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,7 +41,15 @@ class SystemLocationPermissionRepository(
     override val permissionState: StateFlow<LocationPermissionState> = _permissionState.asStateFlow()
 
     override fun refresh(): LocationPermissionState =
-        readCurrentState().also { _permissionState.value = it }
+        readCurrentState().also { state ->
+            val changed = state != _permissionState.value
+            _permissionState.value = state
+            if (changed) {
+                Log.d(TAG, "refresh: state changed -> $state")
+            } else {
+                Log.v(TAG, "refresh: unchanged ($state)")
+            }
+        }
 
     private fun readCurrentState(): LocationPermissionState {
         val fineGranted = isGranted(LocationPermissions.FINE)
@@ -65,4 +74,8 @@ class SystemLocationPermissionRepository(
     private fun isGranted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(appContext, permission) ==
             PackageManager.PERMISSION_GRANTED
+
+    private companion object {
+        const val TAG = "PermRepo"
+    }
 }

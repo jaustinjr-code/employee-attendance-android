@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.location.registration
 
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,12 +52,14 @@ class StubWorkLocationRepository : WorkLocationRepository {
     // register/remove/setActive calls don't clobber each other or leave active/list inconsistent.
     @Synchronized
     override fun setActiveWorkLocation(id: String) {
+        Log.d(TAG, "setActiveWorkLocation: $id")
         _activeWorkLocation.value = _workLocations.value.firstOrNull { it.id == id }
             ?: _activeWorkLocation.value
     }
 
     @Synchronized
     override fun registerWorkLocation(location: WorkLocation) {
+        Log.d(TAG, "registerWorkLocation: ${location.id} (${location.name})")
         _workLocations.value = _workLocations.value.filterNot { it.id == location.id } + location
         if (_activeWorkLocation.value == null) {
             _activeWorkLocation.value = location
@@ -65,6 +68,7 @@ class StubWorkLocationRepository : WorkLocationRepository {
 
     @Synchronized
     override fun removeWorkLocation(id: String) {
+        Log.d(TAG, "removeWorkLocation: $id")
         _workLocations.value = _workLocations.value.filterNot { it.id == id }
         if (_activeWorkLocation.value?.id == id) {
             _activeWorkLocation.value = _workLocations.value.firstOrNull()
@@ -72,6 +76,8 @@ class StubWorkLocationRepository : WorkLocationRepository {
     }
 
     companion object {
+        private const val TAG = "WorkLoc"
+
         /** Mock pre-registered office used until the real registration flow exists. */
         val DEFAULT_OFFICE = WorkLocation(
             id = "downtown-office",

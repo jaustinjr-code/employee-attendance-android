@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.location.ui
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -108,9 +109,9 @@ class LocationViewModel(
      * action so the location detail screen can show "last clocked in" for that location.
      */
     fun onClockIn() {
-        workLocationRepository.activeWorkLocation.value?.let {
-            clockInRepository.recordClockIn(it.id)
-        }
+        val active = workLocationRepository.activeWorkLocation.value
+        Log.d(TAG, "onClockIn: activeLocation=${active?.id}")
+        active?.let { clockInRepository.recordClockIn(it.id) }
     }
 
     /**
@@ -129,7 +130,11 @@ class LocationViewModel(
             ) { degraded, proximity -> degraded to proximity }
                 .distinctUntilChanged()
                 .collectLatest { (degraded, proximity) ->
-                    if (!degraded) return@collectLatest
+                    if (!degraded) {
+                        Log.v(TAG, "foreground collection idle (not degraded)")
+                        return@collectLatest
+                    }
+                    Log.d(TAG, "starting foreground collection (proximity=$proximity)")
                     try {
                         locationTracker.locationUpdates(LocationPowerPolicy.foregroundConfig(proximity))
                             .collect(locationStateRepository::publishLocation)
@@ -144,6 +149,7 @@ class LocationViewModel(
     }
 
     companion object {
+        private const val TAG = "LocVM"
         private const val STOP_TIMEOUT_MILLIS = 5_000L
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {

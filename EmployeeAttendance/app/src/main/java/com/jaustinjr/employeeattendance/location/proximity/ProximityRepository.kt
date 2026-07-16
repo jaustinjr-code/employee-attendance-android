@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.location.proximity
 
+import android.util.Log
 import com.jaustinjr.employeeattendance.location.tracking.LocationSample
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +50,10 @@ class ProximityRepository(
 
     private var lastTargetId: String? = store.loadTargetId()
 
+    init {
+        Log.d(TAG, "seeded from store: state=${_proximity.value} target=$lastTargetId")
+    }
+
     private val _events = MutableSharedFlow<ProximityEvent>(
         replay = 0,
         extraBufferCapacity = EVENT_BUFFER,
@@ -73,6 +78,7 @@ class ProximityRepository(
             radiusMeters = target.radiusMeters,
             exitBufferMeters = exitBufferMeters,
         )
+        Log.v(TAG, "onLocation: distance=${distance}m radius=${target.radiusMeters}m -> $next")
         setState(next, target.id)
     }
 
@@ -88,7 +94,9 @@ class ProximityRepository(
         _proximity.value = ProximityState.UNKNOWN
         val departedFrom = lastTargetId
         store.save(ProximityState.UNKNOWN, departedFrom)
+        Log.d(TAG, "reset: $previous -> UNKNOWN")
         if (previous == ProximityState.INSIDE && departedFrom != null) {
+            Log.d(TAG, "emit Departed($departedFrom) on reset")
             _events.tryEmit(ProximityEvent.Departed(departedFrom))
         }
     }
@@ -103,11 +111,16 @@ class ProximityRepository(
         _proximity.value = next
         lastTargetId = targetId
         store.save(next, targetId)
+        Log.d(TAG, "state: $previous -> $next (target=$targetId)")
         when (next) {
-            ProximityState.INSIDE -> _events.tryEmit(ProximityEvent.Arrived(targetId))
+            ProximityState.INSIDE -> {
+                Log.d(TAG, "emit Arrived($targetId)")
+                _events.tryEmit(ProximityEvent.Arrived(targetId))
+            }
             // Only a genuine inside -> outside move is a "departure"; leaving UNKNOWN is not.
             ProximityState.OUTSIDE ->
                 if (previous == ProximityState.INSIDE) {
+                    Log.d(TAG, "emit Departed($targetId)")
                     _events.tryEmit(ProximityEvent.Departed(targetId))
                 }
             ProximityState.UNKNOWN -> Unit
@@ -115,6 +128,7 @@ class ProximityRepository(
     }
 
     companion object {
+        private const val TAG = "ProxRepo"
         private const val DEFAULT_EXIT_BUFFER_METERS = 50f
         private const val EVENT_BUFFER = 8
     }

@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.location.ui
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -81,9 +82,11 @@ class LocationPermissionViewModel(
             dismissedPrompts,
             foregroundPermanentlyDenied,
         ) { permission, dismissed, permanentlyDenied ->
+            val prompt = computePrompt(permission, dismissed)
+            Log.v(TAG, "uiState: access=${permission.accessLevel} prompt=$prompt denied=$permanentlyDenied")
             LocationPermissionUiState(
                 permission = permission,
-                visiblePrompt = computePrompt(permission, dismissed),
+                visiblePrompt = prompt,
                 foregroundPermanentlyDenied = permanentlyDenied,
             )
         }.stateIn(
@@ -112,9 +115,11 @@ class LocationPermissionViewModel(
     /** Re-reads the current permission state; call on lifecycle resume and after any request. */
     fun onPermissionResult() {
         val state = repository.refresh()
+        Log.d(TAG, "onPermissionResult: access=${state.accessLevel}")
         // If access was granted (e.g. the user relented in Settings), clear the permanent-denial
         // flag so the normal runtime-request flow is offered again next time.
         if (state.isGranted && foregroundPermanentlyDenied.value) {
+            Log.d(TAG, "clearing permanent-denial flag (access granted)")
             foregroundPermanentlyDenied.value = false
             savedState[KEY_FOREGROUND_DENIED] = false
         }
@@ -128,7 +133,9 @@ class LocationPermissionViewModel(
      *   the only way forward is app settings.
      */
     fun onForegroundDenied(canRetryWithRationale: Boolean) {
+        Log.d(TAG, "onForegroundDenied: canRetry=$canRetryWithRationale")
         if (!canRetryWithRationale) {
+            Log.d(TAG, "foreground permanently denied; routing to settings")
             foregroundPermanentlyDenied.value = true
             savedState[KEY_FOREGROUND_DENIED] = true
         }
@@ -141,6 +148,7 @@ class LocationPermissionViewModel(
      * required access is already fully granted, [computePrompt] yields null and nothing is shown.
      */
     fun onSetupRequested() {
+        Log.d(TAG, "onSetupRequested (clearing dismissals)")
         if (dismissedPrompts.value.isNotEmpty()) {
             dismissedPrompts.value = emptySet()
             savedState[KEY_DISMISSED] = ArrayList<String>()
@@ -149,6 +157,7 @@ class LocationPermissionViewModel(
 
     /** User chose "Maybe Later" on the given prompt; suppress it (persisted across process death). */
     fun onPromptDismissed(prompt: LocationPermissionPrompt) {
+        Log.d(TAG, "onPromptDismissed: $prompt")
         val updated = dismissedPrompts.value + prompt
         dismissedPrompts.value = updated
         savedState[KEY_DISMISSED] = ArrayList(updated.map { it.name })
@@ -161,6 +170,7 @@ class LocationPermissionViewModel(
             ?: emptySet()
 
     companion object {
+        private const val TAG = "PermVM"
         private const val STOP_TIMEOUT_MILLIS = 5_000L
         private const val KEY_DISMISSED = "dismissed_prompts"
         private const val KEY_FOREGROUND_DENIED = "foreground_permanently_denied"

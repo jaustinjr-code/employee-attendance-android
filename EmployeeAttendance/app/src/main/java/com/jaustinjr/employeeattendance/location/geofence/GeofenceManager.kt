@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.GeofencingRequest
@@ -56,11 +57,13 @@ class GeofenceManager(
             .build()
 
         client.addGeofences(request, pendingIntent).await()
+        Log.d(TAG, "registered ${targets.size} geofence(s): ${targets.map { it.id }}")
     }
 
     /** Removes all geofences registered through this manager. */
     override suspend fun clear() {
         client.removeGeofences(pendingIntent).await()
+        Log.v(TAG, "cleared geofences")
     }
 
     private fun GeofenceTarget.toGeofence(): Geofence = Geofence.Builder()
@@ -76,6 +79,7 @@ class GeofenceManager(
         .build()
 
     companion object {
+        private const val TAG = "GeoMgr"
         private const val GEOFENCE_REQUEST_CODE = 1001
         private const val NOTIFICATION_RESPONSIVENESS_MILLIS = 120_000 // 2 minutes
     }

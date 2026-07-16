@@ -3,6 +3,7 @@ package com.jaustinjr.employeeattendance.location.tracking
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
+import android.util.Log
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -58,14 +59,25 @@ class FusedLocationTracker(
 
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.let { trySend(it.toSample()) }
+                result.lastLocation?.let {
+                    Log.v(TAG, "fix: lat=${it.latitude} lon=${it.longitude} acc=${it.accuracy}m")
+                    trySend(it.toSample())
+                }
             }
         }
 
+        Log.d(
+            TAG,
+            "requesting updates: priority=${config.priority} interval=${config.intervalMillis}ms " +
+                "maxDelay=${config.maxUpdateDelayMillis}ms",
+        )
         // Deliver callbacks on the main looper; the callback body only forwards to the channel.
         client.requestLocationUpdates(request, callback, android.os.Looper.getMainLooper())
 
-        awaitClose { client.removeLocationUpdates(callback) }
+        awaitClose {
+            Log.d(TAG, "removing updates (collection cancelled)")
+            client.removeLocationUpdates(callback)
+        }
     }
         // Conflate so a slow consumer always processes the freshest fix and never works through a
         // backlog of stale positions — keeps proximity decisions low-latency.
@@ -76,7 +88,13 @@ class FusedLocationTracker(
         val request = CurrentLocationRequest.Builder()
             .setPriority(priority.toGmsPriority())
             .build()
-        return client.getCurrentLocation(request, null).await()?.toSample()
+        return client.getCurrentLocation(request, null).await()?.toSample().also {
+            Log.d(TAG, "currentLocation($priority) -> $it")
+        }
+    }
+
+    private companion object {
+        const val TAG = "LocTrack"
     }
 }
 

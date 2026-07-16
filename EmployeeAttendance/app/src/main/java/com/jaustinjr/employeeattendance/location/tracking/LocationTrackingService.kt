@@ -54,6 +54,7 @@ class LocationTrackingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand: action=${intent?.action} startId=$startId")
         when (intent?.action) {
             ACTION_STOP -> {
                 stopTracking()
@@ -73,6 +74,7 @@ class LocationTrackingService : Service() {
         // redelivery case there is no startForegroundService() obligation to satisfy, so stopping
         // without ever promoting is safe.
         if (!permissionRepository.refresh().supportsBackgroundTracking) {
+            Log.d(TAG, "startTracking: no background permission; stopping")
             stopTracking()
             return
         }
@@ -89,17 +91,22 @@ class LocationTrackingService : Service() {
         }
 
         // Already collecting; the notification was refreshed above, so nothing more to do.
-        if (trackingJob != null) return
+        if (trackingJob != null) {
+            Log.v(TAG, "startTracking: already active; notification refreshed")
+            return
+        }
 
+        Log.d(TAG, "startTracking: promoting to foreground and starting background updates")
         locationState.updateStatus(TrackingStatus.BACKGROUND_ACTIVE)
 
         trackingJob = tracker.locationUpdates(LocationRequestConfig.Background)
             .onEach(locationState::publishLocation)
-            .catch { stopTracking() }
+            .catch { e -> Log.w(TAG, "update stream failed; stopping", e); stopTracking() }
             .launchIn(serviceScope)
     }
 
     private fun stopTracking() {
+        Log.d(TAG, "stopTracking")
         trackingJob?.cancel()
         trackingJob = null
         locationState.updateStatus(TrackingStatus.STOPPED)
@@ -134,18 +141,20 @@ class LocationTrackingService : Service() {
     }
 
     override fun onDestroy() {
+        Log.d(TAG, "onDestroy")
         serviceScope.cancel()
         super.onDestroy()
     }
 
     companion object {
-        private const val TAG = "LocationTrackingSvc"
+        private const val TAG = "TrackSvc"
         private const val CHANNEL_ID = "location_tracking"
         private const val NOTIFICATION_ID = 42
         private const val ACTION_STOP = "com.jaustinjr.employeeattendance.action.STOP_TRACKING"
 
         /** Starts background tracking. Caller must hold background location permission. */
         fun start(context: Context) {
+            Log.d(TAG, "start() requested")
             val intent = Intent(context, LocationTrackingService::class.java)
             // ContextCompat routes to startForegroundService on API 26+ and startService below it,
             // where startForegroundService does not exist (minSdk is 24).
@@ -154,6 +163,7 @@ class LocationTrackingService : Service() {
 
         /** Stops background tracking and dismisses the notification. */
         fun stop(context: Context) {
+            Log.d(TAG, "stop() requested")
             val intent = Intent(context, LocationTrackingService::class.java)
                 .setAction(ACTION_STOP)
             try {
