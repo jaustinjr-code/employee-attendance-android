@@ -110,4 +110,55 @@ class ProximityRepositoryTest {
         assertEquals(ProximityState.INSIDE, store.state)
         assertEquals("t1", store.targetId)
     }
+
+    @Test
+    fun `reset from a non-inside state emits nothing`() = runTest {
+        val repo = ProximityRepository(FakeStore())
+        val events = mutableListOf<ProximityEvent>()
+        backgroundScope.launch { repo.events.collect(events::add) }
+        runCurrent()
+
+        repo.onGeofenceTransition("t1", ProximityState.OUTSIDE) // UNKNOWN -> OUTSIDE, no Departed
+        repo.reset()
+        runCurrent()
+
+        assertTrue(events.isEmpty())
+        assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
+    }
+
+    @Test
+    fun `concurrent identical transitions settle on that state`() {
+        val store = FakeStore()
+        val repo = ProximityRepository(store)
+
+        val threads = (1..50).map {
+            Thread { repeat(100) { repo.onGeofenceTransition("t1", ProximityState.INSIDE) } }
+        }
+        threads.forEach(Thread::start)
+        threads.forEach(Thread::join)
+
+        assertEquals(ProximityState.INSIDE, repo.proximity.value)
+        // State and persisted store are written together under the lock, so they must agree.
+        assertEquals(repo.proximity.value, store.state)
+    }
+
+    @Test
+    fun `concurrent mixed transitions never corrupt state`() {
+        val store = FakeStore()
+        val repo = ProximityRepository(store)
+
+        val threads = (1..20).map {
+            Thread {
+                repeat(200) { i ->
+                    val state = if (i % 2 == 0) ProximityState.INSIDE else ProximityState.OUTSIDE
+                    repo.onGeofenceTransition("t1", state)
+                }
+            }
+        }
+        threads.forEach(Thread::start)
+        threads.forEach(Thread::join)
+
+        assertTrue(repo.proximity.value in listOf(ProximityState.INSIDE, ProximityState.OUTSIDE))
+        assertEquals(repo.proximity.value, store.state)
+    }
 }

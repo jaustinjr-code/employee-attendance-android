@@ -1,6 +1,5 @@
 package com.jaustinjr.employeeattendance.location.tracking
 
-import android.content.Context
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
 
@@ -17,7 +16,7 @@ import com.jaustinjr.employeeattendance.location.permission.LocationPermissionSt
  * - [LocationAccessLevel.NONE] -> tracking is off.
  */
 class LocationTrackingController(
-    private val appContext: Context,
+    private val serviceLauncher: TrackingServiceLauncher,
     private val locationState: LocationStateRepository,
 ) {
 
@@ -28,18 +27,18 @@ class LocationTrackingController(
     fun sync(permission: LocationPermissionState) {
         when (permission.accessLevel) {
             LocationAccessLevel.ALWAYS -> {
-                LocationTrackingService.start(appContext)
+                serviceLauncher.start()
             }
 
             LocationAccessLevel.WHEN_IN_USE -> {
                 // No background service; a foreground collector (owned by the UI layer) supplies
                 // fixes while the app is visible.
-                LocationTrackingService.stop(appContext)
+                serviceLauncher.stop()
                 locationState.updateStatus(TrackingStatus.FOREGROUND_ONLY)
             }
 
             LocationAccessLevel.NONE -> {
-                LocationTrackingService.stop(appContext)
+                serviceLauncher.stop()
                 locationState.updateStatus(TrackingStatus.STOPPED)
             }
         }
@@ -47,7 +46,7 @@ class LocationTrackingController(
 
     /** Stops all tracking regardless of permission (e.g. a user-facing "pause tracking" action). */
     fun stop() {
-        LocationTrackingService.stop(appContext)
+        serviceLauncher.stop()
         locationState.updateStatus(TrackingStatus.STOPPED)
     }
 }

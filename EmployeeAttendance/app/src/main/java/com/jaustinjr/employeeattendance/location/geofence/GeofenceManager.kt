@@ -22,7 +22,7 @@ import kotlinx.coroutines.tasks.await
  */
 class GeofenceManager(
     context: Context,
-) {
+) : GeofenceRegistrar {
 
     private val appContext = context.applicationContext
     private val client: GeofencingClient = LocationServices.getGeofencingClient(appContext)
@@ -45,7 +45,7 @@ class GeofenceManager(
      * first so this is idempotent and safe to call whenever the registered locations change.
      */
     @SuppressLint("MissingPermission")
-    suspend fun register(targets: List<GeofenceTarget>) {
+    override suspend fun register(targets: List<GeofenceTarget>) {
         clear()
         if (targets.isEmpty()) return
 
@@ -59,7 +59,7 @@ class GeofenceManager(
     }
 
     /** Removes all geofences registered through this manager. */
-    suspend fun clear() {
+    override suspend fun clear() {
         client.removeGeofences(pendingIntent).await()
     }
 

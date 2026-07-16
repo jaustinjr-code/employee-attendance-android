@@ -10,6 +10,7 @@ import com.jaustinjr.employeeattendance.location.proximity.SharedPrefsProximityS
 import com.jaustinjr.employeeattendance.location.registration.LocationClockInRepository
 import com.jaustinjr.employeeattendance.location.registration.StubWorkLocationRepository
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
+import com.jaustinjr.employeeattendance.location.tracking.DefaultTrackingServiceLauncher
 import com.jaustinjr.employeeattendance.location.tracking.FusedLocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
@@ -53,7 +54,10 @@ class DefaultAppContainer(context: Context) : AppContainer {
     }
 
     override val locationTrackingController: LocationTrackingController by lazy {
-        LocationTrackingController(appContext, locationStateRepository)
+        LocationTrackingController(
+            serviceLauncher = DefaultTrackingServiceLauncher(appContext),
+            locationState = locationStateRepository,
+        )
     }
 
     override val proximityRepository: ProximityRepository by lazy {
@@ -77,9 +81,9 @@ class DefaultAppContainer(context: Context) : AppContainer {
             permissionRepository = locationPermissionRepository,
             workLocationRepository = workLocationRepository,
             trackingController = locationTrackingController,
-            geofenceManager = geofenceManager,
+            geofenceRegistrar = geofenceManager,
             locationState = locationStateRepository,
-            proximityRepository = proximityRepository,
+            proximityUpdater = proximityRepository,
         )
     }
 }

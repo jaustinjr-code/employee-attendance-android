@@ -39,7 +39,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class ProximityRepository(
     private val store: ProximityStateStore,
     private val exitBufferMeters: Float = DEFAULT_EXIT_BUFFER_METERS,
-) {
+) : ProximityUpdater {
 
     // Seed from persisted state so that when Android cold-starts the process purely to deliver a
     // geofence EXIT, the previous state is restored (e.g. INSIDE) and Departed is emitted rather
@@ -62,7 +62,7 @@ class ProximityRepository(
 
     /** Feed from the foreground location stream; computes the transition with hysteresis. */
     @Synchronized
-    fun onLocation(sample: LocationSample, target: GeofenceTarget) {
+    override fun onLocation(sample: LocationSample, target: GeofenceTarget) {
         // Read current state, compute, and commit all under the monitor so a concurrent
         // geofence-driven commit can't slip in between the read and the write and get clobbered by
         // a decision made from stale state.
@@ -82,7 +82,7 @@ class ProximityRepository(
      * being cleared was INSIDE (leaving a work location by de-registering it is still a departure).
      */
     @Synchronized
-    fun reset() {
+    override fun reset() {
         val previous = _proximity.value
         if (previous == ProximityState.UNKNOWN) return
         _proximity.value = ProximityState.UNKNOWN

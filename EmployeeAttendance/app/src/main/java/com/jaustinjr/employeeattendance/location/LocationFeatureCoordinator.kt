@@ -1,10 +1,10 @@
 package com.jaustinjr.employeeattendance.location
 
 import android.util.Log
-import com.jaustinjr.employeeattendance.location.geofence.GeofenceManager
+import com.jaustinjr.employeeattendance.location.geofence.GeofenceRegistrar
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
-import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
+import com.jaustinjr.employeeattendance.location.proximity.ProximityUpdater
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
@@ -34,9 +34,9 @@ class LocationFeatureCoordinator(
     private val permissionRepository: LocationPermissionRepository,
     private val workLocationRepository: WorkLocationRepository,
     private val trackingController: LocationTrackingController,
-    private val geofenceManager: GeofenceManager,
+    private val geofenceRegistrar: GeofenceRegistrar,
     private val locationState: LocationStateRepository,
-    private val proximityRepository: ProximityRepository,
+    private val proximityUpdater: ProximityUpdater,
 ) {
 
     /** Starts the coordination pipelines on [scope]; call once with an app-lifetime scope. */
@@ -60,9 +60,9 @@ class LocationFeatureCoordinator(
         ) { fix, activeLocation -> fix to activeLocation }
             .onEach { (fix, activeLocation) ->
                 if (fix != null && activeLocation != null) {
-                    proximityRepository.onLocation(fix, activeLocation.toGeofenceTarget())
+                    proximityUpdater.onLocation(fix, activeLocation.toGeofenceTarget())
                 } else if (activeLocation == null) {
-                    proximityRepository.reset()
+                    proximityUpdater.reset()
                 }
             }
             .launchIn(scope)
@@ -79,9 +79,9 @@ class LocationFeatureCoordinator(
         val useGeofences = permission.supportsBackgroundTracking && activeLocation != null
         try {
             if (useGeofences) {
-                geofenceManager.register(listOf(activeLocation!!.toGeofenceTarget()))
+                geofenceRegistrar.register(listOf(activeLocation!!.toGeofenceTarget()))
             } else {
-                geofenceManager.clear()
+                geofenceRegistrar.clear()
             }
         } catch (e: CancellationException) {
             throw e
