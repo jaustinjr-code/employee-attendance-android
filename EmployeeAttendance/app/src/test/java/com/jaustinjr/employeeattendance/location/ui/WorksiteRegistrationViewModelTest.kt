@@ -47,8 +47,15 @@ class WorksiteRegistrationViewModelTest {
         override suspend fun currentLocation(priority: LocationPriority): LocationSample? = fix
     }
 
-    private class FakeGeocoder(private val point: GeocodedPoint?) : AddressGeocoder {
+    private class FakeGeocoder(
+        private val point: GeocodedPoint?,
+        private val reverse: String? = "42 Reverse Ave",
+    ) : AddressGeocoder {
         override suspend fun geocode(query: String): GeocodedPoint? = point
+        override suspend fun reverseGeocode(
+            latitudeDegrees: Double,
+            longitudeDegrees: Double,
+        ): String? = reverse
     }
 
     private class FakeAutocomplete(
@@ -97,6 +104,15 @@ class WorksiteRegistrationViewModelTest {
         assertEquals(37.7749, state.latitude!!, 1e-6)
         assertEquals(-122.4194, state.longitude!!, 1e-6)
         assertTrue(state.status is CaptureStatus.Idle)
+    }
+
+    @Test
+    fun `capturing current location reverse-geocodes the nearest address`() = runTest {
+        val model = vm(geocoder = FakeGeocoder(POINT, reverse = "42 Reverse Ave"))
+        model.captureCurrentLocation()
+        runCurrent()
+
+        assertEquals("42 Reverse Ave", model.uiState.value.resolvedAddress)
     }
 
     @Test

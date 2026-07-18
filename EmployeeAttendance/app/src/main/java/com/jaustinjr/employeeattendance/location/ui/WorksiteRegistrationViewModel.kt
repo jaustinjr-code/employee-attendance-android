@@ -177,11 +177,16 @@ class WorksiteRegistrationViewModel(
                     }
                     return@launch
                 }
+                // Reverse-geocode the fix to the nearest building address so the worksite carries a
+                // human-readable address (for future mapping/navigation), not just coordinates.
+                val nearestAddress = runCatching {
+                    addressGeocoder.reverseGeocode(fix.latitudeDegrees, fix.longitudeDegrees)
+                }.getOrNull()
                 _uiState.update {
                     it.copy(
                         latitude = fix.latitudeDegrees,
                         longitude = fix.longitudeDegrees,
-                        resolvedAddress = null,
+                        resolvedAddress = nearestAddress,
                         status = CaptureStatus.Idle,
                     )
                 }

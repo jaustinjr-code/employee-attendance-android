@@ -27,6 +27,13 @@ data class GeocodedPoint(
 interface AddressGeocoder {
     /** Returns the best match for [query], or null if nothing was found / geocoding is unavailable. */
     suspend fun geocode(query: String): GeocodedPoint?
+
+    /**
+     * Reverse-geocodes coordinates to the nearest street address line, or null if none is available.
+     * Used when capturing the current location so a registered worksite also carries a human-readable
+     * address for future mapping/navigation, not just raw coordinates.
+     */
+    suspend fun reverseGeocode(latitudeDegrees: Double, longitudeDegrees: Double): String?
 }
 
 /**
@@ -64,6 +71,44 @@ class PlatformAddressGeocoder(
         }
     }
 
+    override suspend fun reverseGeocode(
+        latitudeDegrees: Double,
+        longitudeDegrees: Double,
+    ): String? {
+        if (!Geocoder.isPresent()) return null
+        val geocoder = Geocoder(appContext, locale)
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                reverseGeocodeAsync(geocoder, latitudeDegrees, longitudeDegrees)
+            } else {
+                @Suppress("DEPRECATION")
+                withContext(Dispatchers.IO) {
+                    geocoder.getFromLocation(latitudeDegrees, longitudeDegrees, 1)
+                }?.firstOrNull()?.formattedLine()
+            }
+        } catch (e: IOException) {
+            Log.w(TAG, "reverse geocode failed", e)
+            null
+        }
+    }
+
+    private suspend fun reverseGeocodeAsync(
+        geocoder: Geocoder,
+        latitude: Double,
+        longitude: Double,
+    ): String? = suspendCancellableCoroutine { cont ->
+        geocoder.getFromLocation(latitude, longitude, 1, object : Geocoder.GeocodeListener {
+            override fun onGeocode(addresses: MutableList<android.location.Address>) {
+                cont.resume(addresses.firstOrNull()?.formattedLine())
+            }
+
+            override fun onError(errorMessage: String?) {
+                Log.w(TAG, "reverse geocode error: $errorMessage")
+                cont.resume(null)
+            }
+        })
+    }
+
     private suspend fun geocodeAsync(geocoder: Geocoder, query: String): GeocodedPoint? =
         suspendCancellableCoroutine { cont ->
             geocoder.getFromLocationName(query, 1, object : Geocoder.GeocodeListener {
@@ -80,11 +125,12 @@ class PlatformAddressGeocoder(
 
     private fun android.location.Address.toPoint(): GeocodedPoint? {
         if (!hasLatitude() || !hasLongitude()) return null
-        val line = (0..maxAddressLineIndex.coerceAtLeast(-1))
-            .firstOrNull()
-            ?.let { getAddressLine(0) }
-        return GeocodedPoint(latitude, longitude, line)
+        return GeocodedPoint(latitude, longitude, formattedLine())
     }
+
+    /** The first full address line, or null if the result carries none. */
+    private fun android.location.Address.formattedLine(): String? =
+        if (maxAddressLineIndex >= 0) getAddressLine(0) else null
 
     private companion object {
         const val TAG = "Geocoder"
