@@ -12,12 +12,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -25,17 +29,22 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.R
+import com.jaustinjr.employeeattendance.location.registration.AddressSuggestion
+import com.jaustinjr.employeeattendance.location.registration.RadiusOption
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
+import com.jaustinjr.employeeattendance.units.DistanceFormatter
 
 /**
  * "Add worksite" form. Reached from the worksites list. On successful save it invokes [onSaved] so
@@ -56,7 +65,7 @@ fun WorksiteRegistrationScreen(
     WorksiteRegistrationContent(
         state = state,
         onNameChange = viewModel::onNameChange,
-        onRadiusChange = viewModel::onRadiusChange,
+        onRadiusOptionChange = viewModel::onRadiusOptionChange,
         onAddressChange = viewModel::onAddressChange,
         onSuggestionSelected = viewModel::onSuggestionSelected,
         onCaptureModeChange = viewModel::onCaptureModeChange,
@@ -71,9 +80,9 @@ fun WorksiteRegistrationScreen(
 fun WorksiteRegistrationContent(
     state: WorksiteRegistrationUiState,
     onNameChange: (String) -> Unit,
-    onRadiusChange: (String) -> Unit,
+    onRadiusOptionChange: (RadiusOption) -> Unit,
     onAddressChange: (String) -> Unit,
-    onSuggestionSelected: (com.jaustinjr.employeeattendance.location.registration.AddressSuggestion) -> Unit,
+    onSuggestionSelected: (AddressSuggestion) -> Unit,
     onCaptureModeChange: (CaptureMode) -> Unit,
     onCaptureCurrent: () -> Unit,
     onGeocode: () -> Unit,
@@ -102,13 +111,9 @@ fun WorksiteRegistrationContent(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        OutlinedTextField(
-            value = state.radiusMetersText,
-            onValueChange = onRadiusChange,
-            label = { Text(stringResource(R.string.worksite_radius_label)) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth(),
+        RadiusDropdown(
+            selected = state.radiusOption,
+            onSelect = onRadiusOptionChange,
         )
 
         Text(
@@ -219,6 +224,63 @@ private fun StatusArea(state: WorksiteRegistrationUiState) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RadiusDropdown(
+    selected: RadiusOption,
+    onSelect: (RadiusOption) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier = modifier.fillMaxWidth()) {
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+        ) {
+            OutlinedTextField(
+                value = stringResource(selected.labelRes()),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text(stringResource(R.string.worksite_radius_label)) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                    .fillMaxWidth(),
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                RadiusOption.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(option.labelRes())) },
+                        onClick = {
+                            onSelect(option)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+        // Vivid helper text clarifying the selected radius as a real distance in the user's units.
+        Text(
+            text = stringResource(selected.helperRes(), DistanceFormatter.format(selected.meters)),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+        )
+    }
+}
+
+private fun RadiusOption.labelRes(): Int = when (this) {
+    RadiusOption.NEAR -> R.string.worksite_radius_near
+    RadiusOption.DEFAULT -> R.string.worksite_radius_default
+    RadiusOption.DISTANT -> R.string.worksite_radius_distant
+}
+
+private fun RadiusOption.helperRes(): Int = when (this) {
+    RadiusOption.NEAR -> R.string.worksite_radius_helper_near
+    RadiusOption.DEFAULT -> R.string.worksite_radius_helper_default
+    RadiusOption.DISTANT -> R.string.worksite_radius_helper_distant
+}
+
 @Composable
 private fun CaptureModeRow(
     labelRes: Int,
@@ -249,7 +311,7 @@ private fun WorksiteRegistrationPreview() {
                 longitude = -122.4194,
             ),
             onNameChange = {},
-            onRadiusChange = {},
+            onRadiusOptionChange = {},
             onAddressChange = {},
             onSuggestionSelected = {},
             onCaptureModeChange = {},

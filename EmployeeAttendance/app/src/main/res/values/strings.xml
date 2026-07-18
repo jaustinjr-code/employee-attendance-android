@@ -76,7 +76,13 @@
     <string name="worksite_registration_title">Add Worksite</string>
     <string name="worksite_name_label">Name</string>
     <string name="worksite_address_label">Address</string>
-    <string name="worksite_radius_label">Radius (meters)</string>
+    <string name="worksite_radius_label">Trigger radius</string>
+    <string name="worksite_radius_near">Near</string>
+    <string name="worksite_radius_default">Default</string>
+    <string name="worksite_radius_distant">Distant</string>
+    <string name="worksite_radius_helper_near">Snug fit — clocks you in only within %1$s, right at the door.</string>
+    <string name="worksite_radius_helper_default">Balanced — clocks you in within %1$s of the site.</string>
+    <string name="worksite_radius_helper_distant">Wide net — clocks you in anywhere within %1$s, great for large campuses.</string>
     <string name="worksite_capture_mode">How should we set the location?</string>
     <string name="worksite_capture_current">Use current location</string>
     <string name="worksite_capture_address">Enter an address</string>

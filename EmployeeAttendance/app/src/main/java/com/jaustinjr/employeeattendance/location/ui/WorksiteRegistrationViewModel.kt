@@ -10,10 +10,10 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
-import com.jaustinjr.employeeattendance.location.proximity.GeofenceTarget
 import com.jaustinjr.employeeattendance.location.registration.AddressAutocomplete
 import com.jaustinjr.employeeattendance.location.registration.AddressGeocoder
 import com.jaustinjr.employeeattendance.location.registration.AddressSuggestion
+import com.jaustinjr.employeeattendance.location.registration.RadiusOption
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationPriority
@@ -45,7 +45,7 @@ sealed interface CaptureStatus {
  */
 data class WorksiteRegistrationUiState(
     val name: String = "",
-    val radiusMetersText: String = DEFAULT_RADIUS,
+    val radiusOption: RadiusOption = RadiusOption.DEFAULT,
     val captureMode: CaptureMode = CaptureMode.CURRENT,
     val address: String = "",
     val latitude: Double? = null,
@@ -56,16 +56,9 @@ data class WorksiteRegistrationUiState(
     val saved: Boolean = false,
 ) {
     val hasCoordinates: Boolean get() = latitude != null && longitude != null
-    val radiusMeters: Float?
-        get() = radiusMetersText.toFloatOrNull()
-            ?.takeIf { it > 0f && it <= GeofenceTarget.MAX_RADIUS_METERS }
+    val radiusMeters: Float get() = radiusOption.meters
     val canSave: Boolean
-        get() = name.isNotBlank() && hasCoordinates && radiusMeters != null &&
-            status !is CaptureStatus.Working
-
-    private companion object {
-        const val DEFAULT_RADIUS = "150"
-    }
+        get() = name.isNotBlank() && hasCoordinates && status !is CaptureStatus.Working
 }
 
 /**
@@ -91,8 +84,8 @@ class WorksiteRegistrationViewModel(
 
     fun onNameChange(value: String) = _uiState.update { it.copy(name = value) }
 
-    fun onRadiusChange(value: String) =
-        _uiState.update { it.copy(radiusMetersText = value.filter { c -> c.isDigit() || c == '.' }) }
+    fun onRadiusOptionChange(option: RadiusOption) =
+        _uiState.update { it.copy(radiusOption = option) }
 
     fun onAddressChange(value: String) {
         _uiState.update { it.copy(address = value) }
@@ -224,10 +217,9 @@ class WorksiteRegistrationViewModel(
     /** Registers the worksite. No-op unless [WorksiteRegistrationUiState.canSave]. */
     fun save() {
         val state = _uiState.value
-        val radius = state.radiusMeters
         val lat = state.latitude
         val lon = state.longitude
-        if (!state.canSave || radius == null || lat == null || lon == null) {
+        if (!state.canSave || lat == null || lon == null) {
             Log.d(TAG, "save ignored; form incomplete")
             return
         }
@@ -238,7 +230,7 @@ class WorksiteRegistrationViewModel(
                 ?: state.address.trim().takeIf { it.isNotBlank() },
             latitudeDegrees = lat,
             longitudeDegrees = lon,
-            radiusMeters = radius,
+            radiusMeters = state.radiusMeters,
         )
         workLocationRepository.registerWorkLocation(worksite)
         Log.d(TAG, "registered worksite ${worksite.id} (${worksite.name})")
