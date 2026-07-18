@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -15,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -56,6 +58,7 @@ fun WorksiteRegistrationScreen(
         onNameChange = viewModel::onNameChange,
         onRadiusChange = viewModel::onRadiusChange,
         onAddressChange = viewModel::onAddressChange,
+        onSuggestionSelected = viewModel::onSuggestionSelected,
         onCaptureModeChange = viewModel::onCaptureModeChange,
         onCaptureCurrent = viewModel::captureCurrentLocation,
         onGeocode = viewModel::geocodeAddress,
@@ -70,6 +73,7 @@ fun WorksiteRegistrationContent(
     onNameChange: (String) -> Unit,
     onRadiusChange: (String) -> Unit,
     onAddressChange: (String) -> Unit,
+    onSuggestionSelected: (com.jaustinjr.employeeattendance.location.registration.AddressSuggestion) -> Unit,
     onCaptureModeChange: (CaptureMode) -> Unit,
     onCaptureCurrent: () -> Unit,
     onGeocode: () -> Unit,
@@ -142,6 +146,14 @@ fun WorksiteRegistrationContent(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                state.suggestions.forEach { suggestion ->
+                    ListItem(
+                        headlineContent = { Text(suggestion.label) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSuggestionSelected(suggestion) },
+                    )
+                }
                 OutlinedButton(
                     onClick = onGeocode,
                     enabled = !working && state.address.isNotBlank(),
@@ -239,6 +251,7 @@ private fun WorksiteRegistrationPreview() {
             onNameChange = {},
             onRadiusChange = {},
             onAddressChange = {},
+            onSuggestionSelected = {},
             onCaptureModeChange = {},
             onCaptureCurrent = {},
             onGeocode = {},

@@ -11,12 +11,17 @@ import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.proximity.GeofenceTarget
+import com.jaustinjr.employeeattendance.location.registration.AddressAutocomplete
 import com.jaustinjr.employeeattendance.location.registration.AddressGeocoder
+import com.jaustinjr.employeeattendance.location.registration.AddressSuggestion
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationPriority
+import com.jaustinjr.employeeattendance.location.tracking.LocationSample
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +51,7 @@ data class WorksiteRegistrationUiState(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val resolvedAddress: String? = null,
+    val suggestions: List<AddressSuggestion> = emptyList(),
     val status: CaptureStatus = CaptureStatus.Idle,
     val saved: Boolean = false,
 ) {
@@ -72,28 +78,87 @@ class WorksiteRegistrationViewModel(
     private val workLocationRepository: WorkLocationRepository,
     private val locationTracker: LocationTracker,
     private val addressGeocoder: AddressGeocoder,
+    private val addressAutocomplete: AddressAutocomplete,
     private val permissionRepository: LocationPermissionRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WorksiteRegistrationUiState())
     val uiState: StateFlow<WorksiteRegistrationUiState> = _uiState.asStateFlow()
 
+    // Cached location used to bias autocomplete toward the user; fetched lazily, best-effort.
+    private var biasLocation: LocationSample? = null
+    private var autocompleteJob: Job? = null
+
     fun onNameChange(value: String) = _uiState.update { it.copy(name = value) }
 
     fun onRadiusChange(value: String) =
         _uiState.update { it.copy(radiusMetersText = value.filter { c -> c.isDigit() || c == '.' }) }
 
-    fun onAddressChange(value: String) = _uiState.update { it.copy(address = value) }
+    fun onAddressChange(value: String) {
+        _uiState.update { it.copy(address = value) }
+        requestSuggestions(value)
+    }
 
-    fun onCaptureModeChange(mode: CaptureMode) = _uiState.update {
-        // Switching modes clears any previously captured point so the two modes can't disagree.
-        it.copy(
-            captureMode = mode,
-            latitude = null,
-            longitude = null,
-            resolvedAddress = null,
-            status = CaptureStatus.Idle,
-        )
+    /** Applies a chosen autocomplete suggestion: fills the address and its coordinates. */
+    fun onSuggestionSelected(suggestion: AddressSuggestion) {
+        autocompleteJob?.cancel()
+        _uiState.update {
+            it.copy(
+                address = suggestion.label,
+                latitude = suggestion.latitudeDegrees,
+                longitude = suggestion.longitudeDegrees,
+                resolvedAddress = suggestion.label,
+                suggestions = emptyList(),
+                status = CaptureStatus.Idle,
+            )
+        }
+    }
+
+    fun onCaptureModeChange(mode: CaptureMode) {
+        autocompleteJob?.cancel()
+        _uiState.update {
+            // Switching modes clears any previously captured point so the two modes can't disagree.
+            it.copy(
+                captureMode = mode,
+                latitude = null,
+                longitude = null,
+                resolvedAddress = null,
+                suggestions = emptyList(),
+                status = CaptureStatus.Idle,
+            )
+        }
+    }
+
+    /**
+     * Debounced address autocomplete: for queries of 3+ characters, waits briefly then fetches
+     * location-biased suggestions. Shorter queries clear the list. Backed by a stub provider today
+     * (see [StubAddressAutocomplete] / issue #6), so this yields no suggestions until a real places
+     * API is wired in.
+     */
+    private fun requestSuggestions(query: String) {
+        autocompleteJob?.cancel()
+        if (query.trim().length < MIN_AUTOCOMPLETE_CHARS) {
+            if (_uiState.value.suggestions.isNotEmpty()) {
+                _uiState.update { it.copy(suggestions = emptyList()) }
+            }
+            return
+        }
+        autocompleteJob = viewModelScope.launch {
+            delay(AUTOCOMPLETE_DEBOUNCE_MILLIS)
+            val results = runCatching {
+                addressAutocomplete.suggest(query.trim(), ensureBiasLocation())
+            }.getOrDefault(emptyList()).take(MAX_SUGGESTIONS)
+            _uiState.update { it.copy(suggestions = results) }
+        }
+    }
+
+    private suspend fun ensureBiasLocation(): LocationSample? {
+        biasLocation?.let { return it }
+        if (!permissionRepository.permissionState.value.isGranted) return null
+        biasLocation = runCatching {
+            locationTracker.currentLocation(LocationPriority.BALANCED)
+        }.getOrNull()
+        return biasLocation
     }
 
     /** Captures the device's current position as the worksite center. Requires foreground access. */
@@ -177,6 +242,9 @@ class WorksiteRegistrationViewModel(
 
     companion object {
         private const val TAG = "WorksiteRegVM"
+        private const val MIN_AUTOCOMPLETE_CHARS = 3
+        private const val MAX_SUGGESTIONS = 3
+        private const val AUTOCOMPLETE_DEBOUNCE_MILLIS = 300L
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -185,6 +253,7 @@ class WorksiteRegistrationViewModel(
                     workLocationRepository = container.workLocationRepository,
                     locationTracker = container.locationTracker,
                     addressGeocoder = container.addressGeocoder,
+                    addressAutocomplete = container.addressAutocomplete,
                     permissionRepository = container.locationPermissionRepository,
                 )
             }

@@ -3,7 +3,9 @@ package com.jaustinjr.employeeattendance.location.ui
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
+import com.jaustinjr.employeeattendance.location.registration.AddressAutocomplete
 import com.jaustinjr.employeeattendance.location.registration.AddressGeocoder
+import com.jaustinjr.employeeattendance.location.registration.AddressSuggestion
 import com.jaustinjr.employeeattendance.location.registration.GeocodedPoint
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -48,6 +51,19 @@ class WorksiteRegistrationViewModelTest {
         override suspend fun geocode(query: String): GeocodedPoint? = point
     }
 
+    private class FakeAutocomplete(
+        private val results: List<AddressSuggestion> = emptyList(),
+    ) : AddressAutocomplete {
+        var lastQuery: String? = null
+        override suspend fun suggest(
+            query: String,
+            near: com.jaustinjr.employeeattendance.location.tracking.LocationSample?,
+        ): List<AddressSuggestion> {
+            lastQuery = query
+            return results
+        }
+    }
+
     private class RecordingWorkLocationRepository : WorkLocationRepository {
         val registered = mutableListOf<WorkLocation>()
         override val workLocations: StateFlow<List<WorkLocation>> = MutableStateFlow(emptyList())
@@ -61,11 +77,13 @@ class WorksiteRegistrationViewModelTest {
         repo: WorkLocationRepository = RecordingWorkLocationRepository(),
         tracker: LocationTracker = FakeTracker(SAMPLE),
         geocoder: AddressGeocoder = FakeGeocoder(POINT),
+        autocomplete: AddressAutocomplete = FakeAutocomplete(),
         granted: Boolean = true,
     ) = WorksiteRegistrationViewModel(
         workLocationRepository = repo,
         locationTracker = tracker,
         addressGeocoder = geocoder,
+        addressAutocomplete = autocomplete,
         permissionRepository = FakePermissionRepository(granted),
     )
 
@@ -143,6 +161,44 @@ class WorksiteRegistrationViewModelTest {
         model.save()
 
         assertTrue(repo.registered.isEmpty())
+    }
+
+    @Test
+    fun `address queries of 3+ chars fetch suggestions after debounce`() = runTest {
+        val suggestion = AddressSuggestion("123 Market St", 37.7749, -122.4194)
+        val model = vm(autocomplete = FakeAutocomplete(listOf(suggestion)))
+        model.onCaptureModeChange(CaptureMode.ADDRESS)
+
+        model.onAddressChange("123")
+        advanceTimeBy(400)
+        runCurrent()
+
+        assertEquals(listOf(suggestion), model.uiState.value.suggestions)
+    }
+
+    @Test
+    fun `queries shorter than 3 chars produce no suggestions`() = runTest {
+        val model = vm(autocomplete = FakeAutocomplete(listOf(AddressSuggestion("x", 1.0, 2.0))))
+        model.onCaptureModeChange(CaptureMode.ADDRESS)
+
+        model.onAddressChange("12")
+        advanceTimeBy(400)
+        runCurrent()
+
+        assertTrue(model.uiState.value.suggestions.isEmpty())
+    }
+
+    @Test
+    fun `selecting a suggestion fills address and coordinates`() = runTest {
+        val suggestion = AddressSuggestion("123 Market St", 37.7749, -122.4194)
+        val model = vm()
+
+        model.onSuggestionSelected(suggestion)
+
+        val state = model.uiState.value
+        assertEquals("123 Market St", state.address)
+        assertTrue(state.hasCoordinates)
+        assertTrue(state.suggestions.isEmpty())
     }
 
     @Test

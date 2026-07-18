@@ -12,10 +12,12 @@ import com.jaustinjr.employeeattendance.location.permission.SystemLocationPermis
 import com.jaustinjr.employeeattendance.location.geofence.GeofenceManager
 import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
 import com.jaustinjr.employeeattendance.location.proximity.SharedPrefsProximityStateStore
+import com.jaustinjr.employeeattendance.location.registration.AddressAutocomplete
 import com.jaustinjr.employeeattendance.location.registration.AddressGeocoder
 import com.jaustinjr.employeeattendance.location.registration.DefaultWorkLocationRepository
 import com.jaustinjr.employeeattendance.location.registration.PlatformAddressGeocoder
 import com.jaustinjr.employeeattendance.location.registration.SharedPrefsWorkLocationLocalDataSource
+import com.jaustinjr.employeeattendance.location.registration.StubAddressAutocomplete
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.DefaultTrackingServiceLauncher
 import com.jaustinjr.employeeattendance.location.tracking.FusedLocationTracker
@@ -42,6 +44,7 @@ interface AppContainer {
     val geofenceManager: GeofenceManager
     val workLocationRepository: WorkLocationRepository
     val addressGeocoder: AddressGeocoder
+    val addressAutocomplete: AddressAutocomplete
     val attendanceRepository: AttendanceRepository
     val clockNotifier: ClockNotifier
     val clockNotificationSettingsStore: ClockNotificationSettingsStore
@@ -96,6 +99,11 @@ class DefaultAppContainer(context: Context) : AppContainer {
 
     override val addressGeocoder: AddressGeocoder by lazy {
         PlatformAddressGeocoder(appContext)
+    }
+
+    // TODO(#6): Swap the stub for a real location-biased places/autocomplete client.
+    override val addressAutocomplete: AddressAutocomplete by lazy {
+        StubAddressAutocomplete()
     }
 
     override val attendanceRepository: AttendanceRepository by lazy {
