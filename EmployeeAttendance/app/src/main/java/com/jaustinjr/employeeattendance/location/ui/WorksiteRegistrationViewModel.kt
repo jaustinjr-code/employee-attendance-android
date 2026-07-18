@@ -103,7 +103,16 @@ class WorksiteRegistrationViewModel(
         _uiState.update { it.copy(radiusOption = option) }
 
     fun onAddressChange(value: String) {
-        _uiState.update { it.copy(address = value) }
+        _uiState.update {
+            // Editing the address text invalidates any previously resolved point — the user must
+            // tap "Find address" (or pick a suggestion) again to actually register the location.
+            it.copy(
+                address = value,
+                latitude = null,
+                longitude = null,
+                resolvedAddress = null,
+            )
+        }
         requestSuggestions(value)
     }
 

@@ -95,7 +95,9 @@
     <string name="worksite_geocode_action">Find address</string>
     <string name="worksite_capturing">Getting your location…</string>
     <string name="worksite_geocoding">Looking up address…</string>
-    <string name="worksite_coordinates">Location: %1$.5f, %2$.5f</string>
+    <string name="worksite_address_hint">Tap “Find address” to set this as the worksite location.</string>
+    <string name="worksite_location_set_title">Location set</string>
+    <string name="worksite_location_captured">Location captured</string>
     <string name="worksite_capture_failed">Couldn\'t get your current location. Try again or enter an address.</string>
     <string name="worksite_geocode_failed">Couldn\'t find that address. Check it and try again.</string>
     <string name="worksite_needs_permission">Grant location access on the attendance screen first to capture your current location.</string>

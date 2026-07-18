@@ -231,6 +231,21 @@ class WorksiteRegistrationViewModelTest {
     }
 
     @Test
+    fun `editing the address after resolving invalidates the location`() = runTest {
+        val model = vm()
+        model.onCaptureModeChange(CaptureMode.ADDRESS)
+        model.onAddressChange("123 Market St")
+        model.geocodeAddress()
+        runCurrent()
+        assertTrue(model.uiState.value.hasCoordinates)
+
+        // Typing again means the location is no longer registered until Find address is tapped.
+        model.onAddressChange("123 Market Street")
+
+        assertFalse(model.uiState.value.hasCoordinates)
+    }
+
+    @Test
     fun `selecting a suggestion fills address and coordinates`() = runTest {
         val suggestion = AddressSuggestion("123 Market St", 37.7749, -122.4194)
         val model = vm()

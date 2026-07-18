@@ -13,18 +13,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -148,15 +152,22 @@ fun WorksiteRegistrationContent(
                 }
             }
             CaptureMode.ADDRESS -> {
+                // Guide the user: typed text is not a registered location until "Find address" is
+                // tapped (or a suggestion picked). Show the required-field error first if present,
+                // otherwise the "tap Find address" hint while the address is unresolved.
+                val addressSupportRes: Int? = when {
+                    state.addressError -> R.string.worksite_error_address_required
+                    state.address.isNotBlank() && !state.hasCoordinates ->
+                        R.string.worksite_address_hint
+                    else -> null
+                }
                 OutlinedTextField(
                     value = state.address,
                     onValueChange = onAddressChange,
                     label = { Text(stringResource(R.string.worksite_address_label)) },
                     singleLine = true,
                     isError = state.addressError,
-                    supportingText = if (state.addressError) {
-                        { Text(stringResource(R.string.worksite_error_address_required)) }
-                    } else null,
+                    supportingText = addressSupportRes?.let { res -> { Text(stringResource(res)) } },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 state.suggestions.forEach { suggestion ->
@@ -221,22 +232,43 @@ private fun StatusArea(state: WorksiteRegistrationUiState) {
             color = MaterialTheme.colorScheme.error,
         )
         CaptureStatus.Idle -> if (state.hasCoordinates) {
+            LocationConfirmationOverlay(address = state.resolvedAddress)
+        }
+    }
+}
+
+/**
+ * Non-interactive confirmation of the resolved worksite location. Rendered as a Material 3 tonal
+ * surface (an elevation overlay over a secondary container) so it clearly stands out as important,
+ * while carrying no click behavior. It shows the human-readable address — not raw coordinates.
+ */
+@Composable
+private fun LocationConfirmationOverlay(
+    address: String?,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        tonalElevation = 3.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(imageVector = Icons.Filled.LocationOn, contentDescription = null)
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = stringResource(
-                        R.string.worksite_coordinates,
-                        state.latitude ?: 0.0,
-                        state.longitude ?: 0.0,
-                    ),
+                    text = stringResource(R.string.worksite_location_set_title),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = address ?: stringResource(R.string.worksite_location_captured),
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                state.resolvedAddress?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
         }
     }
