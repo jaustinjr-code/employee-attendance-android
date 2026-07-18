@@ -29,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.proximity.ProximityState
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
+import com.jaustinjr.employeeattendance.location.ui.AddWorksiteChip
 import com.jaustinjr.employeeattendance.location.ui.LocationPermissionHost
 import com.jaustinjr.employeeattendance.location.ui.LocationPermissionViewModel
 import com.jaustinjr.employeeattendance.location.ui.LocationPill
@@ -44,6 +45,7 @@ import java.util.Locale
 @Composable
 fun AttendanceScreen(
     onOpenLocationDetail: () -> Unit = {},
+    onAddWorksite: () -> Unit = {},
     attendanceViewModel: AttendanceViewModel = viewModel(),
     locationViewModel: LocationViewModel = viewModel(factory = LocationViewModel.Factory),
     locationPermissionViewModel: LocationPermissionViewModel =
@@ -55,6 +57,7 @@ fun AttendanceScreen(
         locationState = locationState,
         onLocationSetupClick = locationPermissionViewModel::onSetupRequested,
         onLocationPillClick = onOpenLocationDetail,
+        onAddWorksite = onAddWorksite,
         onClockIn = locationViewModel::onClockIn,
     )
     // Shares the same ViewModel instance as the setup chip, so tapping it surfaces the rationale
@@ -69,32 +72,35 @@ fun AttendanceScreen(
     modifier: Modifier = Modifier,
     onLocationSetupClick: () -> Unit = {},
     onLocationPillClick: () -> Unit = {},
+    onAddWorksite: () -> Unit = {},
     onClockIn: () -> Unit = {},
 ) {
     Column(modifier = modifier) {
         Greeting(todayDate = todayDate, modifier = Modifier.padding(20.dp))
         TimeCheck(onClockIn = onClockIn, modifier = Modifier.padding(20.dp))
 
-        // The single location control: once setup is complete (access granted and a location
-        // registered) show the location pill, which opens the detail screen. Until then, show the
-        // setup chip that drives the permission flow. Nothing else lives here — the map and other
-        // details are on the detail screen.
+        // The single location control, in three stages:
+        //  - setup complete (access granted AND a worksite registered) -> pill to the detail screen;
+        //  - access granted but no worksite yet -> "Add worksite" chip into registration;
+        //  - no access -> setup chip that drives the permission flow.
         val location = locationState.activeWorkLocation
-        if (locationState.isSetUp && location != null) {
-            LocationPill(
+        val controlModifier = Modifier
+            .align(Alignment.CenterHorizontally)
+            .padding(horizontal = 20.dp)
+        when {
+            locationState.isSetUp && location != null -> LocationPill(
                 locationName = location.name,
                 onClick = onLocationPillClick,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(horizontal = 20.dp),
+                modifier = controlModifier,
             )
-        } else {
-            LocationSetupChip(
+            locationState.isGranted -> AddWorksiteChip(
+                onClick = onAddWorksite,
+                modifier = controlModifier,
+            )
+            else -> LocationSetupChip(
                 accessLevel = locationState.accessLevel,
                 onClick = onLocationSetupClick,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(horizontal = 20.dp),
+                modifier = controlModifier,
             )
         }
     }

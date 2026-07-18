@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.Info
@@ -67,6 +68,29 @@ fun LocationSetupChip(
                     modifier = iconModifier,
                 )
             }
+        },
+    )
+}
+
+/**
+ * Chip shown on the attendance screen when location access is granted but no worksite is registered
+ * yet. Tapping it opens the worksite registration flow.
+ */
+@Composable
+fun AddWorksiteChip(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ElevatedAssistChip(
+        onClick = onClick,
+        modifier = modifier,
+        label = { Text(stringResource(R.string.worksite_add)) },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                modifier = Modifier.size(AssistChipDefaults.IconSize),
+            )
         },
     )
 }

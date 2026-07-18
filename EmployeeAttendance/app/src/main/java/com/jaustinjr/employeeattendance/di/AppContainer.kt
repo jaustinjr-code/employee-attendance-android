@@ -1,20 +1,31 @@
 package com.jaustinjr.employeeattendance.di
 
 import android.content.Context
+import com.jaustinjr.employeeattendance.attendance.AttendanceAutoClockController
+import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
+import com.jaustinjr.employeeattendance.attendance.ClockNotifier
+import com.jaustinjr.employeeattendance.attendance.DefaultAttendanceRepository
+import com.jaustinjr.employeeattendance.attendance.SharedPrefsAttendanceLocalDataSource
 import com.jaustinjr.employeeattendance.location.LocationFeatureCoordinator
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.SystemLocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.geofence.GeofenceManager
 import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
 import com.jaustinjr.employeeattendance.location.proximity.SharedPrefsProximityStateStore
-import com.jaustinjr.employeeattendance.location.registration.LocationClockInRepository
-import com.jaustinjr.employeeattendance.location.registration.StubWorkLocationRepository
+import com.jaustinjr.employeeattendance.location.registration.AddressGeocoder
+import com.jaustinjr.employeeattendance.location.registration.DefaultWorkLocationRepository
+import com.jaustinjr.employeeattendance.location.registration.PlatformAddressGeocoder
+import com.jaustinjr.employeeattendance.location.registration.SharedPrefsWorkLocationLocalDataSource
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.DefaultTrackingServiceLauncher
 import com.jaustinjr.employeeattendance.location.tracking.FusedLocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationTrackingController
+import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * Application-scoped dependency graph. The project does not use a DI framework, so dependencies are
@@ -30,14 +41,22 @@ interface AppContainer {
     val proximityRepository: ProximityRepository
     val geofenceManager: GeofenceManager
     val workLocationRepository: WorkLocationRepository
-    val locationClockInRepository: LocationClockInRepository
+    val addressGeocoder: AddressGeocoder
+    val attendanceRepository: AttendanceRepository
+    val clockNotifier: ClockNotifier
+    val clockNotificationSettingsStore: ClockNotificationSettingsStore
     val locationFeatureCoordinator: LocationFeatureCoordinator
+    val attendanceAutoClockController: AttendanceAutoClockController
 }
 
 /** Default [AppContainer] wiring the real, platform-backed implementations. */
 class DefaultAppContainer(context: Context) : AppContainer {
 
     private val appContext = context.applicationContext
+
+    // App-lifetime scope for repository background work (persistence-derived flows, best-effort
+    // remote mirroring). Default dispatcher: the work is light and non-blocking.
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override val locationPermissionRepository: LocationPermissionRepository by lazy {
         SystemLocationPermissionRepository(appContext)
@@ -69,11 +88,29 @@ class DefaultAppContainer(context: Context) : AppContainer {
     }
 
     override val workLocationRepository: WorkLocationRepository by lazy {
-        StubWorkLocationRepository()
+        DefaultWorkLocationRepository(
+            local = SharedPrefsWorkLocationLocalDataSource(appContext),
+            ioScope = appScope,
+        )
     }
 
-    override val locationClockInRepository: LocationClockInRepository by lazy {
-        LocationClockInRepository()
+    override val addressGeocoder: AddressGeocoder by lazy {
+        PlatformAddressGeocoder(appContext)
+    }
+
+    override val attendanceRepository: AttendanceRepository by lazy {
+        DefaultAttendanceRepository(
+            local = SharedPrefsAttendanceLocalDataSource(appContext),
+            ioScope = appScope,
+        )
+    }
+
+    override val clockNotifier: ClockNotifier by lazy {
+        ClockNotifier(appContext)
+    }
+
+    override val clockNotificationSettingsStore: ClockNotificationSettingsStore by lazy {
+        ClockNotificationSettingsStore(appContext)
     }
 
     override val locationFeatureCoordinator: LocationFeatureCoordinator by lazy {
@@ -84,6 +121,16 @@ class DefaultAppContainer(context: Context) : AppContainer {
             geofenceRegistrar = geofenceManager,
             locationState = locationStateRepository,
             proximityUpdater = proximityRepository,
+        )
+    }
+
+    override val attendanceAutoClockController: AttendanceAutoClockController by lazy {
+        AttendanceAutoClockController(
+            proximityEvents = proximityRepository.events,
+            workLocationRepository = workLocationRepository,
+            attendanceRepository = attendanceRepository,
+            notifier = clockNotifier,
+            preference = clockNotificationSettingsStore.preference,
         )
     }
 }

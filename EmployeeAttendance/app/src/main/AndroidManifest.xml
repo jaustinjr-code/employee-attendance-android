@@ -48,6 +48,11 @@
         <receiver
             android:name=".location.geofence.GeofenceBroadcastReceiver"
             android:exported="false" />
+
+        <!-- Handles the Undo/Confirm actions on automatic clock-in/out notifications. -->
+        <receiver
+            android:name=".attendance.ClockActionReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

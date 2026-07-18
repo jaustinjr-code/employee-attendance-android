@@ -9,11 +9,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
+import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
 import com.jaustinjr.employeeattendance.location.proximity.ProximityState
-import com.jaustinjr.employeeattendance.location.registration.LocationClockInRepository
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationPowerPolicy
@@ -77,7 +77,7 @@ class LocationViewModel(
     private val locationStateRepository: LocationStateRepository,
     private val permissionRepository: LocationPermissionRepository,
     private val locationTracker: LocationTracker,
-    private val clockInRepository: LocationClockInRepository,
+    private val attendanceRepository: AttendanceRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<LocationUiState> = combine(
@@ -85,7 +85,7 @@ class LocationViewModel(
         proximityRepository.proximity,
         locationStateRepository.trackingStatus,
         permissionRepository.permissionState,
-        clockInRepository.lastClockIns,
+        attendanceRepository.lastClockIns,
     ) { activeLocation, proximity, trackingStatus, permission, clockIns ->
         LocationUiState(
             activeWorkLocation = activeLocation,
@@ -111,7 +111,7 @@ class LocationViewModel(
     fun onClockIn() {
         val active = workLocationRepository.activeWorkLocation.value
         Log.d(TAG, "onClockIn: activeLocation=${active?.id}")
-        active?.let { clockInRepository.recordClockIn(it.id) }
+        active?.let { attendanceRepository.recordClockIn(it.id) }
     }
 
     /**
@@ -162,7 +162,7 @@ class LocationViewModel(
                     locationStateRepository = container.locationStateRepository,
                     permissionRepository = container.locationPermissionRepository,
                     locationTracker = container.locationTracker,
-                    clockInRepository = container.locationClockInRepository,
+                    attendanceRepository = container.attendanceRepository,
                 )
             }
         }

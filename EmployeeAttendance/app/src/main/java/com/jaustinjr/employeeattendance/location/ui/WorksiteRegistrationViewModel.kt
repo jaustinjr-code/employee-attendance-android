@@ -1,0 +1,193 @@
+package com.jaustinjr.employeeattendance.location.ui
+
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
+import com.jaustinjr.employeeattendance.R
+import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
+import com.jaustinjr.employeeattendance.location.proximity.GeofenceTarget
+import com.jaustinjr.employeeattendance.location.registration.AddressGeocoder
+import com.jaustinjr.employeeattendance.location.registration.WorkLocation
+import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
+import com.jaustinjr.employeeattendance.location.tracking.LocationPriority
+import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+/** Which capture mode the registration form is using to obtain coordinates. */
+enum class CaptureMode { CURRENT, ADDRESS }
+
+/** Transient status of an in-progress capture/geocode, driving spinners and error text. */
+sealed interface CaptureStatus {
+    data object Idle : CaptureStatus
+    data object Working : CaptureStatus
+    data class Error(val messageRes: Int) : CaptureStatus
+}
+
+/**
+ * Form state for registering a worksite. A worksite is saveable once it has a name, a valid radius,
+ * and captured coordinates (from the current position or a geocoded address).
+ */
+data class WorksiteRegistrationUiState(
+    val name: String = "",
+    val radiusMetersText: String = DEFAULT_RADIUS,
+    val captureMode: CaptureMode = CaptureMode.CURRENT,
+    val address: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val resolvedAddress: String? = null,
+    val status: CaptureStatus = CaptureStatus.Idle,
+    val saved: Boolean = false,
+) {
+    val hasCoordinates: Boolean get() = latitude != null && longitude != null
+    val radiusMeters: Float?
+        get() = radiusMetersText.toFloatOrNull()
+            ?.takeIf { it > 0f && it <= GeofenceTarget.MAX_RADIUS_METERS }
+    val canSave: Boolean
+        get() = name.isNotBlank() && hasCoordinates && radiusMeters != null &&
+            status !is CaptureStatus.Working
+
+    private companion object {
+        const val DEFAULT_RADIUS = "150"
+    }
+}
+
+/**
+ * Drives the "Add worksite" flow. Supports two capture modes — the device's current position (via
+ * [LocationTracker.currentLocation]) and a typed address (via [AddressGeocoder]) — then registers a
+ * validated [WorkLocation] in the [WorkLocationRepository]. A drop-a-pin map picker is a planned
+ * future third mode (tracked as a separate enhancement).
+ */
+class WorksiteRegistrationViewModel(
+    private val workLocationRepository: WorkLocationRepository,
+    private val locationTracker: LocationTracker,
+    private val addressGeocoder: AddressGeocoder,
+    private val permissionRepository: LocationPermissionRepository,
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(WorksiteRegistrationUiState())
+    val uiState: StateFlow<WorksiteRegistrationUiState> = _uiState.asStateFlow()
+
+    fun onNameChange(value: String) = _uiState.update { it.copy(name = value) }
+
+    fun onRadiusChange(value: String) =
+        _uiState.update { it.copy(radiusMetersText = value.filter { c -> c.isDigit() || c == '.' }) }
+
+    fun onAddressChange(value: String) = _uiState.update { it.copy(address = value) }
+
+    fun onCaptureModeChange(mode: CaptureMode) = _uiState.update {
+        // Switching modes clears any previously captured point so the two modes can't disagree.
+        it.copy(
+            captureMode = mode,
+            latitude = null,
+            longitude = null,
+            resolvedAddress = null,
+            status = CaptureStatus.Idle,
+        )
+    }
+
+    /** Captures the device's current position as the worksite center. Requires foreground access. */
+    fun captureCurrentLocation() {
+        if (!permissionRepository.refresh().isGranted) {
+            _uiState.update { it.copy(status = CaptureStatus.Error(R.string.worksite_needs_permission)) }
+            return
+        }
+        _uiState.update { it.copy(status = CaptureStatus.Working) }
+        viewModelScope.launch {
+            try {
+                val fix = locationTracker.currentLocation(LocationPriority.HIGH_ACCURACY)
+                if (fix == null) {
+                    _uiState.update {
+                        it.copy(status = CaptureStatus.Error(R.string.worksite_capture_failed))
+                    }
+                    return@launch
+                }
+                _uiState.update {
+                    it.copy(
+                        latitude = fix.latitudeDegrees,
+                        longitude = fix.longitudeDegrees,
+                        resolvedAddress = null,
+                        status = CaptureStatus.Idle,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "current-location capture failed", e)
+                _uiState.update { it.copy(status = CaptureStatus.Error(R.string.worksite_capture_failed)) }
+            }
+        }
+    }
+
+    /** Resolves the typed address to coordinates. */
+    fun geocodeAddress() {
+        val query = _uiState.value.address
+        if (query.isBlank()) return
+        _uiState.update { it.copy(status = CaptureStatus.Working) }
+        viewModelScope.launch {
+            val point = addressGeocoder.geocode(query)
+            if (point == null) {
+                _uiState.update { it.copy(status = CaptureStatus.Error(R.string.worksite_geocode_failed)) }
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    latitude = point.latitudeDegrees,
+                    longitude = point.longitudeDegrees,
+                    resolvedAddress = point.formattedAddress ?: query,
+                    status = CaptureStatus.Idle,
+                )
+            }
+        }
+    }
+
+    /** Registers the worksite. No-op unless [WorksiteRegistrationUiState.canSave]. */
+    fun save() {
+        val state = _uiState.value
+        val radius = state.radiusMeters
+        val lat = state.latitude
+        val lon = state.longitude
+        if (!state.canSave || radius == null || lat == null || lon == null) {
+            Log.d(TAG, "save ignored; form incomplete")
+            return
+        }
+        val worksite = WorkLocation(
+            id = UUID.randomUUID().toString(),
+            name = state.name.trim(),
+            address = state.resolvedAddress
+                ?: state.address.trim().takeIf { it.isNotBlank() },
+            latitudeDegrees = lat,
+            longitudeDegrees = lon,
+            radiusMeters = radius,
+        )
+        workLocationRepository.registerWorkLocation(worksite)
+        Log.d(TAG, "registered worksite ${worksite.id} (${worksite.name})")
+        _uiState.update { it.copy(saved = true) }
+    }
+
+    companion object {
+        private const val TAG = "WorksiteRegVM"
+
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val container = (this[APPLICATION_KEY] as EmployeeAttendanceApplication).container
+                WorksiteRegistrationViewModel(
+                    workLocationRepository = container.workLocationRepository,
+                    locationTracker = container.locationTracker,
+                    addressGeocoder = container.addressGeocoder,
+                    permissionRepository = container.locationPermissionRepository,
+                )
+            }
+        }
+    }
+}
