@@ -32,6 +32,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
+import com.jaustinjr.employeeattendance.units.DistanceFormatter
 
 /**
  * Lists registered worksites, lets the user mark one active or remove it, and offers an "add" action
@@ -137,7 +138,10 @@ private fun WorksiteRow(
                 )
             }
             Text(
-                text = stringResource(R.string.worksite_radius_summary, worksite.radiusMeters.toInt()),
+                text = stringResource(
+                    R.string.worksite_radius_summary,
+                    DistanceFormatter.format(worksite.radiusMeters),
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

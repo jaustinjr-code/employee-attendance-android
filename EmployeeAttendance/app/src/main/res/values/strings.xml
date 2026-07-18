@@ -70,7 +70,7 @@
     <string name="worksite_active_label">Active</string>
     <string name="worksite_set_active">Set active</string>
     <string name="worksite_remove">Remove</string>
-    <string name="worksite_radius_summary">Radius %1$d m</string>
+    <string name="worksite_radius_summary">Radius %1$s</string>
 
     <!-- Worksite registration screen -->
     <string name="worksite_registration_title">Add Worksite</string>
