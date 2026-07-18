@@ -30,9 +30,14 @@ class AttendanceAutoClockControllerTest {
     private class RecordingAttendance : AttendanceRepository {
         val clockIns = mutableListOf<String>()
         val clockOuts = mutableListOf<String>()
-        override val lastClockIns: StateFlow<Map<String, Long>> = MutableStateFlow(emptyMap())
-        override fun recordClockIn(locationId: String, epochMillis: Long) { clockIns += locationId }
-        override fun recordClockOut(locationId: String, epochMillis: Long) { clockOuts += locationId }
+        override val attendance: StateFlow<Map<String, LocationAttendance>> =
+            MutableStateFlow(emptyMap())
+        override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) {
+            clockIns += locationId
+        }
+        override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) {
+            clockOuts += locationId
+        }
         override fun undoLast(locationId: String) = Unit
     }
 

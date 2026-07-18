@@ -99,6 +99,9 @@ fun LocationDetailContent(
         }
 
         LastClockInRow(lastClockInEpochMillis = state.lastClockInEpochMillis)
+        // Only shown when the last clock-out is more recent than the last clock-in (see
+        // LocationUiState.detailClockOutMillis); a newer clock-in resets it.
+        state.detailClockOutMillis?.let { LastClockOutRow(lastClockOutEpochMillis = it) }
 
         if (state.isDegraded) {
             DegradedNotice()
@@ -141,6 +144,19 @@ private fun LastClockInRow(
     }
     Text(
         text = text,
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun LastClockOutRow(
+    lastClockOutEpochMillis: Long,
+    modifier: Modifier = Modifier,
+) {
+    val formatted = remember(lastClockOutEpochMillis) { formatTimestamp(lastClockOutEpochMillis) }
+    Text(
+        text = stringResource(R.string.location_last_clock_out, formatted),
         style = MaterialTheme.typography.bodyLarge,
         modifier = modifier,
     )

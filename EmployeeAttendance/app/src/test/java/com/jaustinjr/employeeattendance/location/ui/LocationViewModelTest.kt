@@ -1,6 +1,8 @@
 package com.jaustinjr.employeeattendance.location.ui
 
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
+import com.jaustinjr.employeeattendance.attendance.ClockSource
+import com.jaustinjr.employeeattendance.attendance.LocationAttendance
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
@@ -75,16 +77,24 @@ class LocationViewModelTest {
         }
     }
 
-    /** Minimal in-memory [AttendanceRepository] for asserting clock-in recording. */
+    /** Minimal in-memory [AttendanceRepository] for asserting clock recording. */
     private class FakeAttendanceRepository : AttendanceRepository {
-        private val _last = MutableStateFlow<Map<String, Long>>(emptyMap())
-        override val lastClockIns: StateFlow<Map<String, Long>> = _last
-        override fun recordClockIn(locationId: String, epochMillis: Long) {
-            _last.value = _last.value + (locationId to epochMillis)
+        private val _attendance = MutableStateFlow<Map<String, LocationAttendance>>(emptyMap())
+        override val attendance: StateFlow<Map<String, LocationAttendance>> = _attendance
+        override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) {
+            val existing = _attendance.value[locationId] ?: LocationAttendance()
+            _attendance.value = _attendance.value +
+                (locationId to existing.copy(lastClockInMillis = epochMillis))
         }
-        override fun recordClockOut(locationId: String, epochMillis: Long) = Unit
+        override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) {
+            val existing = _attendance.value[locationId] ?: LocationAttendance()
+            _attendance.value = _attendance.value + (locationId to existing.copy(
+                lastClockOutMillis = epochMillis,
+                lastClockOutManual = source == ClockSource.MANUAL,
+            ))
+        }
         override fun undoLast(locationId: String) {
-            _last.value = _last.value - locationId
+            _attendance.value = _attendance.value - locationId
         }
     }
 
@@ -146,7 +156,17 @@ class LocationViewModelTest {
 
         vm.onClockIn()
 
-        assertTrue(attendance.lastClockIns.value.containsKey(TEST_OFFICE.id))
+        assertTrue(attendance.attendance.value.containsKey(TEST_OFFICE.id))
+    }
+
+    @Test
+    fun `onClockOut records a manual clock-out against the active location`() = runTest {
+        val attendance = FakeAttendanceRepository()
+        val vm = viewModel(attendance = attendance)
+
+        vm.onClockOut()
+
+        assertTrue(attendance.attendance.value[TEST_OFFICE.id]?.lastClockOutManual == true)
     }
 
     @Test
@@ -159,7 +179,7 @@ class LocationViewModelTest {
 
         vm.onClockIn()
 
-        assertTrue(attendance.lastClockIns.value.isEmpty())
+        assertTrue(attendance.attendance.value.isEmpty())
     }
 
     @Test

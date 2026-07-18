@@ -10,23 +10,39 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * Records attendance (clock-in / clock-out) for worksites and exposes the most recent clock-in per
- * location for display. Replaces the earlier in-memory `LocationClockInRepository` stub with a real,
- * persistent Local + Remote implementation ([DefaultAttendanceRepository]).
+ * The derived attendance status for one worksite: its most recent clock-in and clock-out, plus
+ * whether that clock-out was a manual (button) action. Consumers apply display rules on top of this
+ * (e.g. only show a clock-out that is more recent than the clock-in, or only a manual one).
+ */
+data class LocationAttendance(
+    val lastClockInMillis: Long? = null,
+    val lastClockOutMillis: Long? = null,
+    val lastClockOutManual: Boolean = false,
+)
+
+/**
+ * Records attendance (clock-in / clock-out) for worksites and exposes the derived per-location
+ * status. Replaces the earlier in-memory `LocationClockInRepository` stub with a real, persistent
+ * Local + Remote implementation ([DefaultAttendanceRepository]).
  */
 interface AttendanceRepository {
 
-    /**
-     * Map of work-location id to the epoch-millis of its most recent clock-in. Preserves the API the
-     * location detail UI already consumes.
-     */
-    val lastClockIns: StateFlow<Map<String, Long>>
+    /** Derived attendance status per work-location id. */
+    val attendance: StateFlow<Map<String, LocationAttendance>>
 
-    /** Records a clock-in for [locationId] at [epochMillis] (defaults to now). */
-    fun recordClockIn(locationId: String, epochMillis: Long = System.currentTimeMillis())
+    /** Records a clock-in for [locationId]. [source] defaults to automatic (geofence-driven). */
+    fun recordClockIn(
+        locationId: String,
+        epochMillis: Long = System.currentTimeMillis(),
+        source: ClockSource = ClockSource.AUTO,
+    )
 
-    /** Records a clock-out for [locationId] at [epochMillis] (defaults to now). */
-    fun recordClockOut(locationId: String, epochMillis: Long = System.currentTimeMillis())
+    /** Records a clock-out for [locationId]. [source] defaults to automatic (geofence-driven). */
+    fun recordClockOut(
+        locationId: String,
+        epochMillis: Long = System.currentTimeMillis(),
+        source: ClockSource = ClockSource.AUTO,
+    )
 
     /**
      * Reverses the most recent event for [locationId], if any. Backs the "Undo" notification action
@@ -52,23 +68,23 @@ class DefaultAttendanceRepository(
 
     private val _events = MutableStateFlow(local.load())
 
-    override val lastClockIns: StateFlow<Map<String, Long>> = _events
-        .map { events -> latestClockInsByLocation(events) }
+    override val attendance: StateFlow<Map<String, LocationAttendance>> = _events
+        .map { events -> attendanceByLocation(events) }
         .stateIn(
             scope = ioScope,
             started = SharingStarted.Eagerly,
-            initialValue = latestClockInsByLocation(_events.value),
+            initialValue = attendanceByLocation(_events.value),
         )
 
-    override fun recordClockIn(locationId: String, epochMillis: Long) =
-        append(AttendanceEvent(locationId, ClockType.CLOCK_IN, epochMillis))
+    override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) =
+        append(AttendanceEvent(locationId, ClockType.CLOCK_IN, epochMillis, source))
 
-    override fun recordClockOut(locationId: String, epochMillis: Long) =
-        append(AttendanceEvent(locationId, ClockType.CLOCK_OUT, epochMillis))
+    override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) =
+        append(AttendanceEvent(locationId, ClockType.CLOCK_OUT, epochMillis, source))
 
     @Synchronized
     private fun append(event: AttendanceEvent) {
-        Log.d(TAG, "record ${event.type} for ${event.locationId} at ${event.epochMillis}")
+        Log.d(TAG, "record ${event.type}/${event.source} for ${event.locationId} at ${event.epochMillis}")
         _events.value = _events.value + event
         local.save(_events.value)
         ioScope.launch {
@@ -94,11 +110,20 @@ class DefaultAttendanceRepository(
         }
     }
 
-    private fun latestClockInsByLocation(events: List<AttendanceEvent>): Map<String, Long> =
-        events.asSequence()
-            .filter { it.type == ClockType.CLOCK_IN }
-            .groupingBy { it.locationId }
-            .fold(0L) { max, event -> maxOf(max, event.epochMillis) }
+    private fun attendanceByLocation(events: List<AttendanceEvent>): Map<String, LocationAttendance> =
+        events.groupBy { it.locationId }.mapValues { (_, locationEvents) ->
+            val lastIn = locationEvents
+                .filter { it.type == ClockType.CLOCK_IN }
+                .maxByOrNull { it.epochMillis }
+            val lastOut = locationEvents
+                .filter { it.type == ClockType.CLOCK_OUT }
+                .maxByOrNull { it.epochMillis }
+            LocationAttendance(
+                lastClockInMillis = lastIn?.epochMillis,
+                lastClockOutMillis = lastOut?.epochMillis,
+                lastClockOutManual = lastOut?.source == ClockSource.MANUAL,
+            )
+        }
 
     private companion object {
         private const val TAG = "AttendRepo"

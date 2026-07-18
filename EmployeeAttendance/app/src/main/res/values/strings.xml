@@ -29,6 +29,10 @@
     <string name="location_tracking_notification_title">Tracking work location</string>
     <string name="location_tracking_notification_body">Checking when you arrive at and leave your work location.</string>
 
+    <!-- Attendance clock card status -->
+    <string name="attendance_clocked_in_status">Clocked in at %1$s</string>
+    <string name="attendance_clocked_out_status">Clocked out at %1$s</string>
+
     <!-- Location feature UI -->
     <string name="location_section_title">Work Location</string>
     <string name="location_setup_action">Set Up Location</string>
@@ -43,6 +47,7 @@
     <string name="location_detail_title">Location</string>
     <string name="location_detail_map_locked">Turn on “Allow all the time” to see the map here.</string>
     <string name="location_last_clock_in">Last clocked in: %1$s</string>
+    <string name="location_last_clock_out">Last clocked out: %1$s</string>
     <string name="location_no_clock_in">No clock-ins recorded yet</string>
     <string name="location_detail_no_location">No work location is set up yet.</string>
     <string name="location_detail_manage_worksites">Manage worksites</string>

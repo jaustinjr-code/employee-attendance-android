@@ -15,10 +15,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.proximity.ProximityState
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
@@ -59,6 +60,7 @@ fun AttendanceScreen(
         onLocationPillClick = onOpenLocationDetail,
         onAddWorksite = onAddWorksite,
         onClockIn = locationViewModel::onClockIn,
+        onClockOut = locationViewModel::onClockOut,
     )
     // Shares the same ViewModel instance as the setup chip, so tapping it surfaces the rationale
     // dialog that this host renders.
@@ -74,10 +76,18 @@ fun AttendanceScreen(
     onLocationPillClick: () -> Unit = {},
     onAddWorksite: () -> Unit = {},
     onClockIn: () -> Unit = {},
+    onClockOut: () -> Unit = {},
 ) {
     Column(modifier = modifier) {
         Greeting(todayDate = todayDate, modifier = Modifier.padding(20.dp))
-        TimeCheck(onClockIn = onClockIn, modifier = Modifier.padding(20.dp))
+        TimeCheck(
+            isClockedIn = locationState.isClockedIn,
+            clockInMillis = locationState.attendanceClockInMillis,
+            clockOutMillis = locationState.attendanceClockOutMillis,
+            onClockIn = onClockIn,
+            onClockOut = onClockOut,
+            modifier = Modifier.padding(20.dp),
+        )
 
         // The single location control, in three stages:
         //  - setup complete (access granted AND a worksite registered) -> pill to the detail screen;
@@ -127,35 +137,36 @@ fun GreetingPreview() {
     }
 }
 
+/**
+ * The clock card. Its clocked-in/out status and button reflect the *actual* persisted attendance for
+ * the active worksite (not local UI state), so an automatic clock-in shows as "Clocked in at …" when
+ * the app is opened. [clockInMillis] is shown while clocked in; [clockOutMillis] is only ever a
+ * manual clock-out (automatic ones are surfaced via notification and the worksite detail instead).
+ */
 @Composable
 fun TimeCheck(
+    isClockedIn: Boolean,
+    clockInMillis: Long?,
+    clockOutMillis: Long?,
     modifier: Modifier = Modifier,
     onClockIn: () -> Unit = {},
+    onClockOut: () -> Unit = {},
 ) {
-    var isClockedIn by rememberSaveable { mutableStateOf(false) }
-    var clockInTime by rememberSaveable { mutableStateOf("") }
-    var clockOutTime by rememberSaveable { mutableStateOf("") }
-
     ElevatedCard(modifier = modifier.fillMaxWidth().height(300.dp)) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize().padding(20.dp)) {
             Text("Current Time")
             LiveClock()
-            if (clockInTime.isNotEmpty() || clockOutTime.isNotEmpty())
-                Text(if (isClockedIn) "Clock In: $clockInTime" else "Clock Out: $clockOutTime")
+            val statusText = when {
+                isClockedIn && clockInMillis != null ->
+                    stringResource(R.string.attendance_clocked_in_status, formatClockTime(clockInMillis))
+                clockOutMillis != null ->
+                    stringResource(R.string.attendance_clocked_out_status, formatClockTime(clockOutMillis))
+                else -> null
+            }
+            statusText?.let { Text(it) }
             Button(
                 shape = RoundedCornerShape(5.dp),
-                onClick = {
-                    isClockedIn = !isClockedIn
-                    val now = Calendar.getInstance().time
-                    val formattedTime = SimpleDateFormat("HH:mm:ss", Locale.US).format(now)
-                    if (isClockedIn) {
-                        clockInTime = formattedTime
-                        // Record the clock-in against the active work location for the detail screen.
-                        onClockIn()
-                    } else {
-                        clockOutTime = formattedTime
-                    }
-                },
+                onClick = { if (isClockedIn) onClockOut() else onClockIn() },
                 modifier = Modifier.fillMaxWidth(0.75f)
             ) {
                 Text(text = if (isClockedIn) "Clock out" else "Clock in")
@@ -164,12 +175,18 @@ fun TimeCheck(
     }
 }
 
+private fun formatClockTime(epochMillis: Long): String =
+    SimpleDateFormat("h:mm a", Locale.US).format(java.util.Date(epochMillis))
+
 @Preview(showBackground = true)
 @Composable
 fun TimeCheckPreview() {
     EmployeeAttendanceTheme {
         TimeCheck(
-            modifier = Modifier.padding(20.dp)
+            isClockedIn = true,
+            clockInMillis = 1_716_552_000_000L,
+            clockOutMillis = null,
+            modifier = Modifier.padding(20.dp),
         )
     }
 }

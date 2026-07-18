@@ -34,27 +34,40 @@ class DefaultAttendanceRepositoryTest {
         repo.recordClockIn("site-a", 3_000L)
         repo.recordClockIn("site-b", 2_000L)
 
-        val last = repo.lastClockIns.value
-        assertEquals(3_000L, last["site-a"])
-        assertEquals(2_000L, last["site-b"])
+        val attendance = repo.attendance.value
+        assertEquals(3_000L, attendance["site-a"]?.lastClockInMillis)
+        assertEquals(2_000L, attendance["site-b"]?.lastClockInMillis)
     }
 
     @Test
-    fun `clock-out does not appear in lastClockIns`() {
+    fun `clock-out is tracked with its source`() {
         val repo = repo()
-        repo.recordClockOut("site-a", 9_000L)
+        repo.recordClockOut("site-a", 9_000L, ClockSource.MANUAL)
 
-        assertNull(repo.lastClockIns.value["site-a"])
+        val attendance = repo.attendance.value["site-a"]
+        assertEquals(9_000L, attendance?.lastClockOutMillis)
+        assertTrue(attendance?.lastClockOutManual == true)
+    }
+
+    @Test
+    fun `automatic clock-out is not flagged as manual`() {
+        val repo = repo()
+        repo.recordClockOut("site-a", 9_000L, ClockSource.AUTO)
+
+        assertFalse(repo.attendance.value["site-a"]?.lastClockOutManual == true)
     }
 
     @Test
     fun `events are persisted through the local data source`() {
         val local = FakeLocalDataSource()
         val repo = repo(local)
-        repo.recordClockIn("site-a", 1_000L)
+        repo.recordClockIn("site-a", 1_000L, ClockSource.MANUAL)
 
         assertEquals(1, local.stored.size)
-        assertEquals(AttendanceEvent("site-a", ClockType.CLOCK_IN, 1_000L), local.stored.first())
+        assertEquals(
+            AttendanceEvent("site-a", ClockType.CLOCK_IN, 1_000L, ClockSource.MANUAL),
+            local.stored.first(),
+        )
     }
 
     @Test
@@ -64,7 +77,7 @@ class DefaultAttendanceRepositoryTest {
         )
         val repo = repo(local)
 
-        assertEquals(4_000L, repo.lastClockIns.value["site-a"])
+        assertEquals(4_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
     }
 
     @Test
@@ -77,8 +90,8 @@ class DefaultAttendanceRepositoryTest {
         repo.undoLast("site-a")
 
         // The 3_000 clock-in is gone; the earlier 1_000 remains as the latest for site-a.
-        assertEquals(1_000L, repo.lastClockIns.value["site-a"])
-        assertEquals(2_000L, repo.lastClockIns.value["site-b"])
+        assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
+        assertEquals(2_000L, repo.attendance.value["site-b"]?.lastClockInMillis)
     }
 
     @Test
@@ -90,7 +103,7 @@ class DefaultAttendanceRepositoryTest {
         repo.undoLast("unknown")
 
         assertEquals(before, local.saveCount)
-        assertTrue(repo.lastClockIns.value.isEmpty())
+        assertTrue(repo.attendance.value.isEmpty())
     }
 
     @Test
@@ -100,6 +113,6 @@ class DefaultAttendanceRepositoryTest {
 
         repo.undoLast("site-a")
 
-        assertFalse(repo.lastClockIns.value.containsKey("site-a"))
+        assertNull(repo.attendance.value["site-a"]?.lastClockInMillis)
     }
 }
