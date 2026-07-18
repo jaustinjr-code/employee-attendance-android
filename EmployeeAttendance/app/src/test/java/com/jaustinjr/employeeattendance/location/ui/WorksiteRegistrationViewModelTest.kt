@@ -169,7 +169,7 @@ class WorksiteRegistrationViewModelTest {
     }
 
     @Test
-    fun `save is a no-op without coordinates`() = runTest {
+    fun `save is a no-op without coordinates and flags validation errors`() = runTest {
         val repo = RecordingWorkLocationRepository()
         val model = vm(repo = repo)
         model.onNameChange("No Coords")
@@ -177,6 +177,32 @@ class WorksiteRegistrationViewModelTest {
         model.save()
 
         assertTrue(repo.registered.isEmpty())
+        // Name is filled, but no location was captured -> location error surfaces, name does not.
+        assertTrue(model.uiState.value.locationError)
+        assertFalse(model.uiState.value.nameError)
+    }
+
+    @Test
+    fun `save with a blank name flags the name error`() = runTest {
+        val model = vm()
+        model.captureCurrentLocation()
+        runCurrent()
+
+        model.save()
+
+        assertTrue(model.uiState.value.nameError)
+    }
+
+    @Test
+    fun `address mode requires a non-blank address`() = runTest {
+        val model = vm()
+        model.onNameChange("Site")
+        model.onCaptureModeChange(CaptureMode.ADDRESS)
+        // No address typed, but pretend coordinates exist by selecting a suggestion then clearing.
+        model.save()
+
+        assertTrue(model.uiState.value.addressError)
+        assertFalse(model.uiState.value.canSave)
     }
 
     @Test

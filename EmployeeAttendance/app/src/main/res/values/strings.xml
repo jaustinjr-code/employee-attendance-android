@@ -96,6 +96,9 @@
     <string name="worksite_needs_permission">Grant location access on the attendance screen first to capture your current location.</string>
     <string name="worksite_save">Save worksite</string>
     <string name="worksite_saved">Worksite saved</string>
+    <string name="worksite_error_name_required">Enter a name for this worksite.</string>
+    <string name="worksite_error_address_required">Enter an address.</string>
+    <string name="worksite_error_location_required">Capture the current location or find an address first.</string>
 
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>

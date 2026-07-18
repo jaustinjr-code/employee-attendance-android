@@ -108,6 +108,10 @@ fun WorksiteRegistrationContent(
             onValueChange = onNameChange,
             label = { Text(stringResource(R.string.worksite_name_label)) },
             singleLine = true,
+            isError = state.nameError,
+            supportingText = if (state.nameError) {
+                { Text(stringResource(R.string.worksite_error_name_required)) }
+            } else null,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -149,6 +153,10 @@ fun WorksiteRegistrationContent(
                     onValueChange = onAddressChange,
                     label = { Text(stringResource(R.string.worksite_address_label)) },
                     singleLine = true,
+                    isError = state.addressError,
+                    supportingText = if (state.addressError) {
+                        { Text(stringResource(R.string.worksite_error_address_required)) }
+                    } else null,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 state.suggestions.forEach { suggestion ->
@@ -171,9 +179,19 @@ fun WorksiteRegistrationContent(
 
         StatusArea(state = state)
 
+        if (state.locationError) {
+            Text(
+                text = stringResource(R.string.worksite_error_location_required),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+
         Button(
+            // Enabled (except mid-capture) so tapping it with an incomplete form reveals the
+            // per-field validation errors rather than appearing inert.
             onClick = onSave,
-            enabled = state.canSave,
+            enabled = state.status !is CaptureStatus.Working,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(stringResource(R.string.worksite_save))

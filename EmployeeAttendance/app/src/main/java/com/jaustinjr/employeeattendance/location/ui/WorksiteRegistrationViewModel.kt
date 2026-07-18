@@ -53,12 +53,27 @@ data class WorksiteRegistrationUiState(
     val resolvedAddress: String? = null,
     val suggestions: List<AddressSuggestion> = emptyList(),
     val status: CaptureStatus = CaptureStatus.Idle,
+    val attemptedSave: Boolean = false,
     val saved: Boolean = false,
 ) {
     val hasCoordinates: Boolean get() = latitude != null && longitude != null
     val radiusMeters: Float get() = radiusOption.meters
+
+    /** In address mode the address text is itself a required field; other modes fill it implicitly. */
+    private val addressRequiredButMissing: Boolean
+        get() = captureMode == CaptureMode.ADDRESS && address.isBlank()
+
+    val isValid: Boolean
+        get() = name.isNotBlank() && hasCoordinates && !addressRequiredButMissing
+
     val canSave: Boolean
-        get() = name.isNotBlank() && hasCoordinates && status !is CaptureStatus.Working
+        get() = isValid && status !is CaptureStatus.Working
+
+    // Field-level errors, surfaced only after a save attempt so the form doesn't scold the user
+    // before they've finished filling it in.
+    val nameError: Boolean get() = attemptedSave && name.isBlank()
+    val addressError: Boolean get() = attemptedSave && addressRequiredButMissing
+    val locationError: Boolean get() = attemptedSave && !hasCoordinates
 }
 
 /**
@@ -220,7 +235,9 @@ class WorksiteRegistrationViewModel(
         val lat = state.latitude
         val lon = state.longitude
         if (!state.canSave || lat == null || lon == null) {
+            // Reveal field-level validation instead of silently doing nothing.
             Log.d(TAG, "save ignored; form incomplete")
+            _uiState.update { it.copy(attemptedSave = true) }
             return
         }
         val worksite = WorkLocation(
