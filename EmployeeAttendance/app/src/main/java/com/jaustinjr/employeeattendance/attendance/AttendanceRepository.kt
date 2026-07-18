@@ -18,7 +18,15 @@ data class LocationAttendance(
     val lastClockInMillis: Long? = null,
     val lastClockOutMillis: Long? = null,
     val lastClockOutManual: Boolean = false,
-)
+) {
+    /** Currently clocked in: there is a clock-in and no later clock-out. */
+    val isClockedIn: Boolean
+        get() {
+            val inMillis = lastClockInMillis ?: return false
+            val outMillis = lastClockOutMillis ?: return true
+            return inMillis > outMillis
+        }
+}
 
 /**
  * Records attendance (clock-in / clock-out) for worksites and exposes the derived per-location

@@ -5,6 +5,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -98,6 +99,29 @@ class ProximityRepositoryTest {
         assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
         assertTrue(events.contains(ProximityEvent.Departed("t1")))
         assertEquals(ProximityState.UNKNOWN, store.state)
+    }
+
+    @Test
+    fun `switching target while inside does not emit a departed for the new target`() = runTest {
+        val repo = ProximityRepository(FakeStore())
+        val events = mutableListOf<ProximityEvent>()
+        backgroundScope.launch { repo.events.collect(events::add) }
+        runCurrent()
+
+        // Clocked in at worksite A.
+        repo.onGeofenceTransition("A", ProximityState.INSIDE)
+        // The active worksite switches to B; the engine next evaluates against B while the stale
+        // state is still INSIDE (for A). Without the target-change guard this would emit
+        // Departed("B") — the reported bug. (Exercised via the geofence path so it stays a pure JVM
+        // test; onLocation shares the same guard but needs android.location.Location.)
+        repo.onGeofenceTransition("B", ProximityState.OUTSIDE)
+        runCurrent()
+
+        // The stale INSIDE (for A) must not produce a Departed tagged with B — the switch flow
+        // handles clocking out of A explicitly.
+        assertEquals(listOf(ProximityEvent.Arrived("A")), events)
+        assertFalse(events.contains(ProximityEvent.Departed("B")))
+        assertEquals(ProximityState.OUTSIDE, repo.proximity.value)
     }
 
     @Test

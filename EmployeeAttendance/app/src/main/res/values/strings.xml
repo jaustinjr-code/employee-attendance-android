@@ -75,6 +75,12 @@
     <string name="worksite_active_label">Active</string>
     <string name="worksite_set_active">Set active</string>
     <string name="worksite_remove">Remove</string>
+
+    <!-- Switch-active confirmation (when clocked in at the current active worksite) -->
+    <string name="worksite_switch_confirm_title">Switch active worksite?</string>
+    <string name="worksite_switch_confirm_message">You\'re clocked in at %1$s. Switching to %2$s will clock you out of %1$s right now, and you\'ll get a notification. Continue?</string>
+    <string name="worksite_switch_confirm_action">Switch and clock out</string>
+    <string name="worksite_switch_cancel">Cancel</string>
     <string name="worksite_radius_summary">Radius %1$s</string>
 
     <!-- Worksite registration screen -->

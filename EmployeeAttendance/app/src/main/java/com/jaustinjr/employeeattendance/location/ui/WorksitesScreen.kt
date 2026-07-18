@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FloatingActionButton
@@ -21,6 +22,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -49,6 +53,7 @@ fun WorksitesScreen(
         state = state,
         onAddWorksite = onAddWorksite,
         onSetActive = viewModel::onSetActive,
+        onConfirmSwitchActive = viewModel::onConfirmSwitchActive,
         onRemove = viewModel::onRemove,
         modifier = modifier,
     )
@@ -59,9 +64,26 @@ fun WorksitesContent(
     state: WorksitesUiState,
     onAddWorksite: () -> Unit,
     onSetActive: (String) -> Unit,
+    onConfirmSwitchActive: (String) -> Unit,
     onRemove: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // The worksite the user asked to activate while already clocked in elsewhere; triggers the
+    // confirmation modal so they're aware the switch clocks them out of the current worksite.
+    var pendingActivation by remember { mutableStateOf<WorkLocation?>(null) }
+
+    pendingActivation?.let { target ->
+        SwitchActiveConfirmationDialog(
+            currentName = state.activeWorksite?.name.orEmpty(),
+            targetName = target.name,
+            onConfirm = {
+                onConfirmSwitchActive(target.id)
+                pendingActivation = null
+            },
+            onDismiss = { pendingActivation = null },
+        )
+    }
+
     Scaffold(
         modifier = modifier,
         floatingActionButton = {
@@ -95,7 +117,12 @@ fun WorksitesContent(
                     WorksiteRow(
                         worksite = worksite,
                         isActive = worksite.id == state.activeId,
-                        onSetActive = { onSetActive(worksite.id) },
+                        onSetActive = {
+                            // Confirm first when the current active worksite is clocked in, since
+                            // switching will clock the user out of it.
+                            if (state.activeClockedIn) pendingActivation = worksite
+                            else onSetActive(worksite.id)
+                        },
                         onRemove = { onRemove(worksite.id) },
                     )
                 }
@@ -159,6 +186,36 @@ private fun WorksiteRow(
     }
 }
 
+/**
+ * Warns the user that switching the active worksite while clocked in will immediately clock them out
+ * of the current one (with a notification) before completing the transfer.
+ */
+@Composable
+private fun SwitchActiveConfirmationDialog(
+    currentName: String,
+    targetName: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.worksite_switch_confirm_title)) },
+        text = {
+            Text(stringResource(R.string.worksite_switch_confirm_message, currentName, targetName))
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.worksite_switch_confirm_action))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.worksite_switch_cancel))
+            }
+        },
+    )
+}
+
 @Preview(showBackground = true, heightDp = 700)
 @Composable
 private fun WorksitesPreview() {
@@ -173,6 +230,7 @@ private fun WorksitesPreview() {
             ),
             onAddWorksite = {},
             onSetActive = {},
+            onConfirmSwitchActive = {},
             onRemove = {},
         )
     }
