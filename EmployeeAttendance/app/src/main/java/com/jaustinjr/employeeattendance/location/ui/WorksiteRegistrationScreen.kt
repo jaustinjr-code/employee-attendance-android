@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -76,9 +78,15 @@ fun WorksiteRegistrationContent(
 ) {
     val working = state.status is CaptureStatus.Working
     Column(
+        // verticalScroll + imePadding keep the focused text field visible above the on-screen
+        // keyboard: imePadding adds bottom inset equal to the keyboard height, and the scroll lets
+        // the focused field move up into the remaining space. navigationBarsPadding avoids the
+        // gesture bar when the keyboard is hidden.
         modifier = modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
+            .imePadding()
+            .navigationBarsPadding()
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
