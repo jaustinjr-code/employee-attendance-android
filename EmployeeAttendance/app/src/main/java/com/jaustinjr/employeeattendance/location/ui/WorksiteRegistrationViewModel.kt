@@ -95,7 +95,18 @@ class WorksiteRegistrationViewModel(
     private val reverseGeocodeEnabled: StateFlow<Boolean>,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(WorksiteRegistrationUiState())
+    private val _uiState = MutableStateFlow(
+        // Without location permission, current-location capture can't work — start on the address
+        // mode so a user who granted no location can still register a worksite (geocoding only needs
+        // network, not location).
+        WorksiteRegistrationUiState(
+            captureMode = if (permissionRepository.permissionState.value.isGranted) {
+                CaptureMode.CURRENT
+            } else {
+                CaptureMode.ADDRESS
+            },
+        ),
+    )
     val uiState: StateFlow<WorksiteRegistrationUiState> = _uiState.asStateFlow()
 
     // Cached location used to bias autocomplete toward the user; fetched lazily, best-effort.

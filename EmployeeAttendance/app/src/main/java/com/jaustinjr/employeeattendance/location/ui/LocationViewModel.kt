@@ -129,7 +129,10 @@ class LocationViewModel(
         permissionRepository.permissionState,
         attendanceRepository.attendance,
     ) { activeLocation, proximity, trackingStatus, permission, attendanceMap ->
-        val attendance = activeLocation?.let { attendanceMap[it.id] }
+        // With no active worksite, the manual clock button records against the general timeclock; the
+        // status card should reflect that same record.
+        val attendanceId = activeLocation?.id ?: AttendanceRepository.GENERAL_TIMECLOCK_ID
+        val attendance = attendanceMap[attendanceId]
         LocationUiState(
             activeWorkLocation = activeLocation,
             proximity = proximity,
@@ -151,24 +154,28 @@ class LocationViewModel(
     }
 
     /**
-     * Records a *manual* clock-in against the currently active work location, if any. Wired to the
-     * attendance screen's clock button.
+     * Records a *manual* clock-in against the active worksite, or the general timeclock when none is
+     * active — so the app works even with no location grant and no registered worksite.
      */
     fun onClockIn() {
-        val active = workLocationRepository.activeWorkLocation.value
-        Log.d(TAG, "onClockIn: activeLocation=${active?.id}")
-        active?.let { attendanceRepository.recordClockIn(it.id, source = ClockSource.MANUAL) }
+        val id = manualClockId()
+        Log.d(TAG, "onClockIn: id=$id")
+        attendanceRepository.recordClockIn(id, source = ClockSource.MANUAL)
     }
 
     /**
-     * Records a *manual* clock-out against the currently active work location, if any. Manual
-     * clock-outs are shown on the attendance screen; automatic (geofence) ones are not.
+     * Records a *manual* clock-out against the active worksite, or the general timeclock when none is
+     * active. Manual clock-outs are shown on the attendance screen; automatic (geofence) ones are not.
      */
     fun onClockOut() {
-        val active = workLocationRepository.activeWorkLocation.value
-        Log.d(TAG, "onClockOut: activeLocation=${active?.id}")
-        active?.let { attendanceRepository.recordClockOut(it.id, source = ClockSource.MANUAL) }
+        val id = manualClockId()
+        Log.d(TAG, "onClockOut: id=$id")
+        attendanceRepository.recordClockOut(id, source = ClockSource.MANUAL)
     }
+
+    private fun manualClockId(): String =
+        workLocationRepository.activeWorkLocation.value?.id
+            ?: AttendanceRepository.GENERAL_TIMECLOCK_ID
 
     /**
      * Supplies foreground fixes only under When-In-Use access. Under full (ALWAYS) access the

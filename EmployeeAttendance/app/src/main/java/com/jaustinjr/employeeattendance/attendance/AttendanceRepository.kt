@@ -60,6 +60,14 @@ interface AttendanceRepository {
 
     /** Deletes all recorded attendance. Backs "delete all data". */
     fun clearAll() {}
+
+    companion object {
+        /**
+         * Location id used for manual clock in/out when no worksite is active, so the app works as a
+         * plain timeclock for users who grant no location or register no worksites.
+         */
+        const val GENERAL_TIMECLOCK_ID = "__general_timeclock__"
+    }
 }
 
 /**

@@ -170,7 +170,7 @@ class LocationViewModelTest {
     }
 
     @Test
-    fun `onClockIn is a no-op when there is no active location`() = runTest {
+    fun `onClockIn records against the general timeclock when no worksite is active`() = runTest {
         val attendance = FakeAttendanceRepository()
         val vm = viewModel(
             workLocations = SeededWorkLocationRepository(seed = null),
@@ -179,7 +179,12 @@ class LocationViewModelTest {
 
         vm.onClockIn()
 
-        assertTrue(attendance.attendance.value.isEmpty())
+        // Usable as a plain timeclock with no worksite: records against the general id.
+        assertTrue(
+            attendance.attendance.value.containsKey(
+                com.jaustinjr.employeeattendance.attendance.AttendanceRepository.GENERAL_TIMECLOCK_ID,
+            ),
+        )
     }
 
     @Test
