@@ -154,6 +154,9 @@ class WorksiteRegistrationViewModel(
      */
     private fun requestSuggestions(query: String) {
         autocompleteJob?.cancel()
+        // No real provider wired in: skip the whole path, including the location fix that would bias
+        // it. Avoids waking the location stack (battery + privacy) to feed a no-op provider.
+        if (!addressAutocomplete.isEnabled) return
         if (query.trim().length < MIN_AUTOCOMPLETE_CHARS) {
             if (_uiState.value.suggestions.isNotEmpty()) {
                 _uiState.update { it.copy(suggestions = emptyList()) }

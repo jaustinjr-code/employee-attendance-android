@@ -43,8 +43,12 @@ class WorksiteRegistrationViewModelTest {
     }
 
     private class FakeTracker(private val fix: LocationSample?) : LocationTracker {
+        var currentLocationCalls = 0
         override fun locationUpdates(config: LocationRequestConfig): Flow<LocationSample> = emptyFlow()
-        override suspend fun currentLocation(priority: LocationPriority): LocationSample? = fix
+        override suspend fun currentLocation(priority: LocationPriority): LocationSample? {
+            currentLocationCalls++
+            return fix
+        }
     }
 
     private class FakeGeocoder(
@@ -60,6 +64,7 @@ class WorksiteRegistrationViewModelTest {
 
     private class FakeAutocomplete(
         private val results: List<AddressSuggestion> = emptyList(),
+        override val isEnabled: Boolean = true,
     ) : AddressAutocomplete {
         var lastQuery: String? = null
         override suspend fun suggest(
@@ -216,6 +221,24 @@ class WorksiteRegistrationViewModelTest {
         runCurrent()
 
         assertEquals(listOf(suggestion), model.uiState.value.suggestions)
+    }
+
+    @Test
+    fun `a disabled autocomplete provider skips suggestions and the bias location fetch`() = runTest {
+        val tracker = FakeTracker(SAMPLE)
+        val model = vm(
+            tracker = tracker,
+            autocomplete = FakeAutocomplete(listOf(AddressSuggestion("x", 1.0, 2.0)), isEnabled = false),
+        )
+        model.onCaptureModeChange(CaptureMode.ADDRESS)
+
+        model.onAddressChange("123 Market")
+        advanceTimeBy(400)
+        runCurrent()
+
+        assertTrue(model.uiState.value.suggestions.isEmpty())
+        // No GPS fix was taken to bias a provider that can't return anything.
+        assertEquals(0, tracker.currentLocationCalls)
     }
 
     @Test

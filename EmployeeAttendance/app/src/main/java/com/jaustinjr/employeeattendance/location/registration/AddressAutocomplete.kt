@@ -16,6 +16,14 @@ data class AddressSuggestion(
  */
 interface AddressAutocomplete {
     /**
+     * Whether a real autocomplete backend is wired in. When false (the stub), callers should skip the
+     * whole autocomplete path — including any location fix taken to bias results — since it can only
+     * return empty. Waking the location stack to bias a no-op provider wastes battery and needlessly
+     * reads the user's position.
+     */
+    val isEnabled: Boolean get() = true
+
+    /**
      * Returns up to a few suggestions for [query], biased toward [near] (the user's current location)
      * so the closest matches rank first. Callers pass only queries of 3+ characters.
      */
@@ -31,6 +39,7 @@ interface AddressAutocomplete {
  *   ViewModel already consume this interface, so only this implementation needs to change.
  */
 class StubAddressAutocomplete : AddressAutocomplete {
+    override val isEnabled: Boolean = false
     override suspend fun suggest(query: String, near: LocationSample?): List<AddressSuggestion> =
         emptyList()
 }
