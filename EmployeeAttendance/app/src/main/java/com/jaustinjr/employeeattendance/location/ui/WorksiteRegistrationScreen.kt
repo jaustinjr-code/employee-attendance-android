@@ -232,7 +232,10 @@ private fun StatusArea(state: WorksiteRegistrationUiState) {
             color = MaterialTheme.colorScheme.error,
         )
         CaptureStatus.Idle -> if (state.hasCoordinates) {
-            LocationConfirmationOverlay(address = state.resolvedAddress)
+            LocationConfirmationOverlay(
+                address = state.resolvedAddress,
+                accuracyMeters = state.capturedAccuracyMeters,
+            )
         }
     }
 }
@@ -240,11 +243,13 @@ private fun StatusArea(state: WorksiteRegistrationUiState) {
 /**
  * Non-interactive confirmation of the resolved worksite location. Rendered as a Material 3 tonal
  * surface (an elevation overlay over a secondary container) so it clearly stands out as important,
- * while carrying no click behavior. It shows the human-readable address — not raw coordinates.
+ * while carrying no click behavior. It shows the human-readable address — not raw coordinates — and,
+ * for a current-location capture, the fix accuracy so the user can decide whether to retry.
  */
 @Composable
 private fun LocationConfirmationOverlay(
     address: String?,
+    accuracyMeters: Float?,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -269,6 +274,15 @@ private fun LocationConfirmationOverlay(
                     text = address ?: stringResource(R.string.worksite_location_captured),
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                accuracyMeters?.let {
+                    Text(
+                        text = stringResource(
+                            R.string.worksite_location_accuracy,
+                            DistanceFormatter.format(it),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
     }

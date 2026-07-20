@@ -108,7 +108,27 @@ class WorksiteRegistrationViewModelTest {
         val state = model.uiState.value
         assertEquals(37.7749, state.latitude!!, 1e-6)
         assertEquals(-122.4194, state.longitude!!, 1e-6)
+        assertEquals(5f, state.capturedAccuracyMeters)
         assertTrue(state.status is CaptureStatus.Idle)
+    }
+
+    @Test
+    fun `capture times out when no fix arrives`() = runTest {
+        val slowTracker = object : LocationTracker {
+            override fun locationUpdates(config: LocationRequestConfig): Flow<LocationSample> =
+                emptyFlow()
+            override suspend fun currentLocation(priority: LocationPriority): LocationSample? {
+                kotlinx.coroutines.delay(1_000_000) // never completes within the capture timeout
+                return null
+            }
+        }
+        val model = vm(tracker = slowTracker)
+
+        model.captureCurrentLocation()
+        advanceTimeBy(20_000) // past the 15s capture timeout
+        runCurrent()
+
+        assertTrue(model.uiState.value.status is CaptureStatus.Error)
     }
 
     @Test

@@ -21,7 +21,9 @@ import com.jaustinjr.employeeattendance.location.tracking.LocationSample
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,6 +53,8 @@ data class WorksiteRegistrationUiState(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val resolvedAddress: String? = null,
+    /** Horizontal accuracy of a current-location capture, so the user can judge/retry it. */
+    val capturedAccuracyMeters: Float? = null,
     val suggestions: List<AddressSuggestion> = emptyList(),
     val status: CaptureStatus = CaptureStatus.Idle,
     val attemptedSave: Boolean = false,
@@ -111,6 +115,7 @@ class WorksiteRegistrationViewModel(
                 latitude = null,
                 longitude = null,
                 resolvedAddress = null,
+                capturedAccuracyMeters = null,
             )
         }
         requestSuggestions(value)
@@ -125,6 +130,7 @@ class WorksiteRegistrationViewModel(
                 latitude = suggestion.latitudeDegrees,
                 longitude = suggestion.longitudeDegrees,
                 resolvedAddress = suggestion.label,
+                capturedAccuracyMeters = null,
                 suggestions = emptyList(),
                 status = CaptureStatus.Idle,
             )
@@ -140,6 +146,7 @@ class WorksiteRegistrationViewModel(
                 latitude = null,
                 longitude = null,
                 resolvedAddress = null,
+                capturedAccuracyMeters = null,
                 suggestions = emptyList(),
                 status = CaptureStatus.Idle,
             )
@@ -190,7 +197,12 @@ class WorksiteRegistrationViewModel(
         _uiState.update { it.copy(status = CaptureStatus.Working) }
         viewModelScope.launch {
             try {
-                val fix = locationTracker.currentLocation(LocationPriority.HIGH_ACCURACY)
+                // A worksite center doesn't need GPS-grade precision, so BALANCED avoids waking the
+                // GPS radio at full power. The timeout bounds how long we hold the location request
+                // open if no fix arrives; the captured accuracy is surfaced so the user can retry.
+                val fix = withTimeout(CAPTURE_TIMEOUT_MILLIS) {
+                    locationTracker.currentLocation(LocationPriority.BALANCED)
+                }
                 if (fix == null) {
                     _uiState.update {
                         it.copy(status = CaptureStatus.Error(R.string.worksite_capture_failed))
@@ -207,9 +219,13 @@ class WorksiteRegistrationViewModel(
                         latitude = fix.latitudeDegrees,
                         longitude = fix.longitudeDegrees,
                         resolvedAddress = nearestAddress,
+                        capturedAccuracyMeters = fix.accuracyMeters,
                         status = CaptureStatus.Idle,
                     )
                 }
+            } catch (e: TimeoutCancellationException) {
+                Log.w(TAG, "current-location capture timed out", e)
+                _uiState.update { it.copy(status = CaptureStatus.Error(R.string.worksite_capture_timeout)) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -271,6 +287,7 @@ class WorksiteRegistrationViewModel(
         private const val MIN_AUTOCOMPLETE_CHARS = 3
         private const val MAX_SUGGESTIONS = 3
         private const val AUTOCOMPLETE_DEBOUNCE_MILLIS = 300L
+        private const val CAPTURE_TIMEOUT_MILLIS = 15_000L
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
