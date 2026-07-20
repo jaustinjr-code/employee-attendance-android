@@ -5,9 +5,12 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
+        <!-- TODO(#9): Exclude sensitive prefs (work_locations, attendance_events, proximity_state)
+             from cloud backup so worksite coordinates and attendance history don't sync off-device.
+             See https://github.com/jaustinjr-code/employee-attendance-android/issues/9
+        <exclude domain="sharedpref" path="work_locations.xml"/>
+        <exclude domain="sharedpref" path="attendance_events.xml"/>
+        <exclude domain="sharedpref" path="proximity_state.xml"/>
         -->
     </cloud-backup>
     <!--
