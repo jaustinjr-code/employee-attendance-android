@@ -20,9 +20,11 @@ navigationDynamicFeaturesFragment = "2.9.8"
 navigationTesting = "2.9.8"
 kotlinxCoroutines = "1.10.2"
 playServicesLocation = "21.3.0"
+securityCrypto = "1.1.0-alpha06"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 androidx-navigation-dynamic-features-fragment = { module = "androidx.navigation:navigation-dynamic-features-fragment", version.ref = "navigationDynamicFeaturesFragment" }
 androidx-navigation-testing = { module = "androidx.navigation:navigation-testing", version.ref = "navigationTesting" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

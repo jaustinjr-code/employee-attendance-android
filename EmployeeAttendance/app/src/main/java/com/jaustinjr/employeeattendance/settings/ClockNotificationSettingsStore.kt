@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.settings
 
 import android.content.Context
 import android.util.Log
+import com.jaustinjr.employeeattendance.storage.SecurePreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,8 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class ClockNotificationSettingsStore(context: Context) {
 
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = SecurePreferences.create(context, PREFS_NAME)
 
     private val _preference = MutableStateFlow(load())
 

@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.settings
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.jaustinjr.employeeattendance.storage.SecurePreferences
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -16,6 +17,7 @@ class ClockNotificationSettingsStoreTest {
     @Before
     @After
     fun clearPrefs() {
+        SecurePreferences.create(context, "clock_notification_settings").edit().clear().commit()
         context.getSharedPreferences("clock_notification_settings", Context.MODE_PRIVATE)
             .edit().clear().commit()
     }

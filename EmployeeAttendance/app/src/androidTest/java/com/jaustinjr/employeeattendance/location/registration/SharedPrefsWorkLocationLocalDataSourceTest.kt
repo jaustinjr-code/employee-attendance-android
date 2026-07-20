@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.location.registration
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.jaustinjr.employeeattendance.storage.SecurePreferences
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -18,6 +19,7 @@ class SharedPrefsWorkLocationLocalDataSourceTest {
     @Before
     @After
     fun clearPrefs() {
+        SecurePreferences.create(context, "work_locations").edit().clear().commit()
         context.getSharedPreferences("work_locations", Context.MODE_PRIVATE)
             .edit().clear().commit()
     }

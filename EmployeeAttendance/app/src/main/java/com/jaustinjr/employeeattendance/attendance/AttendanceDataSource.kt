@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.attendance
 
 import android.content.Context
 import android.util.Log
+import com.jaustinjr.employeeattendance.storage.SecurePreferences
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -25,8 +26,7 @@ class SharedPrefsAttendanceLocalDataSource(
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) : AttendanceLocalDataSource {
 
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = SecurePreferences.create(context, PREFS_NAME)
 
     override fun load(): List<AttendanceEvent> {
         val raw = prefs.getString(KEY_EVENTS, null) ?: return emptyList()

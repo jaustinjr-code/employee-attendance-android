@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.location.registration
 
 import android.content.Context
 import android.util.Log
+import com.jaustinjr.employeeattendance.storage.SecurePreferences
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -36,8 +37,7 @@ class SharedPrefsWorkLocationLocalDataSource(
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) : WorkLocationLocalDataSource {
 
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = SecurePreferences.create(context, PREFS_NAME)
 
     override fun load(): StoredWorkLocations {
         val raw = prefs.getString(KEY_LOCATIONS, null)
