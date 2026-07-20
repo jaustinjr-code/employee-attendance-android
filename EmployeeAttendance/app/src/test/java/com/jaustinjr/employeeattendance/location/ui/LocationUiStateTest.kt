@@ -64,6 +64,33 @@ class LocationUiStateTest {
     }
 
     @Test
+    fun `granted but not precise is approximate-only`() {
+        val state = LocationUiState(
+            accessLevel = com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel.WHEN_IN_USE,
+            isPrecise = false,
+        )
+        assertTrue(state.isApproximateOnly)
+    }
+
+    @Test
+    fun `precise grant is not approximate-only`() {
+        val state = LocationUiState(
+            accessLevel = com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel.ALWAYS,
+            isPrecise = true,
+        )
+        assertFalse(state.isApproximateOnly)
+    }
+
+    @Test
+    fun `no grant is not approximate-only`() {
+        val state = LocationUiState(
+            accessLevel = com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel.NONE,
+            isPrecise = false,
+        )
+        assertFalse(state.isApproximateOnly)
+    }
+
+    @Test
     fun `no clock activity yields no status`() {
         val state = LocationUiState()
 

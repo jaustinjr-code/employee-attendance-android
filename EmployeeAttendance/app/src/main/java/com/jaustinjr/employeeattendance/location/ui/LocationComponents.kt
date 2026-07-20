@@ -133,6 +133,36 @@ fun ProximityStatusRow(
     }
 }
 
+/**
+ * Persistent notice shown when location is granted but only at Approximate (coarse) accuracy, where
+ * geofence auto clock-in is unreliable. Reassures the user that manual clock-in still works.
+ */
+@Composable
+fun ApproximateLocationNotice(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = stringResource(R.string.location_approximate_notice),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
 /** Persistent notice shown when only When-In-Use location is granted. */
 @Composable
 fun DegradedNotice(modifier: Modifier = Modifier) {

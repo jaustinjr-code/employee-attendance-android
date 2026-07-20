@@ -19,6 +19,7 @@
 
     <!-- Degraded-mode messaging -->
     <string name="location_permission_degraded_notice">Limited location access: auto clock-in only works while the app is open.</string>
+    <string name="location_approximate_notice">Approximate location only. Automatic clock-in may be unreliable — turn on Precise location for accuracy. You can still clock in and out manually.</string>
 
     <!-- Content descriptions -->
     <string name="cd_location_icon">Location</string>

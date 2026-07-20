@@ -47,6 +47,7 @@ data class LocationUiState(
     val proximity: ProximityState = ProximityState.UNKNOWN,
     val trackingStatus: TrackingStatus = TrackingStatus.STOPPED,
     val accessLevel: LocationAccessLevel = LocationAccessLevel.NONE,
+    val isPrecise: Boolean = false,
     val lastClockInEpochMillis: Long? = null,
     val lastClockOutEpochMillis: Long? = null,
     val lastClockOutWasManual: Boolean = false,
@@ -56,6 +57,13 @@ data class LocationUiState(
 
     /** True under When-In-Use access, so the UI can show the reduced-experience note. */
     val isDegraded: Boolean get() = accessLevel.isDegraded
+
+    /**
+     * Location is granted but only at Approximate (coarse) accuracy — typically ~1–3 km, far larger
+     * than a worksite radius — so geofence-driven auto clock-in is unreliable. Manual clock-in still
+     * works, so the UI surfaces this as a heads-up rather than a blocker.
+     */
+    val isApproximateOnly: Boolean get() = isGranted && !isPrecise
 
     /** True once location is set up (access granted and a location registered): show the pill. */
     val isSetUp: Boolean get() = isGranted && activeWorkLocation != null
@@ -127,6 +135,7 @@ class LocationViewModel(
             proximity = proximity,
             trackingStatus = trackingStatus,
             accessLevel = permission.accessLevel,
+            isPrecise = permission.isPrecise,
             lastClockInEpochMillis = attendance?.lastClockInMillis,
             lastClockOutEpochMillis = attendance?.lastClockOutMillis,
             lastClockOutWasManual = attendance?.lastClockOutManual ?: false,

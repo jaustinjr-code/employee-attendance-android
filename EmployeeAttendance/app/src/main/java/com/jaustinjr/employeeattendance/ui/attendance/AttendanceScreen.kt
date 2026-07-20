@@ -31,6 +31,7 @@ import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.proximity.ProximityState
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.ui.AddWorksiteChip
+import com.jaustinjr.employeeattendance.location.ui.ApproximateLocationNotice
 import com.jaustinjr.employeeattendance.location.ui.LocationPermissionHost
 import com.jaustinjr.employeeattendance.location.ui.LocationPermissionViewModel
 import com.jaustinjr.employeeattendance.location.ui.LocationPill
@@ -111,6 +112,14 @@ fun AttendanceScreen(
                 accessLevel = locationState.accessLevel,
                 onClick = onLocationSetupClick,
                 modifier = controlModifier,
+            )
+        }
+
+        // Heads-up when only Approximate location is granted: auto clock-in is unreliable, manual
+        // still works.
+        if (locationState.isApproximateOnly) {
+            ApproximateLocationNotice(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
         }
     }

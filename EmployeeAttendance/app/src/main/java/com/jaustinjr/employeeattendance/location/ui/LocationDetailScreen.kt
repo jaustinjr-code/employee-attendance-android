@@ -103,6 +103,10 @@ fun LocationDetailContent(
         // LocationUiState.detailClockOutMillis); a newer clock-in resets it.
         state.detailClockOutMillis?.let { LastClockOutRow(lastClockOutEpochMillis = it) }
 
+        if (state.isApproximateOnly) {
+            ApproximateLocationNotice()
+        }
+
         if (state.isDegraded) {
             DegradedNotice()
         }
