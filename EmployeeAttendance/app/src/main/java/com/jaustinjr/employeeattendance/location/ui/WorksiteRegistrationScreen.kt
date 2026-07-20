@@ -185,6 +185,12 @@ fun WorksiteRegistrationContent(
                 ) {
                     Text(stringResource(R.string.worksite_geocode_action))
                 }
+                // Disclosure: geocoding an address is a network call.
+                Text(
+                    text = stringResource(R.string.worksite_address_network_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 

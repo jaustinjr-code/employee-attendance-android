@@ -126,4 +126,12 @@
     <string name="settings_behavior_notify_undo_desc">Records automatically and shows a notification you can undo.</string>
     <string name="settings_behavior_confirm">Ask me to confirm</string>
     <string name="settings_behavior_confirm_desc">Sends a notification and records only after you confirm.</string>
+
+    <!-- Settings: privacy -->
+    <string name="settings_privacy_title">Privacy</string>
+    <string name="settings_reverse_geocode_title">Look up address from location</string>
+    <string name="settings_reverse_geocode_desc">When you capture a worksite from your current location, convert the coordinates to a street address. This sends your coordinates to a network geocoding service. Turn off to store coordinates only.</string>
+
+    <!-- Registration: network disclosure -->
+    <string name="worksite_address_network_note">Address search uses a network service to find matching places.</string>
 </resources>

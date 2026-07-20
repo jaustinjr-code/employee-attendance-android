@@ -92,6 +92,7 @@ class WorksiteRegistrationViewModel(
     private val addressGeocoder: AddressGeocoder,
     private val addressAutocomplete: AddressAutocomplete,
     private val permissionRepository: LocationPermissionRepository,
+    private val reverseGeocodeEnabled: StateFlow<Boolean>,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WorksiteRegistrationUiState())
@@ -210,10 +211,15 @@ class WorksiteRegistrationViewModel(
                     return@launch
                 }
                 // Reverse-geocode the fix to the nearest building address so the worksite carries a
-                // human-readable address (for future mapping/navigation), not just coordinates.
-                val nearestAddress = runCatching {
-                    addressGeocoder.reverseGeocode(fix.latitudeDegrees, fix.longitudeDegrees)
-                }.getOrNull()
+                // human-readable address (for future mapping/navigation), not just coordinates. This
+                // is a network lookup, so honor the user's privacy setting to disable it.
+                val nearestAddress = if (reverseGeocodeEnabled.value) {
+                    runCatching {
+                        addressGeocoder.reverseGeocode(fix.latitudeDegrees, fix.longitudeDegrees)
+                    }.getOrNull()
+                } else {
+                    null
+                }
                 _uiState.update {
                     it.copy(
                         latitude = fix.latitudeDegrees,
@@ -298,6 +304,7 @@ class WorksiteRegistrationViewModel(
                     addressGeocoder = container.addressGeocoder,
                     addressAutocomplete = container.addressAutocomplete,
                     permissionRepository = container.locationPermissionRepository,
+                    reverseGeocodeEnabled = container.privacySettingsStore.reverseGeocodeEnabled,
                 )
             }
         }

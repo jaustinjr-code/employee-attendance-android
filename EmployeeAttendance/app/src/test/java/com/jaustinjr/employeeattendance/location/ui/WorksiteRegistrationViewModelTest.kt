@@ -25,6 +25,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -91,12 +92,14 @@ class WorksiteRegistrationViewModelTest {
         geocoder: AddressGeocoder = FakeGeocoder(POINT),
         autocomplete: AddressAutocomplete = FakeAutocomplete(),
         granted: Boolean = true,
+        reverseGeocodeEnabled: StateFlow<Boolean> = MutableStateFlow(true),
     ) = WorksiteRegistrationViewModel(
         workLocationRepository = repo,
         locationTracker = tracker,
         addressGeocoder = geocoder,
         addressAutocomplete = autocomplete,
         permissionRepository = FakePermissionRepository(granted),
+        reverseGeocodeEnabled = reverseGeocodeEnabled,
     )
 
     @Test
@@ -138,6 +141,20 @@ class WorksiteRegistrationViewModelTest {
         runCurrent()
 
         assertEquals("42 Reverse Ave", model.uiState.value.resolvedAddress)
+    }
+
+    @Test
+    fun `reverse-geocode is skipped when the privacy setting is off`() = runTest {
+        val model = vm(
+            geocoder = FakeGeocoder(POINT, reverse = "42 Reverse Ave"),
+            reverseGeocodeEnabled = MutableStateFlow(false),
+        )
+        model.captureCurrentLocation()
+        runCurrent()
+
+        // Coordinates captured, but no network address lookup performed.
+        assertTrue(model.uiState.value.hasCoordinates)
+        assertNull(model.uiState.value.resolvedAddress)
     }
 
     @Test

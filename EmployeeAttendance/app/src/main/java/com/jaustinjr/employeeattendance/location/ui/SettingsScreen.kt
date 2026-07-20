@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,9 +35,12 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory),
 ) {
     val preference by viewModel.preference.collectAsStateWithLifecycle()
+    val reverseGeocodeEnabled by viewModel.reverseGeocodeEnabled.collectAsStateWithLifecycle()
     SettingsContent(
         selected = preference,
         onSelect = viewModel::onPreferenceSelected,
+        reverseGeocodeEnabled = reverseGeocodeEnabled,
+        onReverseGeocodeChanged = viewModel::onReverseGeocodeEnabledChanged,
         modifier = modifier,
     )
 }
@@ -69,6 +74,8 @@ private val behaviorOptions = listOf(
 fun SettingsContent(
     selected: ClockNotificationPreference,
     onSelect: (ClockNotificationPreference) -> Unit,
+    reverseGeocodeEnabled: Boolean,
+    onReverseGeocodeChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -93,6 +100,44 @@ fun SettingsContent(
                 )
             }
         }
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        Text(
+            text = stringResource(R.string.settings_privacy_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        SwitchRow(
+            titleRes = R.string.settings_reverse_geocode_title,
+            descriptionRes = R.string.settings_reverse_geocode_desc,
+            checked = reverseGeocodeEnabled,
+            onCheckedChange = onReverseGeocodeChanged,
+        )
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    titleRes: Int,
+    descriptionRes: Int,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    androidx.compose.foundation.layout.Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(text = stringResource(titleRes), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = stringResource(descriptionRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -133,6 +178,8 @@ private fun SettingsPreview() {
         SettingsContent(
             selected = ClockNotificationPreference.NOTIFY_UNDO,
             onSelect = {},
+            reverseGeocodeEnabled = true,
+            onReverseGeocodeChanged = {},
         )
     }
 }
