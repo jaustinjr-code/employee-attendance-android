@@ -57,6 +57,9 @@ interface AttendanceRepository {
      * after an automatic clock-in/out.
      */
     fun undoLast(locationId: String)
+
+    /** Deletes all recorded attendance. Backs "delete all data". */
+    fun clearAll() {}
 }
 
 /**
@@ -116,6 +119,13 @@ class DefaultAttendanceRepository(
             runCatching { remote.delete(removed) }
                 .onFailure { Log.w(TAG, "remote delete failed", it) }
         }
+    }
+
+    @Synchronized
+    override fun clearAll() {
+        Log.d(TAG, "clearAll: deleting all attendance events")
+        _events.value = emptyList()
+        local.save(_events.value)
     }
 
     private fun attendanceByLocation(events: List<AttendanceEvent>): Map<String, LocationAttendance> =

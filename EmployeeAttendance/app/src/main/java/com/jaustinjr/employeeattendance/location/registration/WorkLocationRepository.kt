@@ -34,4 +34,7 @@ interface WorkLocationRepository {
 
     /** Removes a registered location; if it was active, the next remaining one becomes active. */
     fun removeWorkLocation(id: String)
+
+    /** Removes all registered locations and clears the active selection. Backs "delete all data". */
+    fun clearAll() {}
 }

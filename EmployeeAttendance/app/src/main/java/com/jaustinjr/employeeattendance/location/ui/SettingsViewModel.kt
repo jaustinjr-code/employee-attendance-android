@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
+import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
+import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.settings.ClockNotificationPreference
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
@@ -19,6 +21,8 @@ import kotlinx.coroutines.flow.StateFlow
 class SettingsViewModel(
     private val settingsStore: ClockNotificationSettingsStore,
     private val privacySettingsStore: PrivacySettingsStore,
+    private val workLocationRepository: WorkLocationRepository,
+    private val attendanceRepository: AttendanceRepository,
 ) : ViewModel() {
 
     val preference: StateFlow<ClockNotificationPreference> = settingsStore.preference
@@ -34,6 +38,12 @@ class SettingsViewModel(
         privacySettingsStore.setReverseGeocodeEnabled(enabled)
     }
 
+    /** Deletes all locally-stored worksites and attendance history. */
+    fun onDeleteAllData() {
+        workLocationRepository.clearAll()
+        attendanceRepository.clearAll()
+    }
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -41,6 +51,8 @@ class SettingsViewModel(
                 SettingsViewModel(
                     settingsStore = container.clockNotificationSettingsStore,
                     privacySettingsStore = container.privacySettingsStore,
+                    workLocationRepository = container.workLocationRepository,
+                    attendanceRepository = container.attendanceRepository,
                 )
             }
         }

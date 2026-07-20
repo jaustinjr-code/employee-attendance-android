@@ -85,6 +85,14 @@ class DefaultWorkLocationRepository(
         }
     }
 
+    @Synchronized
+    override fun clearAll() {
+        Log.d(TAG, "clearAll: removing all registered worksites")
+        _workLocations.value = emptyList()
+        _activeWorkLocation.value = null
+        persist()
+    }
+
     private fun persist() {
         local.save(_workLocations.value, _activeWorkLocation.value?.id)
     }

@@ -96,6 +96,19 @@ class DefaultWorkLocationRepositoryTest {
     }
 
     @Test
+    fun `clearAll removes every worksite and the active selection`() {
+        val local = FakeLocalDataSource(StoredWorkLocations(listOf(office("a"), office("b")), "a"))
+        val repo = repo(local)
+
+        repo.clearAll()
+
+        assertTrue(repo.workLocations.value.isEmpty())
+        assertNull(repo.activeWorkLocation.value)
+        assertTrue(local.snapshot.locations.isEmpty())
+        assertNull(local.snapshot.activeId)
+    }
+
+    @Test
     fun `re-registering the same id replaces it in place`() {
         val local = FakeLocalDataSource()
         val repo = repo(local)

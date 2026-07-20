@@ -95,6 +95,19 @@ class DefaultAttendanceRepositoryTest {
     }
 
     @Test
+    fun `clearAll deletes all recorded attendance`() {
+        val local = FakeLocalDataSource()
+        val repo = repo(local)
+        repo.recordClockIn("site-a", 1_000L)
+        repo.recordClockOut("site-b", 2_000L)
+
+        repo.clearAll()
+
+        assertTrue(repo.attendance.value.isEmpty())
+        assertTrue(local.stored.isEmpty())
+    }
+
+    @Test
     fun `undoLast is a no-op when there is nothing for the location`() {
         val local = FakeLocalDataSource()
         val repo = repo(local)

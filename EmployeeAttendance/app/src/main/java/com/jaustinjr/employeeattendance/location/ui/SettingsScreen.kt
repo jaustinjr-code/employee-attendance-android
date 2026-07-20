@@ -6,13 +6,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -41,6 +47,7 @@ fun SettingsScreen(
         onSelect = viewModel::onPreferenceSelected,
         reverseGeocodeEnabled = reverseGeocodeEnabled,
         onReverseGeocodeChanged = viewModel::onReverseGeocodeEnabledChanged,
+        onDeleteAllData = viewModel::onDeleteAllData,
         modifier = modifier,
     )
 }
@@ -76,8 +83,19 @@ fun SettingsContent(
     onSelect: (ClockNotificationPreference) -> Unit,
     reverseGeocodeEnabled: Boolean,
     onReverseGeocodeChanged: (Boolean) -> Unit,
+    onDeleteAllData: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    if (showDeleteConfirm) {
+        DeleteAllConfirmationDialog(
+            onConfirm = {
+                onDeleteAllData()
+                showDeleteConfirm = false
+            },
+            onDismiss = { showDeleteConfirm = false },
+        )
+    }
     Column(
         modifier = modifier.fillMaxWidth().padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -113,7 +131,54 @@ fun SettingsContent(
             checked = reverseGeocodeEnabled,
             onCheckedChange = onReverseGeocodeChanged,
         )
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        Text(
+            text = stringResource(R.string.settings_data_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = stringResource(R.string.settings_data_summary),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(
+            onClick = { showDeleteConfirm = true },
+            colors = ButtonDefaults.textButtonColors(
+                contentColor = MaterialTheme.colorScheme.error,
+            ),
+        ) {
+            Text(stringResource(R.string.settings_data_delete_all))
+        }
     }
+}
+
+@Composable
+private fun DeleteAllConfirmationDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_data_delete_confirm_title)) },
+        text = { Text(stringResource(R.string.settings_data_delete_confirm_message)) },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) {
+                Text(stringResource(R.string.settings_data_delete_all))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_data_delete_cancel))
+            }
+        },
+    )
 }
 
 @Composable
@@ -180,6 +245,7 @@ private fun SettingsPreview() {
             onSelect = {},
             reverseGeocodeEnabled = true,
             onReverseGeocodeChanged = {},
+            onDeleteAllData = {},
         )
     }
 }
