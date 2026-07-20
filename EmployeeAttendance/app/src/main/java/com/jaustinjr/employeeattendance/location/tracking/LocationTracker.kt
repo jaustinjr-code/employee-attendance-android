@@ -10,6 +10,7 @@ import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -84,13 +85,19 @@ class FusedLocationTracker(
         .conflate()
 
     @SuppressLint("MissingPermission")
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override suspend fun currentLocation(priority: LocationPriority): LocationSample? {
         val request = CurrentLocationRequest.Builder()
             .setPriority(priority.toGmsPriority())
             .build()
-        return client.getCurrentLocation(request, null).await()?.toSample().also {
-            Log.d(TAG, "currentLocation($priority) -> $it")
-        }
+        // Tie the request to a cancellation token so that when the caller cancels (e.g. a capture
+        // timeout, or the screen leaving), the underlying location request is actually cancelled and
+        // the radio released — not left running until it completes on its own.
+        val cancellation = CancellationTokenSource()
+        return client.getCurrentLocation(request, cancellation.token)
+            .await(cancellation)
+            ?.toSample()
+            .also { Log.d(TAG, "currentLocation($priority) -> $it") }
     }
 
     private companion object {
