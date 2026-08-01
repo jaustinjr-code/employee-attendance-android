@@ -24,5 +24,8 @@ class EmployeeAttendanceApplication : Application() {
         container = DefaultAppContainer(this)
         // Start the location feature's reactive coordination for the life of the process.
         container.locationFeatureCoordinator.start(applicationScope)
+        // Consume proximity Arrived/Departed events to drive hands-off clock in/out (the Worksite
+        // feature). Runs for the whole process so auto-clock works while no screen is visible.
+        container.attendanceAutoClockController.start(applicationScope)
     }
 }

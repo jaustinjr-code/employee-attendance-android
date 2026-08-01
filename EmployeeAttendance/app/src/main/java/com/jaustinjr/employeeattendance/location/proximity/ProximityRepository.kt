@@ -61,7 +61,9 @@ class ProximityRepository(
     val events: SharedFlow<ProximityEvent> = _events.asSharedFlow()
 
     /** Feed from OS geofence transitions (background path). */
+    @Synchronized
     fun onGeofenceTransition(targetId: String, state: ProximityState) {
+        clearStaleStateIfTargetChanged(targetId)
         setState(state, targetId)
     }
 
@@ -71,6 +73,7 @@ class ProximityRepository(
         // Read current state, compute, and commit all under the monitor so a concurrent
         // geofence-driven commit can't slip in between the read and the write and get clobbered by
         // a decision made from stale state.
+        clearStaleStateIfTargetChanged(target.id)
         val distance = ProximityCalculator.distanceMeters(sample, target)
         val next = ProximityCalculator.evaluate(
             current = _proximity.value,
@@ -98,6 +101,27 @@ class ProximityRepository(
         if (previous == ProximityState.INSIDE && departedFrom != null) {
             Log.d(TAG, "emit Departed($departedFrom) on reset")
             _events.tryEmit(ProximityEvent.Departed(departedFrom))
+        }
+    }
+
+    /**
+     * When the watched target changes — the user switched their active worksite — any prior INSIDE/
+     * OUTSIDE state belonged to the OLD target and must not carry over. If it did, evaluating the new
+     * target from a stale INSIDE would emit a transition tagged with the *new* target id (e.g. a
+     * Departed for the worksite you just switched TO, rather than the one you left). Clearing to
+     * UNKNOWN lets the new target evaluate from a clean slate.
+     *
+     * No event is emitted here: clocking out of the previous worksite on an active-worksite switch is
+     * handled explicitly by that switch flow (with a notification naming the correct worksite), so
+     * emitting a Departed here too would double-count.
+     */
+    private fun clearStaleStateIfTargetChanged(newTargetId: String) {
+        val oldTarget = lastTargetId ?: return
+        if (newTargetId == oldTarget) return
+        if (_proximity.value != ProximityState.UNKNOWN) {
+            Log.d(TAG, "target changed $oldTarget -> $newTargetId; clearing stale proximity")
+            _proximity.value = ProximityState.UNKNOWN
+            store.save(ProximityState.UNKNOWN, oldTarget)
         }
     }
 

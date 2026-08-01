@@ -9,11 +9,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
+import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
+import com.jaustinjr.employeeattendance.attendance.ClockSource
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
 import com.jaustinjr.employeeattendance.location.proximity.ProximityState
-import com.jaustinjr.employeeattendance.location.registration.LocationClockInRepository
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationPowerPolicy
@@ -46,13 +47,23 @@ data class LocationUiState(
     val proximity: ProximityState = ProximityState.UNKNOWN,
     val trackingStatus: TrackingStatus = TrackingStatus.STOPPED,
     val accessLevel: LocationAccessLevel = LocationAccessLevel.NONE,
+    val isPrecise: Boolean = false,
     val lastClockInEpochMillis: Long? = null,
+    val lastClockOutEpochMillis: Long? = null,
+    val lastClockOutWasManual: Boolean = false,
 ) {
     /** Whether any location access is granted. */
     val isGranted: Boolean get() = accessLevel.isGranted
 
     /** True under When-In-Use access, so the UI can show the reduced-experience note. */
     val isDegraded: Boolean get() = accessLevel.isDegraded
+
+    /**
+     * Location is granted but only at Approximate (coarse) accuracy — typically ~1–3 km, far larger
+     * than a worksite radius — so geofence-driven auto clock-in is unreliable. Manual clock-in still
+     * works, so the UI surfaces this as a heads-up rather than a blocker.
+     */
+    val isApproximateOnly: Boolean get() = isGranted && !isPrecise
 
     /** True once location is set up (access granted and a location registered): show the pill. */
     val isSetUp: Boolean get() = isGranted && activeWorkLocation != null
@@ -62,6 +73,37 @@ data class LocationUiState(
      * registered location. The map lives on the detail screen, gated on this.
      */
     val canShowMap: Boolean get() = accessLevel.supportsBackgroundTracking && activeWorkLocation != null
+
+    /** Currently clocked in: there is a clock-in and no later clock-out. */
+    val isClockedIn: Boolean
+        get() {
+            val inMillis = lastClockInEpochMillis ?: return false
+            val outMillis = lastClockOutEpochMillis ?: return true
+            return inMillis > outMillis
+        }
+
+    /** Attendance screen: the clock-in time to show, present whenever currently clocked in. */
+    val attendanceClockInMillis: Long?
+        get() = if (isClockedIn) lastClockInEpochMillis else null
+
+    /**
+     * Attendance screen: a clock-out time to show only when it was a *manual* action (tapping the
+     * button). Automatic clock-outs (leaving the radius) stay off this screen. A subsequent clock-in
+     * makes [isClockedIn] true again, which resets this to null.
+     */
+    val attendanceClockOutMillis: Long?
+        get() = if (!isClockedIn && lastClockOutWasManual) lastClockOutEpochMillis else null
+
+    /**
+     * Worksite detail: the last clock-out (any source), but only when it is more recent than the
+     * last clock-in. Once a newer clock-in arrives, the stale clock-out is hidden/reset.
+     */
+    val detailClockOutMillis: Long?
+        get() {
+            val out = lastClockOutEpochMillis ?: return null
+            val inMillis = lastClockInEpochMillis
+            return if (inMillis == null || out > inMillis) out else null
+        }
 }
 
 /**
@@ -77,7 +119,7 @@ class LocationViewModel(
     private val locationStateRepository: LocationStateRepository,
     private val permissionRepository: LocationPermissionRepository,
     private val locationTracker: LocationTracker,
-    private val clockInRepository: LocationClockInRepository,
+    private val attendanceRepository: AttendanceRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<LocationUiState> = combine(
@@ -85,14 +127,21 @@ class LocationViewModel(
         proximityRepository.proximity,
         locationStateRepository.trackingStatus,
         permissionRepository.permissionState,
-        clockInRepository.lastClockIns,
-    ) { activeLocation, proximity, trackingStatus, permission, clockIns ->
+        attendanceRepository.attendance,
+    ) { activeLocation, proximity, trackingStatus, permission, attendanceMap ->
+        // With no active worksite, the manual clock button records against the general timeclock; the
+        // status card should reflect that same record.
+        val attendanceId = activeLocation?.id ?: AttendanceRepository.GENERAL_TIMECLOCK_ID
+        val attendance = attendanceMap[attendanceId]
         LocationUiState(
             activeWorkLocation = activeLocation,
             proximity = proximity,
             trackingStatus = trackingStatus,
             accessLevel = permission.accessLevel,
-            lastClockInEpochMillis = activeLocation?.let { clockIns[it.id] },
+            isPrecise = permission.isPrecise,
+            lastClockInEpochMillis = attendance?.lastClockInMillis,
+            lastClockOutEpochMillis = attendance?.lastClockOutMillis,
+            lastClockOutWasManual = attendance?.lastClockOutManual ?: false,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -105,14 +154,28 @@ class LocationViewModel(
     }
 
     /**
-     * Records a clock-in against the currently active work location, if any. Wired to the clock-in
-     * action so the location detail screen can show "last clocked in" for that location.
+     * Records a *manual* clock-in against the active worksite, or the general timeclock when none is
+     * active — so the app works even with no location grant and no registered worksite.
      */
     fun onClockIn() {
-        val active = workLocationRepository.activeWorkLocation.value
-        Log.d(TAG, "onClockIn: activeLocation=${active?.id}")
-        active?.let { clockInRepository.recordClockIn(it.id) }
+        val id = manualClockId()
+        Log.d(TAG, "onClockIn: id=$id")
+        attendanceRepository.recordClockIn(id, source = ClockSource.MANUAL)
     }
+
+    /**
+     * Records a *manual* clock-out against the active worksite, or the general timeclock when none is
+     * active. Manual clock-outs are shown on the attendance screen; automatic (geofence) ones are not.
+     */
+    fun onClockOut() {
+        val id = manualClockId()
+        Log.d(TAG, "onClockOut: id=$id")
+        attendanceRepository.recordClockOut(id, source = ClockSource.MANUAL)
+    }
+
+    private fun manualClockId(): String =
+        workLocationRepository.activeWorkLocation.value?.id
+            ?: AttendanceRepository.GENERAL_TIMECLOCK_ID
 
     /**
      * Supplies foreground fixes only under When-In-Use access. Under full (ALWAYS) access the
@@ -162,7 +225,7 @@ class LocationViewModel(
                     locationStateRepository = container.locationStateRepository,
                     permissionRepository = container.locationPermissionRepository,
                     locationTracker = container.locationTracker,
-                    clockInRepository = container.locationClockInRepository,
+                    attendanceRepository = container.attendanceRepository,
                 )
             }
         }

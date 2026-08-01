@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.Info
@@ -71,6 +72,29 @@ fun LocationSetupChip(
     )
 }
 
+/**
+ * Chip shown on the attendance screen when location access is granted but no worksite is registered
+ * yet. Tapping it opens the worksite registration flow.
+ */
+@Composable
+fun AddWorksiteChip(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ElevatedAssistChip(
+        onClick = onClick,
+        modifier = modifier,
+        label = { Text(stringResource(R.string.worksite_add)) },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                modifier = Modifier.size(AssistChipDefaults.IconSize),
+            )
+        },
+    )
+}
+
 /** A single line describing whether the user is at their work location. */
 @Composable
 fun ProximityStatusRow(
@@ -106,6 +130,36 @@ fun ProximityStatusRow(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
+    }
+}
+
+/**
+ * Persistent notice shown when location is granted but only at Approximate (coarse) accuracy, where
+ * geofence auto clock-in is unreliable. Reassures the user that manual clock-in still works.
+ */
+@Composable
+fun ApproximateLocationNotice(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = stringResource(R.string.location_approximate_notice),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 

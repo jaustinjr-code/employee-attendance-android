@@ -21,6 +21,9 @@ import androidx.navigation.compose.rememberNavController
 import com.jaustinjr.employeeattendance.location.ui.LocationDetailScreen
 import com.jaustinjr.employeeattendance.location.ui.LocationPermissionViewModel
 import com.jaustinjr.employeeattendance.location.ui.LocationViewModel
+import com.jaustinjr.employeeattendance.location.ui.SettingsScreen
+import com.jaustinjr.employeeattendance.location.ui.WorksiteRegistrationScreen
+import com.jaustinjr.employeeattendance.location.ui.WorksitesScreen
 import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
 import com.jaustinjr.employeeattendance.ui.main.MainAppBar
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
@@ -31,6 +34,15 @@ object Attendance
 
 @Serializable
 object LocationDetail
+
+@Serializable
+object Worksites
+
+@Serializable
+object WorksiteRegistration
+
+@Serializable
+object Settings
 
 class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -50,7 +62,13 @@ class MainActivity : ComponentActivity() {
                     viewModel(factory = LocationPermissionViewModel.Factory)
 
                 Scaffold(
-                    topBar = { MainAppBar(appBarTitle) }
+                    topBar = {
+                        MainAppBar(
+                            title = appBarTitle,
+                            onOpenWorksites = { navController.navigate(Worksites) },
+                            onOpenSettings = { navController.navigate(Settings) },
+                        )
+                    }
                 ) { padding ->
                     NavHost(navController, startDestination = Attendance, modifier = Modifier.padding(padding)) {
                         composable<Attendance> {
@@ -60,6 +78,7 @@ class MainActivity : ComponentActivity() {
                             }
                             AttendanceScreen(
                                 onOpenLocationDetail = { navController.navigate(LocationDetail) },
+                                onAddWorksite = { navController.navigate(WorksiteRegistration) },
                                 locationViewModel = locationViewModel,
                                 locationPermissionViewModel = locationPermissionViewModel,
                             )
@@ -69,7 +88,35 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(title) {
                                 appBarTitle = title
                             }
-                            LocationDetailScreen(viewModel = locationViewModel)
+                            LocationDetailScreen(
+                                viewModel = locationViewModel,
+                                onManageWorksites = { navController.navigate(Worksites) },
+                            )
+                        }
+                        composable<Worksites> {
+                            val title = stringResource(R.string.worksites_title)
+                            LaunchedEffect(title) {
+                                appBarTitle = title
+                            }
+                            WorksitesScreen(
+                                onAddWorksite = { navController.navigate(WorksiteRegistration) },
+                            )
+                        }
+                        composable<WorksiteRegistration> {
+                            val title = stringResource(R.string.worksite_registration_title)
+                            LaunchedEffect(title) {
+                                appBarTitle = title
+                            }
+                            WorksiteRegistrationScreen(
+                                onSaved = { navController.popBackStack() },
+                            )
+                        }
+                        composable<Settings> {
+                            val title = stringResource(R.string.settings_title)
+                            LaunchedEffect(title) {
+                                appBarTitle = title
+                            }
+                            SettingsScreen()
                         }
                     }
                 }

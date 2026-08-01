@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.location.proximity
 
 import android.content.Context
 import android.util.Log
+import com.jaustinjr.employeeattendance.storage.SecurePreferences
 
 /**
  * Persists the last known proximity state so it survives process death.
@@ -28,8 +29,7 @@ class SharedPrefsProximityStateStore(
     context: Context,
 ) : ProximityStateStore {
 
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = SecurePreferences.create(context, PREFS_NAME)
 
     override fun load(): ProximityState =
         prefs.getString(KEY_STATE, null)

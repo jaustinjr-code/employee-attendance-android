@@ -1,13 +1,14 @@
 package com.jaustinjr.employeeattendance.location.ui
 
+import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
+import com.jaustinjr.employeeattendance.attendance.ClockSource
+import com.jaustinjr.employeeattendance.attendance.LocationAttendance
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
 import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
 import com.jaustinjr.employeeattendance.location.proximity.ProximityState
 import com.jaustinjr.employeeattendance.location.proximity.ProximityStateStore
-import com.jaustinjr.employeeattendance.location.registration.LocationClockInRepository
-import com.jaustinjr.employeeattendance.location.registration.StubWorkLocationRepository
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationRequestConfig
@@ -26,7 +27,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -56,12 +56,46 @@ class LocationViewModelTest {
         override suspend fun currentLocation(priority: LocationPriority): LocationSample? = null
     }
 
-    private class NullActiveWorkLocationRepository : WorkLocationRepository {
-        override val workLocations: StateFlow<List<WorkLocation>> = MutableStateFlow(emptyList())
-        override val activeWorkLocation: StateFlow<WorkLocation?> = MutableStateFlow(null)
-        override fun setActiveWorkLocation(id: String) = Unit
-        override fun registerWorkLocation(location: WorkLocation) = Unit
-        override fun removeWorkLocation(id: String) = Unit
+    /** In-memory work-location repo seeded with one active location for the tests. */
+    private class SeededWorkLocationRepository(
+        seed: WorkLocation? = TEST_OFFICE,
+    ) : WorkLocationRepository {
+        private val _list = MutableStateFlow(listOfNotNull(seed))
+        override val workLocations: StateFlow<List<WorkLocation>> = _list
+        private val _active = MutableStateFlow(seed)
+        override val activeWorkLocation: StateFlow<WorkLocation?> = _active
+        override fun setActiveWorkLocation(id: String) {
+            _active.value = _list.value.firstOrNull { it.id == id } ?: _active.value
+        }
+        override fun registerWorkLocation(location: WorkLocation) {
+            _list.value = _list.value.filterNot { it.id == location.id } + location
+            if (_active.value == null) _active.value = location
+        }
+        override fun removeWorkLocation(id: String) {
+            _list.value = _list.value.filterNot { it.id == id }
+            if (_active.value?.id == id) _active.value = _list.value.firstOrNull()
+        }
+    }
+
+    /** Minimal in-memory [AttendanceRepository] for asserting clock recording. */
+    private class FakeAttendanceRepository : AttendanceRepository {
+        private val _attendance = MutableStateFlow<Map<String, LocationAttendance>>(emptyMap())
+        override val attendance: StateFlow<Map<String, LocationAttendance>> = _attendance
+        override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) {
+            val existing = _attendance.value[locationId] ?: LocationAttendance()
+            _attendance.value = _attendance.value +
+                (locationId to existing.copy(lastClockInMillis = epochMillis))
+        }
+        override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) {
+            val existing = _attendance.value[locationId] ?: LocationAttendance()
+            _attendance.value = _attendance.value + (locationId to existing.copy(
+                lastClockOutMillis = epochMillis,
+                lastClockOutManual = source == ClockSource.MANUAL,
+            ))
+        }
+        override fun undoLast(locationId: String) {
+            _attendance.value = _attendance.value - locationId
+        }
     }
 
     private val store = object : ProximityStateStore {
@@ -74,30 +108,30 @@ class LocationViewModelTest {
         LocationPermissionState(level, isPrecise = level != LocationAccessLevel.NONE)
 
     private fun viewModel(
-        workLocations: WorkLocationRepository = StubWorkLocationRepository(),
+        workLocations: WorkLocationRepository = SeededWorkLocationRepository(),
         permission: LocationAccessLevel = LocationAccessLevel.ALWAYS,
         tracker: LocationTracker = FakeLocationTracker(),
-        clockIns: LocationClockInRepository = LocationClockInRepository(),
+        attendance: AttendanceRepository = FakeAttendanceRepository(),
     ) = LocationViewModel(
         workLocationRepository = workLocations,
         proximityRepository = ProximityRepository(store),
         locationStateRepository = LocationStateRepository(),
         permissionRepository = FakePermissionRepository(state(permission)),
         locationTracker = tracker,
-        clockInRepository = clockIns,
+        attendanceRepository = attendance,
     )
 
     @Test
     fun `uiState reflects location, access level, and last clock-in`() = runTest {
-        val clockIns = LocationClockInRepository()
-        clockIns.recordClockIn(StubWorkLocationRepository.DEFAULT_OFFICE.id, 5_000L)
-        val vm = viewModel(permission = LocationAccessLevel.ALWAYS, clockIns = clockIns)
+        val attendance = FakeAttendanceRepository()
+        attendance.recordClockIn(TEST_OFFICE.id, 5_000L)
+        val vm = viewModel(permission = LocationAccessLevel.ALWAYS, attendance = attendance)
 
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
 
         val ui = vm.uiState.value
-        assertEquals(StubWorkLocationRepository.DEFAULT_OFFICE, ui.activeWorkLocation)
+        assertEquals(TEST_OFFICE, ui.activeWorkLocation)
         assertEquals(LocationAccessLevel.ALWAYS, ui.accessLevel)
         assertEquals(5_000L, ui.lastClockInEpochMillis)
         assertTrue(ui.isSetUp)
@@ -117,22 +151,40 @@ class LocationViewModelTest {
 
     @Test
     fun `onClockIn records against the active location`() = runTest {
-        val clockIns = LocationClockInRepository()
-        val vm = viewModel(clockIns = clockIns)
+        val attendance = FakeAttendanceRepository()
+        val vm = viewModel(attendance = attendance)
 
         vm.onClockIn()
 
-        assertTrue(clockIns.lastClockIns.value.containsKey(StubWorkLocationRepository.DEFAULT_OFFICE.id))
+        assertTrue(attendance.attendance.value.containsKey(TEST_OFFICE.id))
     }
 
     @Test
-    fun `onClockIn is a no-op when there is no active location`() = runTest {
-        val clockIns = LocationClockInRepository()
-        val vm = viewModel(workLocations = NullActiveWorkLocationRepository(), clockIns = clockIns)
+    fun `onClockOut records a manual clock-out against the active location`() = runTest {
+        val attendance = FakeAttendanceRepository()
+        val vm = viewModel(attendance = attendance)
+
+        vm.onClockOut()
+
+        assertTrue(attendance.attendance.value[TEST_OFFICE.id]?.lastClockOutManual == true)
+    }
+
+    @Test
+    fun `onClockIn records against the general timeclock when no worksite is active`() = runTest {
+        val attendance = FakeAttendanceRepository()
+        val vm = viewModel(
+            workLocations = SeededWorkLocationRepository(seed = null),
+            attendance = attendance,
+        )
 
         vm.onClockIn()
 
-        assertTrue(clockIns.lastClockIns.value.isEmpty())
+        // Usable as a plain timeclock with no worksite: records against the general id.
+        assertTrue(
+            attendance.attendance.value.containsKey(
+                com.jaustinjr.employeeattendance.attendance.AttendanceRepository.GENERAL_TIMECLOCK_ID,
+            ),
+        )
     }
 
     @Test
@@ -160,5 +212,16 @@ class LocationViewModelTest {
         runCurrent()
 
         assertEquals(0, tracker.updatesCallCount)
+    }
+
+    private companion object {
+        val TEST_OFFICE = WorkLocation(
+            id = "downtown-office",
+            name = "Downtown Office",
+            address = "123 Market St",
+            latitudeDegrees = 37.7749,
+            longitudeDegrees = -122.4194,
+            radiusMeters = 150f,
+        )
     }
 }

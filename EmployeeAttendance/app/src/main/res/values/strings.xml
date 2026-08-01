@@ -19,6 +19,7 @@
 
     <!-- Degraded-mode messaging -->
     <string name="location_permission_degraded_notice">Limited location access: auto clock-in only works while the app is open.</string>
+    <string name="location_approximate_notice">Approximate location only. Automatic clock-in may be unreliable — turn on Precise location for accuracy. You can still clock in and out manually.</string>
 
     <!-- Content descriptions -->
     <string name="cd_location_icon">Location</string>
@@ -28,6 +29,10 @@
     <string name="location_tracking_channel_description">Shows when the app is checking your location to record attendance.</string>
     <string name="location_tracking_notification_title">Tracking work location</string>
     <string name="location_tracking_notification_body">Checking when you arrive at and leave your work location.</string>
+
+    <!-- Attendance clock card status -->
+    <string name="attendance_clocked_in_status">Clocked in at %1$s</string>
+    <string name="attendance_clocked_out_status">Clocked out at %1$s</string>
 
     <!-- Location feature UI -->
     <string name="location_section_title">Work Location</string>
@@ -43,6 +48,98 @@
     <string name="location_detail_title">Location</string>
     <string name="location_detail_map_locked">Turn on “Allow all the time” to see the map here.</string>
     <string name="location_last_clock_in">Last clocked in: %1$s</string>
+    <string name="location_last_clock_out">Last clocked out: %1$s</string>
     <string name="location_no_clock_in">No clock-ins recorded yet</string>
     <string name="location_detail_no_location">No work location is set up yet.</string>
+    <string name="location_detail_manage_worksites">Manage worksites</string>
+
+    <!-- Auto clock-in/out notifications -->
+    <string name="clock_notification_channel_name">Auto clock-in</string>
+    <string name="clock_notification_channel_description">Notifies you when you\'re automatically clocked in or out at a worksite.</string>
+    <string name="clock_notification_clocked_in_title">Clocked in at %1$s</string>
+    <string name="clock_notification_clocked_out_title">Clocked out at %1$s</string>
+    <string name="clock_notification_confirm_in_title">Arrived at %1$s. Clock in?</string>
+    <string name="clock_notification_confirm_out_title">Left %1$s. Clock out?</string>
+    <string name="clock_notification_undo">Undo</string>
+    <string name="clock_notification_confirm">Confirm</string>
+
+    <!-- App bar overflow menu -->
+    <string name="menu_worksites">Manage Worksites</string>
+    <string name="menu_settings">Settings</string>
+    <string name="cd_more_options">More options</string>
+
+    <!-- Worksites list screen -->
+    <string name="worksites_title">Worksites</string>
+    <string name="worksites_empty">No worksites yet. Add one to enable hands-off clock in and out.</string>
+    <string name="worksite_add">Add worksite</string>
+    <string name="cd_worksite_add">Add worksite</string>
+    <string name="worksite_active_label">Active</string>
+    <string name="worksite_set_active">Set active</string>
+    <string name="worksite_remove">Remove</string>
+
+    <!-- Switch-active confirmation (when clocked in at the current active worksite) -->
+    <string name="worksite_switch_confirm_title">Switch active worksite?</string>
+    <string name="worksite_switch_confirm_message">You\'re clocked in at %1$s. Switching to %2$s will clock you out of %1$s right now, and you\'ll get a notification. Continue?</string>
+    <string name="worksite_switch_confirm_action">Switch and clock out</string>
+    <string name="worksite_switch_cancel">Cancel</string>
+    <string name="worksite_radius_summary">Radius %1$s</string>
+
+    <!-- Worksite registration screen -->
+    <string name="worksite_registration_title">Add Worksite</string>
+    <string name="worksite_name_label">Name</string>
+    <string name="worksite_address_label">Address</string>
+    <string name="worksite_radius_label">Trigger radius</string>
+    <string name="worksite_radius_near">Near</string>
+    <string name="worksite_radius_default">Default</string>
+    <string name="worksite_radius_distant">Distant</string>
+    <string name="worksite_radius_helper_near">Snug fit — clocks you in only within %1$s, right at the door.</string>
+    <string name="worksite_radius_helper_default">Balanced — clocks you in within %1$s of the site.</string>
+    <string name="worksite_radius_helper_distant">Wide net — clocks you in anywhere within %1$s, great for large campuses.</string>
+    <string name="worksite_capture_mode">How should we set the location?</string>
+    <string name="worksite_capture_current">Use current location</string>
+    <string name="worksite_capture_address">Enter an address</string>
+    <string name="worksite_capture_current_action">Capture current location</string>
+    <string name="worksite_geocode_action">Find address</string>
+    <string name="worksite_capturing">Getting your location…</string>
+    <string name="worksite_geocoding">Looking up address…</string>
+    <string name="worksite_address_hint">Tap “Find address” to set this as the worksite location.</string>
+    <string name="worksite_location_set_title">Location set</string>
+    <string name="worksite_location_captured">Location captured</string>
+    <string name="worksite_location_accuracy">Accurate to about ±%1$s. Tap “Capture current location” again to retry.</string>
+    <string name="worksite_capture_failed">Couldn\'t get your current location. Try again or enter an address.</string>
+    <string name="worksite_capture_timeout">Location is taking too long. Move to an open area and try again.</string>
+    <string name="worksite_geocode_failed">Couldn\'t find that address. Check it and try again.</string>
+    <string name="worksite_needs_permission">Grant location access on the attendance screen first to capture your current location.</string>
+    <string name="worksite_save">Save worksite</string>
+    <string name="worksite_saved">Worksite saved</string>
+    <string name="worksite_error_name_required">Enter a name for this worksite.</string>
+    <string name="worksite_error_address_required">Enter an address.</string>
+    <string name="worksite_error_location_required">Capture the current location or find an address first.</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_clock_behavior_title">Auto clock-in behavior</string>
+    <string name="settings_clock_behavior_subtitle">Choose what happens when you arrive at or leave a worksite.</string>
+    <string name="settings_behavior_silent">Clock in silently</string>
+    <string name="settings_behavior_silent_desc">Records automatically with no notification.</string>
+    <string name="settings_behavior_notify_undo">Notify me (with undo)</string>
+    <string name="settings_behavior_notify_undo_desc">Records automatically and shows a notification you can undo.</string>
+    <string name="settings_behavior_confirm">Ask me to confirm</string>
+    <string name="settings_behavior_confirm_desc">Sends a notification and records only after you confirm.</string>
+
+    <!-- Settings: privacy -->
+    <string name="settings_privacy_title">Privacy</string>
+    <string name="settings_reverse_geocode_title">Look up address from location</string>
+    <string name="settings_reverse_geocode_desc">When you capture a worksite from your current location, convert the coordinates to a street address. This sends your coordinates to a network geocoding service. Turn off to store coordinates only.</string>
+
+    <!-- Registration: network disclosure -->
+    <string name="worksite_address_network_note">Address search uses a network service to find matching places.</string>
+
+    <!-- Settings: your data -->
+    <string name="settings_data_title">Your data</string>
+    <string name="settings_data_summary">Your worksites and attendance history are stored encrypted on this device. They aren\'t sent anywhere, except when you choose to look up an address (a network service).</string>
+    <string name="settings_data_delete_all">Delete all data</string>
+    <string name="settings_data_delete_cancel">Cancel</string>
+    <string name="settings_data_delete_confirm_title">Delete all data?</string>
+    <string name="settings_data_delete_confirm_message">This permanently removes every worksite and all attendance history from this device. This can\'t be undone.</string>
 </resources>

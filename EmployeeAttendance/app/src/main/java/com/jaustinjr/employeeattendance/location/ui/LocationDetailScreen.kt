@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -38,21 +39,28 @@ import java.util.Locale
 fun LocationDetailScreen(
     modifier: Modifier = Modifier,
     viewModel: LocationViewModel = viewModel(factory = LocationViewModel.Factory),
+    onManageWorksites: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    LocationDetailContent(state = state, modifier = modifier)
+    LocationDetailContent(
+        state = state,
+        onManageWorksites = onManageWorksites,
+        modifier = modifier,
+    )
 }
 
 @Composable
 fun LocationDetailContent(
     state: LocationUiState,
     modifier: Modifier = Modifier,
+    onManageWorksites: () -> Unit = {},
 ) {
     val location = state.activeWorkLocation
     if (location == null) {
-        Box(
+        Column(
             modifier = modifier.fillMaxWidth().padding(24.dp),
-            contentAlignment = Alignment.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
                 text = stringResource(R.string.location_detail_no_location),
@@ -60,6 +68,9 @@ fun LocationDetailContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+            TextButton(onClick = onManageWorksites) {
+                Text(stringResource(R.string.location_detail_manage_worksites))
+            }
         }
         return
     }
@@ -88,9 +99,20 @@ fun LocationDetailContent(
         }
 
         LastClockInRow(lastClockInEpochMillis = state.lastClockInEpochMillis)
+        // Only shown when the last clock-out is more recent than the last clock-in (see
+        // LocationUiState.detailClockOutMillis); a newer clock-in resets it.
+        state.detailClockOutMillis?.let { LastClockOutRow(lastClockOutEpochMillis = it) }
+
+        if (state.isApproximateOnly) {
+            ApproximateLocationNotice()
+        }
 
         if (state.isDegraded) {
             DegradedNotice()
+        }
+
+        TextButton(onClick = onManageWorksites) {
+            Text(stringResource(R.string.location_detail_manage_worksites))
         }
     }
 }
@@ -126,6 +148,19 @@ private fun LastClockInRow(
     }
     Text(
         text = text,
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun LastClockOutRow(
+    lastClockOutEpochMillis: Long,
+    modifier: Modifier = Modifier,
+) {
+    val formatted = remember(lastClockOutEpochMillis) { formatTimestamp(lastClockOutEpochMillis) }
+    Text(
+        text = stringResource(R.string.location_last_clock_out, formatted),
         style = MaterialTheme.typography.bodyLarge,
         modifier = modifier,
     )
