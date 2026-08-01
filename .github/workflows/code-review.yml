@@ -32,7 +32,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
 
             Please review this pull request and provide feedback on:
             - Code quality and best practices
@@ -45,37 +45,25 @@ jobs:
             summary comment on the PR, even if you have no issues to report
             (e.g. "No issues found, this looks good!").
 
-          # Use the `settings` input (JSON) instead of --allowed-tools in
-          # claude_args. claude_args is parsed by splitting on whitespace,
-          # which breaks tool patterns like "Bash(gh issue view:*)" that
-          # contain spaces (see anthropics/claude-code-action#844). The
-          # settings JSON is not affected by that bug.
-          settings: |
-            {
-              "permissions": {
-                "allow": [
-                  "Bash(gh issue view:*)",
-                  "Bash(gh search:*)",
-                  "Bash(gh issue list:*)",
-                  "Bash(gh pr comment:*)",
-                  "Bash(gh pr diff:*)",
-                  "Bash(gh pr view:*)",
-                  "Bash(gh pr list:*)",
-                  "mcp__github_inline_comment__create_inline_comment",
-                  "mcp__github_comment__update_claude_comment",
-                  "mcp__github_comment__update_claude_comment",
-                  "mcp__github__create_pending_pull_request_review",
-                  "mcp__github__add_pull_request_review_comment_to_pending_review",
-                  "mcp__github__submit_pending_pull_request_review",
-                  "mcp__github__get_pull_request_diff"
-                ]
-              }
-            }
+            IMPORTANT: This is a single, non-interactive CI run - there is no
+            later turn where you get resumed. Do not use the Task/Agent tool
+            to spawn background subagents for parts of this review (e.g. one
+            per review pass); their results are never collected and the run
+            ends the moment you stop, even if you say you'll "wait" for them.
+            Do all analysis synchronously in this conversation, and make your
+            last action posting the actual review content.
 
-          # Supply remaining CLI flags that don't contain spaces - these are
-          # safe to pass via claude_args.
+          # NOTE: the `settings` input's permissions.allow list only
+          # pre-approves tools that the auto-detected mode (tag/agent) already
+          # exposes - it does NOT add new MCP tools to the run. To actually
+          # make the PR-review tools callable, they must go through
+          # claude_args' --allowedTools instead, as a single quoted value
+          # (multiline claude_args splits on whitespace otherwise, breaking
+          # any tool pattern containing a space - see
+          # anthropics/claude-code-action#844).
           claude_args: |
             --model sonnet
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,mcp__github__create_pending_pull_request_review,mcp__github__add_pull_request_review_comment_to_pending_review,mcp__github__submit_pending_pull_request_review,mcp__github__get_pull_request_diff,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"
 
           # Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
           # use_sticky_comment: true
