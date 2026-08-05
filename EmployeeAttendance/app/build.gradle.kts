@@ -47,6 +47,18 @@ android {
     }
 }
 
+// BackupRulesTest reads AndroidManifest.xml and res/xml/*.xml straight off the filesystem. Those
+// aren't inputs of the unit-test task by default, so weakening a backup rule without touching any
+// .kt file would leave the task UP-TO-DATE and the guard unrun. Declare them explicitly.
+tasks.withType<Test>().configureEach {
+    inputs.dir(layout.projectDirectory.dir("src/main/res/xml"))
+        .withPropertyName("backupRuleResources")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(layout.projectDirectory.file("src/main/AndroidManifest.xml"))
+        .withPropertyName("mainManifest")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

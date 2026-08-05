@@ -89,15 +89,37 @@ class BackupRulesTest {
     }
 
     @Test
-    fun `rule files contain no include elements that would re-admit excluded data`() {
-        for (fileName in listOf("backup_rules.xml", "data_extraction_rules.xml")) {
-            val includes = parse(File(xmlDir, fileName)).getElementsByTagName("include")
-            assertEquals(
-                "$fileName must not declare <include> elements; they can re-admit excluded prefs",
-                0,
-                includes.length,
-            )
-        }
+    fun `manifest keeps backup disabled`() {
+        // Fail-closed default: nothing this app persists may be backed up, so allowBackup stays
+        // false and future storage is excluded automatically rather than by an out-of-date deny
+        // list. The rule files remain necessary regardless — allowBackup="false" does not stop
+        // device-to-device transfer on Android 12+.
+        val app = section(parse(File(moduleDir, "src/main/AndroidManifest.xml")), "application")
+        assertEquals(
+            "android:allowBackup must stay \"false\" (issue #9)",
+            "false",
+            app.getAttribute("android:allowBackup"),
+        )
+    }
+
+    @Test
+    fun `every secure prefs store is named by a discoverable PREFS_NAME constant`() {
+        // The exclusion tests above are only as complete as [prefsNames]. If a store is ever
+        // opened with an inline literal instead of a PREFS_NAME constant, discovery would miss it
+        // and the rules would silently under-cover it, so require the constant convention.
+        val inlineNames = File(moduleDir, "src/main/java")
+            .walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .flatMap { file ->
+                SECURE_PREFS_CALL_REGEX.findAll(file.readText())
+                    .map { "${file.name}: ${it.value}" }
+            }
+            .toList()
+        assertTrue(
+            "SecurePreferences.create() must be passed a PREFS_NAME constant, not a string " +
+                "literal, so BackupRulesTest can discover the store: $inlineNames",
+            inlineNames.isEmpty(),
+        )
     }
 
     private fun assertExcludesAll(scope: Element, description: String) {
@@ -137,6 +159,10 @@ class BackupRulesTest {
 
     private companion object {
         val PREFS_NAME_REGEX = Regex("""const\s+val\s+PREFS_NAME\s*=\s*"([^"]+)"""")
+
+        /** A `SecurePreferences.create(...)` whose name argument is an inline string literal. */
+        val SECURE_PREFS_CALL_REGEX =
+            Regex("""SecurePreferences\.create\([^)]*,\s*"[^"]*"\s*\)""")
 
         /**
          * Unit tests run with the Gradle module directory as the working directory, but resolve by
