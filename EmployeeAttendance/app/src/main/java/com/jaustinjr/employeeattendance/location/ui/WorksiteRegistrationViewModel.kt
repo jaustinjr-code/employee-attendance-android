@@ -247,9 +247,9 @@ class WorksiteRegistrationViewModel(
     /**
      * Shared driver for the capture actions that gate the form via [CaptureStatus].
      *
-     * [produce] is bounded by [CAPTURE_TIMEOUT_MILLIS] because every provider it wraps (the fused
-     * location client, the platform [android.location.Geocoder] listener API) can in principle never
-     * call back. Without the bound, `status` would stay [CaptureStatus.Working] forever — spinner up,
+     * [produce] is bounded by [timeoutMillis] because every provider it wraps (the fused location
+     * client, the platform [android.location.Geocoder] listener API) can in principle never call
+     * back. Without the bound, `status` would stay [CaptureStatus.Working] forever — spinner up,
      * Save permanently disabled (see [WorksiteRegistrationUiState.canSave]), no error, no retry.
      * A null result means "nothing found" and reports [failureMessageRes].
      */
@@ -257,14 +257,15 @@ class WorksiteRegistrationViewModel(
         operation: String,
         timeoutMessageRes: Int,
         failureMessageRes: Int,
+        timeoutMillis: Long = CAPTURE_TIMEOUT_MILLIS,
         produce: suspend () -> T?,
         onSuccess: (T) -> Unit,
     ) {
         cancelCapture()
         _uiState.update { it.copy(status = CaptureStatus.Working) }
-        captureJob = viewModelScope.launch {
+        val job = viewModelScope.launch {
             try {
-                val result = withTimeout(CAPTURE_TIMEOUT_MILLIS) { produce() }
+                val result = withTimeout(timeoutMillis) { produce() }
                 if (result == null) {
                     _uiState.update { it.copy(status = CaptureStatus.Error(failureMessageRes)) }
                     return@launch
@@ -280,6 +281,10 @@ class WorksiteRegistrationViewModel(
                 _uiState.update { it.copy(status = CaptureStatus.Error(failureMessageRes)) }
             }
         }
+        captureJob = job
+        // Keep "captureJob != null implies a capture is in flight" true, so cancelCapture() never
+        // reasons about a job that already finished.
+        job.invokeOnCompletion { if (captureJob === job) captureJob = null }
     }
 
     /** Captures the device's current position as the worksite center. Requires foreground access. */
@@ -292,6 +297,10 @@ class WorksiteRegistrationViewModel(
             operation = "current-location capture",
             timeoutMessageRes = R.string.worksite_capture_timeout,
             failureMessageRes = R.string.worksite_capture_failed,
+            // The reverse-geocode sub-budget is headroom on top of the fix budget, not carved out
+            // of it — otherwise a slow-but-successful fix could leave too little time for the
+            // address lookup and the outer timeout would discard the fix we already have.
+            timeoutMillis = CAPTURE_TIMEOUT_MILLIS + REVERSE_GEOCODE_TIMEOUT_MILLIS,
             produce = produce@{
                 // A worksite center doesn't need GPS-grade precision, so BALANCED avoids waking the
                 // GPS radio at full power. The captured accuracy is surfaced so the user can retry.
