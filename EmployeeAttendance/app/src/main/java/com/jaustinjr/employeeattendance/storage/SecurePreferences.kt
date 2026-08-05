@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Factory for encrypted [SharedPreferences] backing the app's sensitive on-device data (worksite
@@ -28,35 +29,40 @@ object SecurePreferences {
     internal const val MIGRATION_COMPLETE_KEY = "__secure_prefs_migration_complete__"
 
     /**
-     * Returns the encrypted prefs for [name], migrating any legacy plaintext values first. If
-     * encryption is unavailable (e.g. a corrupt keystore), falls back to plaintext prefs so the app
-     * still runs rather than crashing — logged so the degradation is visible.
+     * Per-store lock. `getSharedPreferences` hands every caller the same per-file instance, so two
+     * concurrent [create] calls for one name would otherwise run the migration against the same
+     * objects — and a plaintext write landing between reading `plaintext.all` and clearing the file
+     * would be dropped.
+     */
+    private val locks = ConcurrentHashMap<String, Any>()
+
+    /**
+     * Returns the encrypted prefs for [name], migrating any legacy plaintext values first.
+     *
+     * If the encrypted store cannot be constructed at all (e.g. a corrupt keystore) this falls back
+     * to plaintext prefs so the app still runs rather than crashing — logged so the degradation is
+     * visible. A failure *inside the migration* never costs encryption: the encrypted store is
+     * returned regardless and the migration is retried on the next launch.
      */
     fun create(context: Context, name: String): SharedPreferences {
         val appContext = context.applicationContext
-        return try {
+        val encrypted = try {
             val masterKey = MasterKey.Builder(appContext)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
-            val encrypted = EncryptedSharedPreferences.create(
+            EncryptedSharedPreferences.create(
                 appContext,
                 "${name}_secure",
                 masterKey,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
             )
-            migratePlaintext(
-                name = name,
-                plaintext = appContext.getSharedPreferences(name, Context.MODE_PRIVATE),
-                encrypted = encrypted,
-            )
-            encrypted
         } catch (e: Exception) {
-            // Degraded path: the keystore/encrypted store is unusable, or the migration threw.
+            // Degraded path: the keystore or the encrypted store is unusable.
             //
             // This is NOT data-safe in general. It only preserves data on the pre-migration path,
             // where the legacy plaintext file still holds the user's values. Once a migration has
-            // completed, the plaintext file is empty, so this returns an EMPTY store and any writes
+            // completed the plaintext file is empty, so this returns an EMPTY store and any writes
             // the user makes during the degraded session land UNENCRYPTED on disk. Those writes are
             // recovered on the next healthy launch (see the completion marker in migratePlaintext),
             // but they were still written in the clear.
@@ -65,8 +71,25 @@ object SecurePreferences {
             // that predates this change and is tracked separately; it is logged loudly so the
             // degradation is at least visible in a bug report.
             Log.e(TAG, "Encrypted prefs unavailable for '$name'; falling back to plaintext", e)
-            appContext.getSharedPreferences(name, Context.MODE_PRIVATE)
+            return appContext.getSharedPreferences(name, Context.MODE_PRIVATE)
         }
+
+        synchronized(locks.getOrPut(name) { Any() }) {
+            try {
+                migratePlaintext(
+                    name = name,
+                    plaintext = appContext.getSharedPreferences(name, Context.MODE_PRIVATE),
+                    encrypted = encrypted,
+                )
+            } catch (e: Exception) {
+                // Deliberately swallowed: a migration hiccup (a corrupt legacy entry, an I/O error)
+                // must not downgrade a perfectly healthy encrypted store to plaintext for the rest
+                // of the session. Nothing has been destroyed — the plaintext file is only cleared
+                // after a successful encrypted commit — so the next launch retries.
+                Log.e(TAG, "Plaintext migration failed for '$name'; will retry next launch", e)
+            }
+        }
+        return encrypted
     }
 
     /**
@@ -80,20 +103,31 @@ object SecurePreferences {
      * destroys the only surviving copy of the data. This blocks the calling thread — in practice
      * the main thread, since the stores are constructed lazily from ViewModels — which is accepted
      * because it runs at most once per store and the payloads are small. `EncryptedSharedPreferences
-     * .create` and `plaintext.all` on the same path already do blocking I/O.
+     * .create` and `plaintext.all` on the same path already do blocking I/O. Once the marker below
+     * is set and the plaintext file is empty, this performs no writes at all.
      *
      * **Conflict resolution.** Writes happen in three ordered, synchronous steps: commit the values
      * into [encrypted], clear [plaintext], then commit [MIGRATION_COMPLETE_KEY]. The marker is what
      * distinguishes the two ways plaintext values can be present when this runs:
-     * - *Marker absent* — an upgrade, or a retry of a migration whose plaintext clear never landed.
-     *   Values already present in [encrypted] are newer, so plaintext must not clobber them.
+     * - *Marker absent* — an upgrade, a retry of a migration whose plaintext clear never landed,
+     *   or (rarely) a completed migration whose marker commit failed. Values already present in
+     *   [encrypted] are newer, so plaintext entries for those keys are skipped. New keys are still
+     *   copied, so nothing is lost.
      * - *Marker present* — the plaintext file was written **after** a completed migration, which
-     *   only happens when [create] fell back to the plaintext store for a session. Those values are
-     *   newer, so they overwrite the encrypted copies. (Without this, that session's data would be
-     *   silently destroyed by the clear below.)
+     *   only happens when [create] fell back to the plaintext store for a session. That session saw
+     *   an empty store, so its plaintext file is the complete authoritative view: the encrypted
+     *   contents are **replaced** rather than merged, so keys the session deleted stay deleted.
+     *   (Without this the fallback session's data would be silently destroyed by the clear below.)
+     *
+     * The marker must be committed *after* the clear. Committing it earlier would make an
+     * interrupted retry treat a stale, uncleared plaintext file as newer than the encrypted values.
      *
      * Any step failing simply leaves the migration to be retried on the next launch, with no data
      * destroyed in the meantime.
+     *
+     * Known assumption: a non-empty plaintext file alongside the marker is taken to be newer. A
+     * backup/restore that reintroduces a stale plaintext file next to a readable encrypted store
+     * would violate that; excluding these prefs from backup is tracked as issue #9.
      *
      * Visible for testing; call sites should use [create].
      */
@@ -114,6 +148,12 @@ object SecurePreferences {
         }
 
         val editor = encrypted.edit()
+        if (migrationComplete) {
+            // Recovering a fallback session: replace, don't merge (see KDoc). clear() drops the
+            // marker too, so put it back in the same editor to keep the commit atomic.
+            editor.clear().putBoolean(MIGRATION_COMPLETE_KEY, true)
+        }
+
         var migrated = 0
         var skipped = 0
         for ((key, value) in entries) {
@@ -163,8 +203,7 @@ object SecurePreferences {
             return
         }
 
-        // Step 3 — only now is the migration complete. Committing the marker any earlier would make
-        // an interrupted retry treat stale plaintext as newer than the encrypted values.
+        // Step 3 — only now is the migration complete.
         markMigrationComplete(name, encrypted, migrationComplete)
     }
 
@@ -174,8 +213,11 @@ object SecurePreferences {
         alreadyMarked: Boolean,
     ) {
         if (alreadyMarked) return
-        if (!encrypted.edit().putBoolean(MIGRATION_COMPLETE_KEY, true).commit()) {
-            Log.w(TAG, "failed to record migration completion for '$name'; will retry next launch")
+        // Retried once: leaving the marker unset after the plaintext file has been cleared would
+        // make a later fallback session's writes look like stale pre-migration data.
+        repeat(2) { attempt ->
+            if (encrypted.edit().putBoolean(MIGRATION_COMPLETE_KEY, true).commit()) return
+            Log.w(TAG, "failed to record migration completion for '$name' (attempt ${attempt + 1})")
         }
     }
 }

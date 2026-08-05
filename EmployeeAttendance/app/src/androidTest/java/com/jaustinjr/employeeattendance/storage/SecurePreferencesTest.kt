@@ -8,7 +8,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.io.File
 
 class SecurePreferencesTest {
 
@@ -45,23 +44,9 @@ class SecurePreferencesTest {
         assertTrue(context.getSharedPreferences(name, Context.MODE_PRIVATE).all.isEmpty())
     }
 
-    @Test
-    fun encryptedValuesAreOnDiskBeforeThePlaintextFileIsCleared() {
-        // Regression test for issue #24. Asserting via SharedPreferences would prove nothing: the
-        // framework caches one in-memory instance per file per process, so a value written with the
-        // old async apply() still reads back fine. Instead, inspect the backing XML file directly —
-        // commit() writes it synchronously, apply() does not.
-        val legacy = context.getSharedPreferences(name, Context.MODE_PRIVATE)
-        legacy.edit().putString("worksites", "[{\"id\":\"a\"}]").commit()
-
-        SecurePreferences.create(context, name)
-
-        val encryptedFile = File(context.dataDir, "shared_prefs/${name}_secure.xml")
-        assertTrue("encrypted prefs file must exist on disk", encryptedFile.exists())
-        assertTrue("encrypted prefs file must be non-empty", encryptedFile.length() > 0)
-        assertTrue(context.getSharedPreferences(name, Context.MODE_PRIVATE).all.isEmpty())
-    }
-
+    // These two exercise the conflict-resolution rules against a real EncryptedSharedPreferences.
+    // The commit-ordering/durability contract itself is owned by the JVM tier
+    // (SecurePreferencesMigrationTest), which can observe commit() vs apply() directly.
     @Test
     fun retryOfAnInterruptedMigrationDoesNotResurrectStalePlaintextValues() {
         // Migration committed the encrypted values but died before clearing the plaintext file, so

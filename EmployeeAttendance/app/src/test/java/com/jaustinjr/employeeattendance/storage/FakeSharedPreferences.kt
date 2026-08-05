@@ -22,7 +22,14 @@ class FakeSharedPreferences(
     /** Values that have actually reached "disk" (i.e. survived a process kill). */
     val durable: MutableMap<String, Any?> = LinkedHashMap(initial)
 
-    /** When false, every [SharedPreferences.Editor.commit] on this store fails and writes nothing. */
+    /**
+     * When false, every [SharedPreferences.Editor.commit] on this store fails and writes nothing.
+     *
+     * Divergence from the platform: real `SharedPreferencesImpl` updates its in-memory map first
+     * and returns false only for the *disk* write, so same-process reads after a failed commit see
+     * the new values. This double models the next-process view (reload from disk), which is the
+     * state the migration's retry path actually has to cope with.
+     */
     var commitSucceeds: Boolean = true
 
     override fun getAll(): MutableMap<String, Any?> = LinkedHashMap(durable)

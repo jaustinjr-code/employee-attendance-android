@@ -160,6 +160,32 @@ class SecurePreferencesMigrationTest {
     }
 
     @Test
+    fun `fallback recovery replaces the encrypted contents instead of merging them`() {
+        // The fallback session saw an empty store, so its plaintext file is the complete view.
+        // A key it deliberately cleared (here `target_id`) must not be resurrected from the
+        // pre-fallback encrypted contents.
+        val plaintext = plaintext(mapOf("state" to "OUTSIDE"))
+        val encrypted = encrypted(
+            mapOf(
+                "state" to "INSIDE",
+                "target_id" to "site-1",
+                SecurePreferences.MIGRATION_COMPLETE_KEY to true,
+            ),
+        )
+
+        SecurePreferences.migratePlaintext("proximity_state", plaintext, encrypted)
+
+        assertEquals("OUTSIDE", encrypted.durable["state"])
+        assertFalse(
+            "a key cleared during the fallback session must stay cleared",
+            encrypted.durable.containsKey("target_id"),
+        )
+        // The marker must survive the replace, or the next run would misread the store as
+        // pre-migration and start skipping keys again.
+        assertEquals(true, encrypted.durable[SecurePreferences.MIGRATION_COMPLETE_KEY])
+    }
+
+    @Test
     fun `a forged completion marker in the plaintext file is never migrated`() {
         val plaintext = plaintext(
             mapOf(SecurePreferences.MIGRATION_COMPLETE_KEY to true, "worksites" to "site"),
