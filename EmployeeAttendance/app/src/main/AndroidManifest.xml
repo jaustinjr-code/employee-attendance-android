@@ -18,6 +18,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+        Backup is left enabled so the platform can still restore genuinely non-sensitive app state,
+        but every SharedPreferences store this app writes (worksite coordinates, attendance history,
+        proximity state, notification/privacy settings) is explicitly excluded from both cloud
+        backup and device transfer by @xml/backup_rules (API < 31) and @xml/data_extraction_rules
+        (API 31+). BackupRulesTest fails the build if a store is added without an exclude entry.
+    -->
     <application
         android:name=".EmployeeAttendanceApplication"
         android:allowBackup="true"
