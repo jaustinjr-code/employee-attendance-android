@@ -255,9 +255,10 @@ class WorksiteRegistrationViewModelTest {
     }
 
     @Test
-    fun `capture times out when reverse geocoding never calls back`() = runTest {
-        // The fix bounds the whole capture, not just the location fix: a hung reverse-geocode used
-        // to strand the form in Working the same way.
+    fun `a hung reverse geocode is dropped without failing the capture`() = runTest {
+        // The reverse-geocode leg is optional decoration on a good fix. It used to be unbounded
+        // (stranding the form in Working); it now has its own 5s sub-budget and degrades to "no
+        // address" rather than spending the whole capture budget and discarding the coordinates.
         val hangingReverse = object : AddressGeocoder {
             override suspend fun geocode(query: String): GeocodedPoint? = POINT
             override suspend fun reverseGeocode(
@@ -266,17 +267,71 @@ class WorksiteRegistrationViewModelTest {
             ): String? = awaitCancellation()
         }
         val model = vm(geocoder = hangingReverse)
+        model.onNameChange("Downtown Office")
 
         model.captureCurrentLocation()
         advanceTimeBy(20_000)
         runCurrent()
 
+        val state = model.uiState.value
+        assertTrue("expected the capture to succeed, got ${state.status}", state.status is CaptureStatus.Idle)
+        assertTrue(state.hasCoordinates)
+        assertNull(state.resolvedAddress)
+        assertTrue(state.canSave)
+    }
+
+    @Test
+    fun `a throwing geocoder surfaces an error instead of crashing`() = runTest {
+        // geocodeAddress() previously ran in a bare launch with no catch, so a geocoder throwing
+        // propagated out of the coroutine.
+        val throwingGeocoder = object : AddressGeocoder {
+            override suspend fun geocode(query: String): GeocodedPoint? =
+                throw IllegalStateException("geocoder backend unavailable")
+            override suspend fun reverseGeocode(
+                latitudeDegrees: Double,
+                longitudeDegrees: Double,
+            ): String? = null
+        }
+        val model = vm(geocoder = throwingGeocoder)
+        model.onCaptureModeChange(CaptureMode.ADDRESS)
+        model.onAddressChange("123 Market St")
+
+        model.geocodeAddress()
+        runCurrent()
+
         val status = model.uiState.value.status
-        assertTrue("expected a timeout error, got $status", status is CaptureStatus.Error)
+        assertTrue("expected an error, got $status", status is CaptureStatus.Error)
         assertEquals(
-            R.string.worksite_capture_timeout,
+            R.string.worksite_geocode_failed,
             (status as CaptureStatus.Error).messageRes,
         )
+    }
+
+    @Test
+    fun `switching capture mode abandons an in-flight capture`() = runTest {
+        // A stale capture must not write its result on top of the newer form state.
+        val slowTracker = object : LocationTracker {
+            override fun locationUpdates(config: LocationRequestConfig): Flow<LocationSample> =
+                emptyFlow()
+            override suspend fun currentLocation(priority: LocationPriority): LocationSample? {
+                kotlinx.coroutines.delay(10_000)
+                return SAMPLE
+            }
+        }
+        val model = vm(tracker = slowTracker)
+
+        model.captureCurrentLocation()
+        runCurrent()
+        assertTrue(model.uiState.value.status is CaptureStatus.Working)
+
+        model.onCaptureModeChange(CaptureMode.ADDRESS)
+        advanceTimeBy(30_000)
+        runCurrent()
+
+        val state = model.uiState.value
+        // Neither the abandoned fix nor a timeout error may land on the address-mode form.
+        assertFalse(state.hasCoordinates)
+        assertTrue("expected no stale status, got ${state.status}", state.status is CaptureStatus.Idle)
     }
 
     @Test

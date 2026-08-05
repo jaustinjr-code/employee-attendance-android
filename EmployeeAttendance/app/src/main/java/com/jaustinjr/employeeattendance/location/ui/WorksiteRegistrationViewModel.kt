@@ -24,6 +24,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -113,12 +114,17 @@ class WorksiteRegistrationViewModel(
     private var biasLocation: LocationSample? = null
     private var autocompleteJob: Job? = null
 
+    // The in-flight capture/geocode, tracked so a stale result can't land on top of newer form
+    // state (e.g. the user switches capture mode while a 15s location fix is still pending).
+    private var captureJob: Job? = null
+
     fun onNameChange(value: String) = _uiState.update { it.copy(name = value) }
 
     fun onRadiusOptionChange(option: RadiusOption) =
         _uiState.update { it.copy(radiusOption = option) }
 
     fun onAddressChange(value: String) {
+        cancelCapture()
         _uiState.update {
             // Editing the address text invalidates any previously resolved point — the user must
             // tap "Find address" (or pick a suggestion) again to actually register the location.
@@ -136,6 +142,7 @@ class WorksiteRegistrationViewModel(
     /** Applies a chosen autocomplete suggestion: fills the address and its coordinates. */
     fun onSuggestionSelected(suggestion: AddressSuggestion) {
         autocompleteJob?.cancel()
+        cancelCapture()
         _uiState.update {
             it.copy(
                 address = suggestion.label,
@@ -151,6 +158,7 @@ class WorksiteRegistrationViewModel(
 
     fun onCaptureModeChange(mode: CaptureMode) {
         autocompleteJob?.cancel()
+        cancelCapture()
         _uiState.update {
             // Switching modes clears any previously captured point so the two modes can't disagree.
             it.copy(
@@ -210,8 +218,30 @@ class WorksiteRegistrationViewModel(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Log.w(TAG, "$what failed", e)
+        logFailure(what, e)
         null
+    }
+
+    /**
+     * Logs a failure by exception type only. Platform geocoder exceptions embed the coordinates or
+     * address they were called with in their message, and this is a location app — the type is
+     * enough to debug with, and keeping the message out of logcat keeps the user's whereabouts out
+     * of it too.
+     */
+    private fun logFailure(what: String, e: Throwable) {
+        Log.w(TAG, "$what failed: ${e.javaClass.simpleName}")
+    }
+
+    /** Cancels an in-flight capture and clears the spinner it owns. */
+    private fun cancelCapture() {
+        val job = captureJob ?: return
+        captureJob = null
+        job.cancel()
+        // The cancelled job will never write a terminal status, so clear Working here or the form
+        // would stay gated (canSave requires status !is Working) with nothing left to un-gate it.
+        _uiState.update {
+            if (it.status is CaptureStatus.Working) it.copy(status = CaptureStatus.Idle) else it
+        }
     }
 
     /**
@@ -230,8 +260,9 @@ class WorksiteRegistrationViewModel(
         produce: suspend () -> T?,
         onSuccess: (T) -> Unit,
     ) {
+        cancelCapture()
         _uiState.update { it.copy(status = CaptureStatus.Working) }
-        viewModelScope.launch {
+        captureJob = viewModelScope.launch {
             try {
                 val result = withTimeout(CAPTURE_TIMEOUT_MILLIS) { produce() }
                 if (result == null) {
@@ -240,12 +271,12 @@ class WorksiteRegistrationViewModel(
                 }
                 onSuccess(result)
             } catch (e: TimeoutCancellationException) {
-                Log.w(TAG, "$operation timed out", e)
+                Log.w(TAG, "$operation timed out")
                 _uiState.update { it.copy(status = CaptureStatus.Error(timeoutMessageRes)) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "$operation failed", e)
+                logFailure(operation, e)
                 _uiState.update { it.copy(status = CaptureStatus.Error(failureMessageRes)) }
             }
         }
@@ -268,11 +299,15 @@ class WorksiteRegistrationViewModel(
                     ?: return@produce null
                 // Reverse-geocode the fix to the nearest building address so the worksite carries a
                 // human-readable address (for future mapping/navigation), not just coordinates. This
-                // is a network lookup, so honor the user's privacy setting to disable it. A failure
-                // here is not fatal: the coordinates alone are enough to save the worksite.
+                // is a network lookup, so honor the user's privacy setting to disable it. Neither a
+                // failure nor a hang here is fatal — the coordinates alone are enough to save the
+                // worksite — so it gets its own smaller budget that degrades to "no address"
+                // instead of spending the outer budget and throwing the good fix away.
                 val nearestAddress = if (reverseGeocodeEnabled.value) {
-                    tryOrNull("reverse geocode") {
-                        addressGeocoder.reverseGeocode(fix.latitudeDegrees, fix.longitudeDegrees)
+                    withTimeoutOrNull(REVERSE_GEOCODE_TIMEOUT_MILLIS) {
+                        tryOrNull("reverse geocode") {
+                            addressGeocoder.reverseGeocode(fix.latitudeDegrees, fix.longitudeDegrees)
+                        }
                     }
                 } else {
                     null
@@ -344,6 +379,13 @@ class WorksiteRegistrationViewModel(
         private const val MAX_SUGGESTIONS = 3
         private const val AUTOCOMPLETE_DEBOUNCE_MILLIS = 300L
         private const val CAPTURE_TIMEOUT_MILLIS = 15_000L
+
+        /**
+         * Sub-budget for the optional reverse-geocode leg of a current-location capture. Shorter
+         * than [CAPTURE_TIMEOUT_MILLIS] and non-fatal: exceeding it drops the human-readable
+         * address, it does not fail the capture.
+         */
+        private const val REVERSE_GEOCODE_TIMEOUT_MILLIS = 5_000L
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
