@@ -5,11 +5,13 @@ import com.jaustinjr.employeeattendance.location.proximity.ProximityEvent
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.settings.ClockNotificationPreference
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onSubscription
+import kotlinx.coroutines.launch
 
 /**
  * The hands-off clock engine. It is the (previously missing) consumer of the proximity layer's
@@ -29,12 +31,32 @@ class AttendanceAutoClockController(
     private val preference: StateFlow<ClockNotificationPreference>,
 ) {
 
+    /**
+     * Completes once this controller's collector is actually subscribed to [proximityEvents].
+     *
+     * [proximityEvents] is a replay-0 [SharedFlow], so anything emitted before the collector is
+     * attached is dropped — and a dropped Arrived/Departed is a missed automatic clock in/out.
+     * [start] returns before the collector is live (it launches a coroutine), so callers that are
+     * about to enable an event producer must wait on [awaitSubscribed] first. See issue #19.
+     */
+    private val subscribed = CompletableDeferred<Unit>()
+
     /** Begins consuming proximity events on [scope]; call once with an app-lifetime scope. */
-    fun start(scope: CoroutineScope) {
+    fun start(scope: CoroutineScope): Job {
         Log.d(TAG, "start: consuming proximity events for auto clock in/out")
-        proximityEvents
-            .onEach(::handle)
-            .launchIn(scope)
+        return scope.launch {
+            proximityEvents
+                .onSubscription {
+                    Log.d(TAG, "subscribed to proximity events")
+                    subscribed.complete(Unit)
+                }
+                .collect(::handle)
+        }
+    }
+
+    /** Suspends until [start]'s collector is subscribed. See [subscribed]. */
+    suspend fun awaitSubscribed() {
+        subscribed.await()
     }
 
     private fun handle(event: ProximityEvent) {

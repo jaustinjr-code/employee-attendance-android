@@ -55,18 +55,24 @@ class LocationFeatureCoordinator(
                 }
         }
 
-        combine(
-            locationState.latestLocation,
-            workLocationRepository.activeWorkLocation,
-        ) { fix, activeLocation -> fix to activeLocation }
-            .onEach { (fix, activeLocation) ->
-                if (fix != null && activeLocation != null) {
-                    proximityUpdater.onLocation(fix, activeLocation.toGeofenceTarget())
-                } else if (activeLocation == null) {
-                    proximityUpdater.reset()
+        // Built inside scope.launch, not on the caller's thread: evaluating
+        // workLocationRepository.activeWorkLocation is a container `by lazy` read that constructs
+        // an EncryptedSharedPreferences-backed store (Keystore + disk I/O). Doing that at the call
+        // site put it on whichever thread called start() — the main thread, from
+        // Application.onCreate. See issue #19.
+        scope.launch {
+            combine(
+                locationState.latestLocation,
+                workLocationRepository.activeWorkLocation,
+            ) { fix, activeLocation -> fix to activeLocation }
+                .collect { (fix, activeLocation) ->
+                    if (fix != null && activeLocation != null) {
+                        proximityUpdater.onLocation(fix, activeLocation.toGeofenceTarget())
+                    } else if (activeLocation == null) {
+                        proximityUpdater.reset()
+                    }
                 }
-            }
-            .launchIn(scope)
+        }
     }
 
     private suspend fun reconcileTracking(
