@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.location.ui
 
+import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
@@ -15,6 +16,7 @@ import com.jaustinjr.employeeattendance.location.tracking.LocationSample
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import com.jaustinjr.employeeattendance.testutil.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -189,6 +191,112 @@ class WorksiteRegistrationViewModelTest {
         runCurrent()
 
         assertTrue(model.uiState.value.status is CaptureStatus.Error)
+    }
+
+    @Test
+    fun `geocode times out when the geocoder never calls back`() = runTest {
+        // Mirrors a platform Geocoder whose GeocodeListener is never invoked: the call simply
+        // suspends forever. Before the timeout was added, status stayed Working indefinitely.
+        val hangingGeocoder = object : AddressGeocoder {
+            override suspend fun geocode(query: String): GeocodedPoint? = awaitCancellation()
+            override suspend fun reverseGeocode(
+                latitudeDegrees: Double,
+                longitudeDegrees: Double,
+            ): String? = null
+        }
+        val model = vm(geocoder = hangingGeocoder)
+        model.onCaptureModeChange(CaptureMode.ADDRESS)
+        model.onAddressChange("123 Market St")
+
+        model.geocodeAddress()
+        runCurrent()
+        assertTrue("expected the spinner while the lookup is in flight",
+            model.uiState.value.status is CaptureStatus.Working)
+
+        advanceTimeBy(20_000) // past the 15s capture timeout
+        runCurrent()
+
+        val status = model.uiState.value.status
+        assertTrue("expected a timeout error, got $status", status is CaptureStatus.Error)
+        assertEquals(
+            R.string.worksite_geocode_timeout,
+            (status as CaptureStatus.Error).messageRes,
+        )
+    }
+
+    @Test
+    fun `a timed-out geocode leaves the form retryable and saveable again`() = runTest {
+        // The point of the fix: Save is gated on `status !is Working`, so a stuck Working state
+        // permanently disables it. After the timeout the user can capture a location and save.
+        val hangingGeocoder = object : AddressGeocoder {
+            override suspend fun geocode(query: String): GeocodedPoint? = awaitCancellation()
+            override suspend fun reverseGeocode(
+                latitudeDegrees: Double,
+                longitudeDegrees: Double,
+            ): String? = null
+        }
+        val model = vm(geocoder = hangingGeocoder)
+        model.onNameChange("Downtown Office")
+        model.onCaptureModeChange(CaptureMode.ADDRESS)
+        // An otherwise complete form: name + coordinates from a picked suggestion.
+        model.onSuggestionSelected(AddressSuggestion("123 Market St", 37.7749, -122.4194))
+        assertTrue(model.uiState.value.canSave)
+
+        // Re-resolving the address hangs. Without a timeout, Save is disabled for good.
+        model.geocodeAddress()
+        runCurrent()
+        assertFalse(model.uiState.value.canSave)
+
+        advanceTimeBy(20_000)
+        runCurrent()
+
+        assertTrue("Save must become usable again after the lookup times out",
+            model.uiState.value.canSave)
+    }
+
+    @Test
+    fun `capture times out when reverse geocoding never calls back`() = runTest {
+        // The fix bounds the whole capture, not just the location fix: a hung reverse-geocode used
+        // to strand the form in Working the same way.
+        val hangingReverse = object : AddressGeocoder {
+            override suspend fun geocode(query: String): GeocodedPoint? = POINT
+            override suspend fun reverseGeocode(
+                latitudeDegrees: Double,
+                longitudeDegrees: Double,
+            ): String? = awaitCancellation()
+        }
+        val model = vm(geocoder = hangingReverse)
+
+        model.captureCurrentLocation()
+        advanceTimeBy(20_000)
+        runCurrent()
+
+        val status = model.uiState.value.status
+        assertTrue("expected a timeout error, got $status", status is CaptureStatus.Error)
+        assertEquals(
+            R.string.worksite_capture_timeout,
+            (status as CaptureStatus.Error).messageRes,
+        )
+    }
+
+    @Test
+    fun `a failing reverse geocode still yields a saveable capture`() = runTest {
+        val failingReverse = object : AddressGeocoder {
+            override suspend fun geocode(query: String): GeocodedPoint? = POINT
+            override suspend fun reverseGeocode(
+                latitudeDegrees: Double,
+                longitudeDegrees: Double,
+            ): String? = throw IllegalStateException("geocoder backend unavailable")
+        }
+        val model = vm(geocoder = failingReverse)
+        model.onNameChange("Downtown Office")
+
+        model.captureCurrentLocation()
+        runCurrent()
+
+        assertTrue(model.uiState.value.hasCoordinates)
+        assertNull(model.uiState.value.resolvedAddress)
+        assertTrue(model.uiState.value.canSave)
     }
 
     @Test

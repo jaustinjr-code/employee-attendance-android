@@ -184,9 +184,9 @@ class WorksiteRegistrationViewModel(
         }
         autocompleteJob = viewModelScope.launch {
             delay(AUTOCOMPLETE_DEBOUNCE_MILLIS)
-            val results = runCatching {
+            val results = tryOrNull("address autocomplete") {
                 addressAutocomplete.suggest(query.trim(), ensureBiasLocation())
-            }.getOrDefault(emptyList()).take(MAX_SUGGESTIONS)
+            }.orEmpty().take(MAX_SUGGESTIONS)
             _uiState.update { it.copy(suggestions = results) }
         }
     }
@@ -194,10 +194,61 @@ class WorksiteRegistrationViewModel(
     private suspend fun ensureBiasLocation(): LocationSample? {
         biasLocation?.let { return it }
         if (!permissionRepository.permissionState.value.isGranted) return null
-        biasLocation = runCatching {
+        biasLocation = tryOrNull("autocomplete bias location") {
             locationTracker.currentLocation(LocationPriority.BALANCED)
-        }.getOrNull()
+        }
         return biasLocation
+    }
+
+    /**
+     * Runs a best-effort suspending call, logging and returning null on failure. Unlike
+     * `runCatching`, cancellation (including [TimeoutCancellationException]) always propagates, so
+     * this can be used safely inside [launchBoundedCapture].
+     */
+    private suspend fun <T> tryOrNull(what: String, block: suspend () -> T): T? = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "$what failed", e)
+        null
+    }
+
+    /**
+     * Shared driver for the capture actions that gate the form via [CaptureStatus].
+     *
+     * [produce] is bounded by [CAPTURE_TIMEOUT_MILLIS] because every provider it wraps (the fused
+     * location client, the platform [android.location.Geocoder] listener API) can in principle never
+     * call back. Without the bound, `status` would stay [CaptureStatus.Working] forever — spinner up,
+     * Save permanently disabled (see [WorksiteRegistrationUiState.canSave]), no error, no retry.
+     * A null result means "nothing found" and reports [failureMessageRes].
+     */
+    private fun <T : Any> launchBoundedCapture(
+        operation: String,
+        timeoutMessageRes: Int,
+        failureMessageRes: Int,
+        produce: suspend () -> T?,
+        onSuccess: (T) -> Unit,
+    ) {
+        _uiState.update { it.copy(status = CaptureStatus.Working) }
+        viewModelScope.launch {
+            try {
+                val result = withTimeout(CAPTURE_TIMEOUT_MILLIS) { produce() }
+                if (result == null) {
+                    _uiState.update { it.copy(status = CaptureStatus.Error(failureMessageRes)) }
+                    return@launch
+                }
+                onSuccess(result)
+            } catch (e: TimeoutCancellationException) {
+                Log.w(TAG, "$operation timed out", e)
+                _uiState.update { it.copy(status = CaptureStatus.Error(timeoutMessageRes)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "$operation failed", e)
+                _uiState.update { it.copy(status = CaptureStatus.Error(failureMessageRes)) }
+            }
+        }
     }
 
     /** Captures the device's current position as the worksite center. Requires foreground access. */
@@ -206,48 +257,37 @@ class WorksiteRegistrationViewModel(
             _uiState.update { it.copy(status = CaptureStatus.Error(R.string.worksite_needs_permission)) }
             return
         }
-        _uiState.update { it.copy(status = CaptureStatus.Working) }
-        viewModelScope.launch {
-            try {
+        launchBoundedCapture(
+            operation = "current-location capture",
+            timeoutMessageRes = R.string.worksite_capture_timeout,
+            failureMessageRes = R.string.worksite_capture_failed,
+            produce = produce@{
                 // A worksite center doesn't need GPS-grade precision, so BALANCED avoids waking the
-                // GPS radio at full power. The timeout bounds how long we hold the location request
-                // open if no fix arrives; the captured accuracy is surfaced so the user can retry.
-                val fix = withTimeout(CAPTURE_TIMEOUT_MILLIS) {
-                    locationTracker.currentLocation(LocationPriority.BALANCED)
-                }
-                if (fix == null) {
-                    _uiState.update {
-                        it.copy(status = CaptureStatus.Error(R.string.worksite_capture_failed))
-                    }
-                    return@launch
-                }
+                // GPS radio at full power. The captured accuracy is surfaced so the user can retry.
+                val fix = locationTracker.currentLocation(LocationPriority.BALANCED)
+                    ?: return@produce null
                 // Reverse-geocode the fix to the nearest building address so the worksite carries a
                 // human-readable address (for future mapping/navigation), not just coordinates. This
-                // is a network lookup, so honor the user's privacy setting to disable it.
+                // is a network lookup, so honor the user's privacy setting to disable it. A failure
+                // here is not fatal: the coordinates alone are enough to save the worksite.
                 val nearestAddress = if (reverseGeocodeEnabled.value) {
-                    runCatching {
+                    tryOrNull("reverse geocode") {
                         addressGeocoder.reverseGeocode(fix.latitudeDegrees, fix.longitudeDegrees)
-                    }.getOrNull()
+                    }
                 } else {
                     null
                 }
-                _uiState.update {
-                    it.copy(
-                        latitude = fix.latitudeDegrees,
-                        longitude = fix.longitudeDegrees,
-                        resolvedAddress = nearestAddress,
-                        capturedAccuracyMeters = fix.accuracyMeters,
-                        status = CaptureStatus.Idle,
-                    )
-                }
-            } catch (e: TimeoutCancellationException) {
-                Log.w(TAG, "current-location capture timed out", e)
-                _uiState.update { it.copy(status = CaptureStatus.Error(R.string.worksite_capture_timeout)) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "current-location capture failed", e)
-                _uiState.update { it.copy(status = CaptureStatus.Error(R.string.worksite_capture_failed)) }
+                fix to nearestAddress
+            },
+        ) { (fix, nearestAddress) ->
+            _uiState.update {
+                it.copy(
+                    latitude = fix.latitudeDegrees,
+                    longitude = fix.longitudeDegrees,
+                    resolvedAddress = nearestAddress,
+                    capturedAccuracyMeters = fix.accuracyMeters,
+                    status = CaptureStatus.Idle,
+                )
             }
         }
     }
@@ -256,13 +296,12 @@ class WorksiteRegistrationViewModel(
     fun geocodeAddress() {
         val query = _uiState.value.address
         if (query.isBlank()) return
-        _uiState.update { it.copy(status = CaptureStatus.Working) }
-        viewModelScope.launch {
-            val point = addressGeocoder.geocode(query)
-            if (point == null) {
-                _uiState.update { it.copy(status = CaptureStatus.Error(R.string.worksite_geocode_failed)) }
-                return@launch
-            }
+        launchBoundedCapture(
+            operation = "address geocode",
+            timeoutMessageRes = R.string.worksite_geocode_timeout,
+            failureMessageRes = R.string.worksite_geocode_failed,
+            produce = { addressGeocoder.geocode(query) },
+        ) { point ->
             _uiState.update {
                 it.copy(
                     latitude = point.latitudeDegrees,
