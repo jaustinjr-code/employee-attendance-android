@@ -46,7 +46,7 @@ abstract class GuardedClockStrategy(
 ) : ClockNotificationStrategy {
 
     final override fun onArrived(worksite: WorkLocation) {
-        if (isClockedIn(worksite)) {
+        if (attendance.isClockedIn(worksite.id)) {
             Log.d(TAG, "arrived at ${worksite.id} but already clocked in; skipping")
             return
         }
@@ -54,7 +54,7 @@ abstract class GuardedClockStrategy(
     }
 
     final override fun onDeparted(worksite: WorkLocation) {
-        if (!isClockedIn(worksite)) {
+        if (!attendance.isClockedIn(worksite.id)) {
             Log.d(TAG, "departed ${worksite.id} but not clocked in; skipping")
             return
         }
@@ -64,14 +64,16 @@ abstract class GuardedClockStrategy(
     /** Handles a boundary crossing that genuinely changes state; [clockType] is the implied event. */
     protected abstract fun onCrossing(worksite: WorkLocation, clockType: ClockType)
 
-    /** Records [clockType] for [worksite] against the attendance log. */
-    protected fun record(worksite: WorkLocation, clockType: ClockType) = when (clockType) {
-        ClockType.CLOCK_IN -> attendance.recordClockIn(worksite.id)
-        ClockType.CLOCK_OUT -> attendance.recordClockOut(worksite.id)
-    }
-
-    private fun isClockedIn(worksite: WorkLocation): Boolean =
-        attendance.attendance.value[worksite.id]?.isClockedIn == true
+    /**
+     * Records [clockType] for [worksite], re-checking the clocked-in state atomically with the
+     * append. The check above already filtered the common case; this one closes the window in which
+     * another producer (manual button, notification action) records the same transition first.
+     *
+     * @return true if the event was recorded — false means it was redundant and nothing changed, so
+     *   callers must not announce it.
+     */
+    protected fun record(worksite: WorkLocation, clockType: ClockType): Boolean =
+        attendance.recordIfStateChanges(worksite.id, clockType)
 
     private companion object {
         private const val TAG = "ClockStrategy"
@@ -93,8 +95,9 @@ class NotifyWithUndoStrategy(
     private val notifier: ClockNotifications,
 ) : GuardedClockStrategy(attendance) {
     override fun onCrossing(worksite: WorkLocation, clockType: ClockType) {
-        record(worksite, clockType)
-        notifier.notifyRecorded(worksite, clockType, withUndo = true)
+        if (record(worksite, clockType)) {
+            notifier.notifyRecorded(worksite, clockType, withUndo = true)
+        }
     }
 }
 

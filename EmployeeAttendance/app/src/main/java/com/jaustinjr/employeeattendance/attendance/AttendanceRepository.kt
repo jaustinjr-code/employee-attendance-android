@@ -3,10 +3,8 @@ package com.jaustinjr.employeeattendance.attendance
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -53,6 +51,37 @@ interface AttendanceRepository {
     )
 
     /**
+     * Records [type] for [locationId] **only if it actually changes** the clocked-in state — a
+     * clock-in while clocked out, or a clock-out while clocked in — and reports whether it did.
+     *
+     * This is the entry point for the geofence-driven auto-clock path, where "the user crossed the
+     * boundary" does not by itself mean "there is a session to open/close": the clock-in may have
+     * been undone from its notification, or never made at all. Implementations must perform the
+     * check and the append atomically so two producers (background proximity thread, notification
+     * receiver, manual button) cannot both decide to record the same transition.
+     *
+     * @return true if an event was appended, false if it would have been redundant.
+     */
+    fun recordIfStateChanges(
+        locationId: String,
+        type: ClockType,
+        epochMillis: Long = System.currentTimeMillis(),
+        source: ClockSource = ClockSource.AUTO,
+    ): Boolean {
+        // Non-atomic fallback so simple implementations (and test doubles) need no extra work.
+        if (isClockedIn(locationId) == (type == ClockType.CLOCK_IN)) return false
+        when (type) {
+            ClockType.CLOCK_IN -> recordClockIn(locationId, epochMillis, source)
+            ClockType.CLOCK_OUT -> recordClockOut(locationId, epochMillis, source)
+        }
+        return true
+    }
+
+    /** Whether [locationId] currently has an open clock-in. */
+    fun isClockedIn(locationId: String): Boolean =
+        attendance.value[locationId]?.isClockedIn == true
+
+    /**
      * Reverses the most recent event for [locationId], if any. Backs the "Undo" notification action
      * after an automatic clock-in/out.
      */
@@ -85,15 +114,17 @@ class DefaultAttendanceRepository(
     private val ioScope: CoroutineScope,
 ) : AttendanceRepository {
 
-    private val _events = MutableStateFlow(local.load())
+    private var events: List<AttendanceEvent> = local.load()
 
-    override val attendance: StateFlow<Map<String, LocationAttendance>> = _events
-        .map { events -> attendanceByLocation(events) }
-        .stateIn(
-            scope = ioScope,
-            started = SharingStarted.Eagerly,
-            initialValue = attendanceByLocation(_events.value),
-        )
+    /**
+     * Derived state, republished **synchronously** inside every mutation. It deliberately does not
+     * use `stateIn(ioScope)`: that would recompute on [ioScope]'s dispatcher, so a caller that
+     * recorded a clock-in could still read `isClockedIn == false` microseconds later. The auto-clock
+     * guards read this flow immediately after recording, so it has to be up to date on return.
+     */
+    private val _attendance = MutableStateFlow(attendanceByLocation(events))
+
+    override val attendance: StateFlow<Map<String, LocationAttendance>> = _attendance.asStateFlow()
 
     override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) =
         append(AttendanceEvent(locationId, ClockType.CLOCK_IN, epochMillis, source))
@@ -101,11 +132,22 @@ class DefaultAttendanceRepository(
     override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) =
         append(AttendanceEvent(locationId, ClockType.CLOCK_OUT, epochMillis, source))
 
+    /**
+     * Atomic check-and-append: holding the same monitor as [append] means the "is there a session to
+     * open/close?" decision cannot be raced by a concurrent producer.
+     */
+    @Synchronized
+    override fun recordIfStateChanges(
+        locationId: String,
+        type: ClockType,
+        epochMillis: Long,
+        source: ClockSource,
+    ): Boolean = super<AttendanceRepository>.recordIfStateChanges(locationId, type, epochMillis, source)
+
     @Synchronized
     private fun append(event: AttendanceEvent) {
         Log.d(TAG, "record ${event.type}/${event.source} for ${event.locationId} at ${event.epochMillis}")
-        _events.value = _events.value + event
-        local.save(_events.value)
+        publish(events + event)
         ioScope.launch {
             runCatching { remote.push(event) }
                 .onFailure { Log.w(TAG, "remote push failed", it) }
@@ -114,15 +156,14 @@ class DefaultAttendanceRepository(
 
     @Synchronized
     override fun undoLast(locationId: String) {
-        val index = _events.value.indexOfLast { it.locationId == locationId }
+        val index = events.indexOfLast { it.locationId == locationId }
         if (index < 0) {
             Log.d(TAG, "undoLast: nothing to undo for $locationId")
             return
         }
-        val removed = _events.value[index]
+        val removed = events[index]
         Log.d(TAG, "undoLast: removing ${removed.type} for $locationId at ${removed.epochMillis}")
-        _events.value = _events.value.toMutableList().apply { removeAt(index) }
-        local.save(_events.value)
+        publish(events.toMutableList().apply { removeAt(index) })
         ioScope.launch {
             runCatching { remote.delete(removed) }
                 .onFailure { Log.w(TAG, "remote delete failed", it) }
@@ -132,8 +173,14 @@ class DefaultAttendanceRepository(
     @Synchronized
     override fun clearAll() {
         Log.d(TAG, "clearAll: deleting all attendance events")
-        _events.value = emptyList()
-        local.save(_events.value)
+        publish(emptyList())
+    }
+
+    /** Commits [updated] as the new log: persist it, then republish the derived state in step. */
+    private fun publish(updated: List<AttendanceEvent>) {
+        events = updated
+        local.save(updated)
+        _attendance.value = attendanceByLocation(updated)
     }
 
     private fun attendanceByLocation(events: List<AttendanceEvent>): Map<String, LocationAttendance> =

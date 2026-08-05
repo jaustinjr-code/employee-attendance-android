@@ -1,13 +1,17 @@
 package com.jaustinjr.employeeattendance.attendance
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DefaultAttendanceRepositoryTest {
 
     private val scope = CoroutineScope(Dispatchers.Unconfined)
@@ -126,5 +130,46 @@ class DefaultAttendanceRepositoryTest {
         repo.undoLast("site-a")
 
         assertFalse(repo.attendance.value["site-a"]?.isClockedIn == true)
+    }
+
+    @Test
+    fun `recordIfStateChanges records a clock-in only when clocked out`() {
+        val repo = repo()
+
+        assertTrue(repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 1_000L))
+        // Second arrival while the session is still open must be a no-op.
+        assertFalse(repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 2_000L))
+
+        assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
+    }
+
+    @Test
+    fun `recordIfStateChanges records a clock-out only when clocked in`() {
+        val repo = repo()
+
+        // Nothing is open, so there is nothing to close.
+        assertFalse(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 1_000L))
+        assertTrue(repo.attendance.value.isEmpty())
+
+        repo.recordClockIn("site-a", 2_000L)
+        assertTrue(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 3_000L))
+        assertFalse(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 4_000L))
+        assertEquals(3_000L, repo.attendance.value["site-a"]?.lastClockOutMillis)
+    }
+
+    @Test
+    fun `derived attendance is visible immediately even when the io scope never runs`() {
+        // A dispatcher whose queued work is never executed: if `attendance` were derived via
+        // stateIn(ioScope) the guards would read stale state right after recording.
+        val idleScope = CoroutineScope(StandardTestDispatcher(TestCoroutineScheduler()))
+        val repo = DefaultAttendanceRepository(
+            local = FakeAttendanceLocalDataSource(),
+            ioScope = idleScope,
+        )
+
+        repo.recordClockIn("site-a", 1_000L)
+
+        assertTrue(repo.isClockedIn("site-a"))
+        assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
     }
 }
