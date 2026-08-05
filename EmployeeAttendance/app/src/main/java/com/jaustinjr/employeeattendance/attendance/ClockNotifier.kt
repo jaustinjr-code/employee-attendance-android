@@ -23,6 +23,14 @@ interface ClockNotifications {
 
     /** Posts an "arrived/left — confirm?" prompt with a Confirm action. */
     fun notifyConfirm(worksite: WorkLocation, clockType: ClockType)
+
+    /**
+     * Dismisses any live notification for [worksite] of [clockType]. Used to retract a prompt whose
+     * action has become impossible — e.g. an unanswered "Arrived — clock in?" once the user has
+     * already left the radius, which would otherwise open a session at a worksite they are no
+     * longer at.
+     */
+    fun cancel(worksite: WorkLocation, clockType: ClockType)
 }
 
 /**
@@ -76,6 +84,13 @@ class ClockNotifier(context: Context) : ClockNotifications {
             pendingIntent(ClockActionReceiver.ACTION_CONFIRM, worksite.id, clockType, id),
         )
         post(id, builder)
+    }
+
+    /** Dismisses the [worksite]/[clockType] card if it is still showing; a no-op if it is not. */
+    override fun cancel(worksite: WorkLocation, clockType: ClockType) {
+        val id = notificationId(worksite.id, clockType)
+        Log.d(TAG, "cancel $clockType notification for ${worksite.id}")
+        NotificationManagerCompat.from(appContext).cancel(id)
     }
 
     private fun baseBuilder(title: String): NotificationCompat.Builder {

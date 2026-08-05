@@ -101,7 +101,7 @@ class ClockNotificationStrategyTest {
     }
 
     @Test
-    fun `confirm departure without an open clock-in posts no prompt`() {
+    fun `confirm departure without an open clock-in posts no prompt and retracts the stale one`() {
         val attendance = RecordingAttendanceRepository()
         val notifier = RecordingClockNotifier()
         val strategy = strategy(ClockNotificationPreference.CONFIRM, attendance, notifier)
@@ -113,6 +113,42 @@ class ClockNotificationStrategyTest {
         strategy.onDeparted(worksite)
 
         assertTrue(notifier.confirms.isEmpty())
+        // The unanswered "Arrived - clock in?" card must be pulled: confirming it after leaving
+        // would open a session at a worksite the user is no longer at, which no exit could close.
+        assertEquals(
+            listOf(RecordingClockNotifier.Cancelled("site-a", ClockType.CLOCK_IN)),
+            notifier.cancelled,
+        )
+    }
+
+    @Test
+    fun `confirm arrival while already clocked in retracts the stale clock-out prompt`() {
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val strategy = strategy(ClockNotificationPreference.CONFIRM, attendance, notifier)
+
+        attendance.recordClockIn(worksite.id, epochMillis = 1_000L)
+        strategy.onDeparted(worksite)   // posts "Left - clock out?"; never confirmed
+        notifier.confirms.clear()
+
+        strategy.onArrived(worksite)    // back inside, still clocked in
+
+        assertTrue(notifier.confirms.isEmpty())
+        assertEquals(
+            listOf(RecordingClockNotifier.Cancelled("site-a", ClockType.CLOCK_OUT)),
+            notifier.cancelled,
+        )
+    }
+
+    @Test
+    fun `recording strategies retract nothing on a skipped crossing`() {
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val strategy = strategy(ClockNotificationPreference.NOTIFY_UNDO, attendance, notifier)
+
+        strategy.onDeparted(worksite)
+
+        assertTrue(notifier.cancelled.isEmpty())
     }
 
     @Test

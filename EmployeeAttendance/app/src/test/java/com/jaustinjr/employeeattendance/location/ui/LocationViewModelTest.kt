@@ -1,8 +1,7 @@
 package com.jaustinjr.employeeattendance.location.ui
 
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
-import com.jaustinjr.employeeattendance.attendance.ClockSource
-import com.jaustinjr.employeeattendance.attendance.LocationAttendance
+import com.jaustinjr.employeeattendance.attendance.RecordingAttendanceRepository
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
@@ -77,27 +76,6 @@ class LocationViewModelTest {
         }
     }
 
-    /** Minimal in-memory [AttendanceRepository] for asserting clock recording. */
-    private class FakeAttendanceRepository : AttendanceRepository {
-        private val _attendance = MutableStateFlow<Map<String, LocationAttendance>>(emptyMap())
-        override val attendance: StateFlow<Map<String, LocationAttendance>> = _attendance
-        override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) {
-            val existing = _attendance.value[locationId] ?: LocationAttendance()
-            _attendance.value = _attendance.value +
-                (locationId to existing.copy(lastClockInMillis = epochMillis))
-        }
-        override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) {
-            val existing = _attendance.value[locationId] ?: LocationAttendance()
-            _attendance.value = _attendance.value + (locationId to existing.copy(
-                lastClockOutMillis = epochMillis,
-                lastClockOutManual = source == ClockSource.MANUAL,
-            ))
-        }
-        override fun undoLast(locationId: String) {
-            _attendance.value = _attendance.value - locationId
-        }
-    }
-
     private val store = object : ProximityStateStore {
         override fun load() = ProximityState.UNKNOWN
         override fun loadTargetId(): String? = null
@@ -111,7 +89,7 @@ class LocationViewModelTest {
         workLocations: WorkLocationRepository = SeededWorkLocationRepository(),
         permission: LocationAccessLevel = LocationAccessLevel.ALWAYS,
         tracker: LocationTracker = FakeLocationTracker(),
-        attendance: AttendanceRepository = FakeAttendanceRepository(),
+        attendance: AttendanceRepository = RecordingAttendanceRepository(),
     ) = LocationViewModel(
         workLocationRepository = workLocations,
         proximityRepository = ProximityRepository(store),
@@ -123,7 +101,7 @@ class LocationViewModelTest {
 
     @Test
     fun `uiState reflects location, access level, and last clock-in`() = runTest {
-        val attendance = FakeAttendanceRepository()
+        val attendance = RecordingAttendanceRepository()
         attendance.recordClockIn(TEST_OFFICE.id, 5_000L)
         val vm = viewModel(permission = LocationAccessLevel.ALWAYS, attendance = attendance)
 
@@ -151,7 +129,7 @@ class LocationViewModelTest {
 
     @Test
     fun `onClockIn records against the active location`() = runTest {
-        val attendance = FakeAttendanceRepository()
+        val attendance = RecordingAttendanceRepository()
         val vm = viewModel(attendance = attendance)
 
         vm.onClockIn()
@@ -161,7 +139,7 @@ class LocationViewModelTest {
 
     @Test
     fun `onClockOut records a manual clock-out against the active location`() = runTest {
-        val attendance = FakeAttendanceRepository()
+        val attendance = RecordingAttendanceRepository()
         val vm = viewModel(attendance = attendance)
 
         vm.onClockOut()
@@ -171,7 +149,7 @@ class LocationViewModelTest {
 
     @Test
     fun `onClockIn records against the general timeclock when no worksite is active`() = runTest {
-        val attendance = FakeAttendanceRepository()
+        val attendance = RecordingAttendanceRepository()
         val vm = viewModel(
             workLocations = SeededWorkLocationRepository(seed = null),
             attendance = attendance,

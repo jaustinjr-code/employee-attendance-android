@@ -56,9 +56,13 @@ interface AttendanceRepository {
      *
      * This is the entry point for the geofence-driven auto-clock path, where "the user crossed the
      * boundary" does not by itself mean "there is a session to open/close": the clock-in may have
-     * been undone from its notification, or never made at all. Implementations must perform the
-     * check and the append atomically so two producers (background proximity thread, notification
-     * receiver, manual button) cannot both decide to record the same transition.
+     * been undone from its notification, or never made at all.
+     *
+     * The default body below is a plain check-then-act and is therefore **not** atomic; it exists so
+     * simple implementations and test doubles work without extra effort. Any implementation with
+     * concurrent producers — the background proximity thread, the notification receiver and the
+     * manual button all record — should override it to hold the check and the append under one lock,
+     * as [DefaultAttendanceRepository] does.
      *
      * @return true if an event was appended, false if it would have been redundant.
      */

@@ -48,6 +48,7 @@ abstract class GuardedClockStrategy(
     final override fun onArrived(worksite: WorkLocation) {
         if (attendance.isClockedIn(worksite.id)) {
             Log.d(TAG, "arrived at ${worksite.id} but already clocked in; skipping")
+            onSkipped(worksite, ClockType.CLOCK_IN)
             return
         }
         onCrossing(worksite, ClockType.CLOCK_IN)
@@ -56,6 +57,7 @@ abstract class GuardedClockStrategy(
     final override fun onDeparted(worksite: WorkLocation) {
         if (!attendance.isClockedIn(worksite.id)) {
             Log.d(TAG, "departed ${worksite.id} but not clocked in; skipping")
+            onSkipped(worksite, ClockType.CLOCK_OUT)
             return
         }
         onCrossing(worksite, ClockType.CLOCK_OUT)
@@ -63,6 +65,13 @@ abstract class GuardedClockStrategy(
 
     /** Handles a boundary crossing that genuinely changes state; [clockType] is the implied event. */
     protected abstract fun onCrossing(worksite: WorkLocation, clockType: ClockType)
+
+    /**
+     * Called instead of [onCrossing] when the crossing changes nothing. [clockType] is the event
+     * that was *not* produced. Strategies that leave something pending on the previous crossing use
+     * this to retract it — see [ConfirmClockStrategy].
+     */
+    protected open fun onSkipped(worksite: WorkLocation, clockType: ClockType) = Unit
 
     /**
      * Records [clockType] for [worksite], re-checking the clocked-in state atomically with the
@@ -111,4 +120,19 @@ class ConfirmClockStrategy(
 ) : GuardedClockStrategy(attendance) {
     override fun onCrossing(worksite: WorkLocation, clockType: ClockType) =
         notifier.notifyConfirm(worksite, clockType)
+
+    /**
+     * A confirm prompt outlives the crossing that posted it, so a skipped crossing means the *other*
+     * prompt is now unanswerable and must be retracted. Concretely: the user arrives, ignores
+     * "Arrived — clock in?", and leaves again. The departure records nothing (there is no session),
+     * but the clock-in card is still sitting in the shade — tapping it would open a session at a
+     * worksite the user has already left, and no later geofence exit would ever close it.
+     */
+    override fun onSkipped(worksite: WorkLocation, clockType: ClockType) =
+        notifier.cancel(worksite, opposite(clockType))
+
+    private fun opposite(clockType: ClockType): ClockType = when (clockType) {
+        ClockType.CLOCK_IN -> ClockType.CLOCK_OUT
+        ClockType.CLOCK_OUT -> ClockType.CLOCK_IN
+    }
 }

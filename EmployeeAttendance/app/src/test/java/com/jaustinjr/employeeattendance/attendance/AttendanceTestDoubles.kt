@@ -62,8 +62,11 @@ class RecordingClockNotifier : ClockNotifications {
     data class Recorded(val id: String, val type: ClockType, val withUndo: Boolean)
     data class Confirm(val id: String, val type: ClockType)
 
+    data class Cancelled(val id: String, val type: ClockType)
+
     val recorded = mutableListOf<Recorded>()
     val confirms = mutableListOf<Confirm>()
+    val cancelled = mutableListOf<Cancelled>()
 
     override fun notifyRecorded(worksite: WorkLocation, clockType: ClockType, withUndo: Boolean) {
         recorded += Recorded(worksite.id, clockType, withUndo)
@@ -71,5 +74,9 @@ class RecordingClockNotifier : ClockNotifications {
 
     override fun notifyConfirm(worksite: WorkLocation, clockType: ClockType) {
         confirms += Confirm(worksite.id, clockType)
+    }
+
+    override fun cancel(worksite: WorkLocation, clockType: ClockType) {
+        cancelled += Cancelled(worksite.id, clockType)
     }
 }

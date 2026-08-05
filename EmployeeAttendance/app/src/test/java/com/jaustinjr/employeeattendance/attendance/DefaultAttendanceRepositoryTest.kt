@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -171,5 +173,31 @@ class DefaultAttendanceRepositoryTest {
 
         assertTrue(repo.isClockedIn("site-a"))
         assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
+    }
+
+    @Test
+    fun `concurrent recordIfStateChanges opens exactly one session`() {
+        // The auto-clock path runs on a background dispatcher while the manual button and the
+        // notification receiver run on the main thread, so the check and the append have to be
+        // atomic. Without the @Synchronized override several threads pass the check together.
+        val local = FakeAttendanceLocalDataSource()
+        val repo = repo(local)
+        val threadCount = 8
+        val start = CountDownLatch(1)
+        val recorded = AtomicInteger(0)
+
+        val threads = (0 until threadCount).map {
+            Thread {
+                start.await()
+                if (repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 1_000L)) {
+                    recorded.incrementAndGet()
+                }
+            }.apply { start() }
+        }
+        start.countDown()
+        threads.forEach { it.join(10_000L) }
+
+        assertEquals(1, recorded.get())
+        assertEquals(1, local.stored.count { it.type == ClockType.CLOCK_IN })
     }
 }
