@@ -83,6 +83,14 @@ class ProximityRepository(
      */
     private var suppressedTargetIds: Set<String> = emptySet()
 
+    /**
+     * Consecutive foreground fixes that read inside the current target's radius, feeding
+     * [ProximityCalculator]'s corroboration path. Deliberately not persisted: after a process death
+     * or a target change there is no run of fixes to corroborate, and a stale streak would let the
+     * first fix of a new session commit an entry it hasn't earned.
+     */
+    private var consecutiveInsideFixes = 0
+
     init {
         Log.d(TAG, "seeded from store: state=${_proximity.value} target=$lastTargetId")
         // Heal residue written by builds before the #21 fix (and by any reset() that short-circuited
@@ -120,10 +128,27 @@ class ProximityRepository(
         val next = ProximityCalculator.evaluate(
             current = _proximity.value,
             distanceMeters = distance,
+            accuracyMeters = sample.accuracyMeters,
             radiusMeters = target.radiusMeters,
             exitBufferMeters = exitBufferMeters,
+            corroboratingInsideFixes = consecutiveInsideFixes,
         )
-        Log.v(TAG, "onLocation: distance=${distance}m radius=${target.radiusMeters}m -> $next")
+        Log.v(
+            TAG,
+            "onLocation: distance=${distance}m accuracy=${sample.accuracyMeters}m " +
+                "radius=${target.radiusMeters}m insideStreak=$consecutiveInsideFixes -> $next",
+        )
+        // Update the streak *after* evaluating, so a fix corroborates only its predecessors. An
+        // unusable fix leaves the streak untouched rather than resetting it: it is not evidence of
+        // being outside, it is no evidence at all.
+        if (ProximityCalculator.isUsable(sample.accuracyMeters, target.radiusMeters, exitBufferMeters)) {
+            consecutiveInsideFixes =
+                if (ProximityCalculator.readsInside(distance, target.radiusMeters)) {
+                    consecutiveInsideFixes + 1
+                } else {
+                    0
+                }
+        }
         setState(next, target.id)
     }
 
@@ -190,6 +215,7 @@ class ProximityRepository(
     private fun erase() {
         _proximity.value = ProximityState.UNKNOWN
         lastTargetId = null
+        consecutiveInsideFixes = 0
         store.save(ProximityState.UNKNOWN, null)
     }
 
@@ -225,6 +251,9 @@ class ProximityRepository(
         if (next == previous) return
         _proximity.value = next
         lastTargetId = targetId
+        // A committed transition (including one the OS geofence forced) starts a fresh run of
+        // evidence; the old streak described a state we have now left.
+        consecutiveInsideFixes = 0
         store.save(next, targetId)
         Log.d(TAG, "state: $previous -> $next (target=$targetId)")
         when (next) {
