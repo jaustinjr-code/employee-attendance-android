@@ -96,12 +96,30 @@ class ProximityRepository(
         if (previous == ProximityState.UNKNOWN) return
         _proximity.value = ProximityState.UNKNOWN
         val departedFrom = lastTargetId
-        store.save(ProximityState.UNKNOWN, departedFrom)
+        // The target id is only meaningful as the label on a live INSIDE/OUTSIDE state. Once the
+        // state is UNKNOWN there is nothing left for it to label, so drop it instead of leaving the
+        // (possibly deleted) worksite id sitting in the encrypted store indefinitely.
+        lastTargetId = null
+        store.save(ProximityState.UNKNOWN, null)
         Log.d(TAG, "reset: $previous -> UNKNOWN")
         if (previous == ProximityState.INSIDE && departedFrom != null) {
             Log.d(TAG, "emit Departed($departedFrom) on reset")
             _events.tryEmit(ProximityEvent.Departed(departedFrom))
         }
+    }
+
+    /**
+     * Erases every trace of proximity tracking: state and target id, in memory and in the store.
+     *
+     * Unlike [reset] this is unconditional (it does not short-circuit on an already-UNKNOWN state,
+     * because a stale target id can outlive the state) and emits no events. See [ProximityUpdater.clear].
+     */
+    @Synchronized
+    override fun clear() {
+        Log.d(TAG, "clear: erasing proximity state and target id")
+        _proximity.value = ProximityState.UNKNOWN
+        lastTargetId = null
+        store.save(ProximityState.UNKNOWN, null)
     }
 
     /**
@@ -121,7 +139,11 @@ class ProximityRepository(
         if (_proximity.value != ProximityState.UNKNOWN) {
             Log.d(TAG, "target changed $oldTarget -> $newTargetId; clearing stale proximity")
             _proximity.value = ProximityState.UNKNOWN
-            store.save(ProximityState.UNKNOWN, oldTarget)
+            // Same rule as reset(): an UNKNOWN state has no target to label, and the old target may
+            // be a worksite the user just deleted. The caller's setState() re-stamps the new target
+            // id if the evaluation actually commits a transition.
+            lastTargetId = null
+            store.save(ProximityState.UNKNOWN, null)
         }
     }
 

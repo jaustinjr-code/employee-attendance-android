@@ -74,11 +74,13 @@ class LocationFeatureCoordinatorTest {
         var onLocationCalls = 0
         var lastTarget: GeofenceTarget? = null
         var resetCount = 0
+        var clearCount = 0
         override fun onLocation(sample: LocationSample, target: GeofenceTarget) {
             onLocationCalls++
             lastTarget = target
         }
         override fun reset() { resetCount++ }
+        override fun clear() { clearCount++ }
     }
 
     private class RecordingLauncher : TrackingServiceLauncher {

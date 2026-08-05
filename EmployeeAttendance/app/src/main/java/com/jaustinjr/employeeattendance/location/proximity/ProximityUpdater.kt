@@ -13,4 +13,15 @@ interface ProximityUpdater {
 
     /** Clear proximity (e.g. no target registered). */
     fun reset()
+
+    /**
+     * Erases all proximity data — the state *and* the remembered target id, in memory and on disk —
+     * without emitting any [ProximityEvent].
+     *
+     * This is the "delete all data" seam, distinct from [reset]: [reset] means "stop tracking, you
+     * just left", so it still emits a Departed when the user was INSIDE. [clear] means "this data
+     * must not exist anymore", so it emits nothing — the worksite it would name has already been
+     * deleted, and attendance history is being wiped alongside it.
+     */
+    fun clear()
 }

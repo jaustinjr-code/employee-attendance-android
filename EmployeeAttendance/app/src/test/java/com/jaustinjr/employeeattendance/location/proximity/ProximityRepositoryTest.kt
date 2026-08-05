@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -99,6 +100,82 @@ class ProximityRepositoryTest {
         assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
         assertTrue(events.contains(ProximityEvent.Departed("t1")))
         assertEquals(ProximityState.UNKNOWN, store.state)
+    }
+
+    @Test
+    fun `reset does not leave the target id behind in the store`() = runTest {
+        // Regression for #21: reset() used to persist (UNKNOWN, oldTargetId), so a worksite id
+        // outlived the state it labelled — including after the worksite itself was deleted.
+        val store = FakeStore()
+        val repo = ProximityRepository(store)
+
+        repo.onGeofenceTransition("deleted-site", ProximityState.INSIDE)
+        repo.reset()
+
+        assertEquals(ProximityState.UNKNOWN, store.state)
+        assertNull(store.targetId)
+    }
+
+    @Test
+    fun `clear erases state and target id`() = runTest {
+        val store = FakeStore()
+        val repo = ProximityRepository(store)
+
+        repo.onGeofenceTransition("deleted-site", ProximityState.INSIDE)
+        repo.clear()
+
+        assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
+        assertEquals(ProximityState.UNKNOWN, store.state)
+        assertNull(store.targetId)
+    }
+
+    @Test
+    fun `clear erases a target id left over from an already-UNKNOWN state`() = runTest {
+        // reset() short-circuits on UNKNOWN, so a target id persisted by an older build (or by a
+        // reset that ran before this fix) can still be sitting on disk at delete-all-data time.
+        // clear() must be unconditional.
+        val store = FakeStore(state = ProximityState.UNKNOWN, targetId = "deleted-site")
+        val repo = ProximityRepository(store)
+
+        repo.clear()
+
+        assertNull(store.targetId)
+        assertEquals(ProximityState.UNKNOWN, store.state)
+    }
+
+    @Test
+    fun `clear emits no event even when INSIDE`() = runTest {
+        // "Delete all data" is not a departure: the worksite the event would name is being deleted,
+        // and the attendance log it would write to is wiped in the same action.
+        val repo = ProximityRepository(FakeStore())
+        val events = mutableListOf<ProximityEvent>()
+        backgroundScope.launch { repo.events.collect(events::add) }
+        runCurrent()
+
+        repo.onGeofenceTransition("t1", ProximityState.INSIDE)
+        repo.clear()
+        runCurrent()
+
+        assertEquals(listOf(ProximityEvent.Arrived("t1")), events)
+    }
+
+    @Test
+    fun `reset after clear is a no-op and cannot resurrect the target id`() = runTest {
+        // Mirrors the real delete-all-data ordering: SettingsViewModel clears proximity first, then
+        // clearing the work locations makes LocationFeatureCoordinator call reset() asynchronously.
+        val store = FakeStore()
+        val repo = ProximityRepository(store)
+        val events = mutableListOf<ProximityEvent>()
+        backgroundScope.launch { repo.events.collect(events::add) }
+        runCurrent()
+
+        repo.onGeofenceTransition("deleted-site", ProximityState.INSIDE)
+        repo.clear()
+        repo.reset()
+        runCurrent()
+
+        assertNull(store.targetId)
+        assertFalse(events.contains(ProximityEvent.Departed("deleted-site")))
     }
 
     @Test
