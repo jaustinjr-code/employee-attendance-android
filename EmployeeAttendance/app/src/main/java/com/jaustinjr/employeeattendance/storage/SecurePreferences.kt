@@ -59,8 +59,8 @@ object SecurePreferences {
      * Copies values from the legacy [plaintext] prefs file into [encrypted], then clears the
      * plaintext copy.
      *
-     * Durability contract (see issue #24): the encrypted write uses the **synchronous** [
-     * SharedPreferences.Editor.commit], and the plaintext file is cleared only after that commit
+     * Durability contract (see issue #24): the encrypted write uses the **synchronous**
+     * [SharedPreferences.Editor.commit], and the plaintext file is cleared only after that commit
      * reports success. `apply()` merely enqueues the write and returns, so clearing the plaintext
      * right after an `apply()` leaves a window in which process death (OOM kill, crash, force-stop)
      * destroys the only surviving copy of the data. Blocking here is acceptable: this runs at most

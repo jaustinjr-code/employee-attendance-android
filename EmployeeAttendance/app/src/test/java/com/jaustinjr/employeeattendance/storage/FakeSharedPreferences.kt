@@ -25,8 +25,6 @@ class FakeSharedPreferences(
     /** When false, every [SharedPreferences.Editor.commit] on this store fails and writes nothing. */
     var commitSucceeds: Boolean = true
 
-    val operations: List<String> get() = log
-
     override fun getAll(): MutableMap<String, Any?> = LinkedHashMap(durable)
 
     override fun getString(key: String?, defValue: String?): String? =
