@@ -7,16 +7,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.jaustinjr.employeeattendance.location.ui.LocationDetailScreen
 import com.jaustinjr.employeeattendance.location.ui.LocationPermissionViewModel
@@ -26,6 +23,7 @@ import com.jaustinjr.employeeattendance.location.ui.WorksiteRegistrationScreen
 import com.jaustinjr.employeeattendance.location.ui.WorksitesScreen
 import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
 import com.jaustinjr.employeeattendance.ui.main.MainAppBar
+import com.jaustinjr.employeeattendance.ui.main.appBarTitleResFor
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 import kotlinx.serialization.Serializable
 
@@ -52,7 +50,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             EmployeeAttendanceTheme {
                 val navController = rememberNavController()
-                var appBarTitle by remember { mutableStateOf("Attendance") }
+
+                // The title is derived from the back stack, not pushed by each screen. See
+                // appBarTitleResFor: the app bar sits outside the NavHost, and predictive back
+                // keeps two destinations composed at once, so a push-based title depends on the
+                // ordering of two screens' side effects and can end up showing the screen the
+                // user just left.
+                val currentEntry by navController.currentBackStackEntryAsState()
+                val appBarTitle = stringResource(appBarTitleResFor(currentEntry?.destination?.route))
 
                 // Scoped to the Activity so the attendance and detail destinations share one
                 // instance each — a single foreground collector and consistent permission state.
@@ -72,10 +77,6 @@ class MainActivity : ComponentActivity() {
                 ) { padding ->
                     NavHost(navController, startDestination = Attendance, modifier = Modifier.padding(padding)) {
                         composable<Attendance> {
-                            // side-effect: state change during composition
-                            LaunchedEffect(Unit) {
-                                appBarTitle = "Attendance"
-                            }
                             AttendanceScreen(
                                 onOpenLocationDetail = { navController.navigate(LocationDetail) },
                                 onAddWorksite = { navController.navigate(WorksiteRegistration) },
@@ -84,38 +85,22 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable<LocationDetail> {
-                            val title = stringResource(R.string.location_detail_title)
-                            LaunchedEffect(title) {
-                                appBarTitle = title
-                            }
                             LocationDetailScreen(
                                 viewModel = locationViewModel,
                                 onManageWorksites = { navController.navigate(Worksites) },
                             )
                         }
                         composable<Worksites> {
-                            val title = stringResource(R.string.worksites_title)
-                            LaunchedEffect(title) {
-                                appBarTitle = title
-                            }
                             WorksitesScreen(
                                 onAddWorksite = { navController.navigate(WorksiteRegistration) },
                             )
                         }
                         composable<WorksiteRegistration> {
-                            val title = stringResource(R.string.worksite_registration_title)
-                            LaunchedEffect(title) {
-                                appBarTitle = title
-                            }
                             WorksiteRegistrationScreen(
                                 onSaved = { navController.popBackStack() },
                             )
                         }
                         composable<Settings> {
-                            val title = stringResource(R.string.settings_title)
-                            LaunchedEffect(title) {
-                                appBarTitle = title
-                            }
                             SettingsScreen()
                         }
                     }
