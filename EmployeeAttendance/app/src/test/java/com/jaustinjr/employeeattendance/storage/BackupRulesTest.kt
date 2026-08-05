@@ -78,6 +78,17 @@ class BackupRulesTest {
     }
 
     @Test
+    fun `cloud backup is disabled when the device cannot encrypt backups`() {
+        val section = section(parse(File(xmlDir, "data_extraction_rules.xml")), "cloud-backup")
+        assertEquals(
+            "<cloud-backup> must set disableIfNoEncryptionCapabilities so unencrypted device " +
+                "backups are skipped entirely",
+            "true",
+            section.getAttribute("disableIfNoEncryptionCapabilities"),
+        )
+    }
+
+    @Test
     fun `rule files contain no include elements that would re-admit excluded data`() {
         for (fileName in listOf("backup_rules.xml", "data_extraction_rules.xml")) {
             val includes = parse(File(xmlDir, fileName)).getElementsByTagName("include")
