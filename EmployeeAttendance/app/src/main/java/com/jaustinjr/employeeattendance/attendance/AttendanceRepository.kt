@@ -64,21 +64,23 @@ interface AttendanceRepository {
      * manual button all record — should override it to hold the check and the append under one lock,
      * as [DefaultAttendanceRepository] does.
      *
-     * @return true if an event was appended, false if it would have been redundant.
+     * @return the event that was appended, or null if it would have been redundant. Callers hand the
+     *   returned event to the notifier so the notification's Undo action can name exactly the event
+     *   it belongs to (see [undoEvent]).
      */
     fun recordIfStateChanges(
         locationId: String,
         type: ClockType,
         epochMillis: Long = System.currentTimeMillis(),
         source: ClockSource = ClockSource.AUTO,
-    ): Boolean {
+    ): AttendanceEvent? {
         // Non-atomic fallback so simple implementations (and test doubles) need no extra work.
-        if (isClockedIn(locationId) == (type == ClockType.CLOCK_IN)) return false
+        if (isClockedIn(locationId) == (type == ClockType.CLOCK_IN)) return null
         when (type) {
             ClockType.CLOCK_IN -> recordClockIn(locationId, epochMillis, source)
             ClockType.CLOCK_OUT -> recordClockOut(locationId, epochMillis, source)
         }
-        return true
+        return AttendanceEvent(locationId, type, epochMillis, source)
     }
 
     /** Whether [locationId] currently has an open clock-in. */
@@ -86,10 +88,18 @@ interface AttendanceRepository {
         attendance.value[locationId]?.isClockedIn == true
 
     /**
-     * Reverses the most recent event for [locationId], if any. Backs the "Undo" notification action
-     * after an automatic clock-in/out.
+     * Reverses one *specific* event: the most recent one for [locationId] matching both [type] and
+     * [epochMillis]. Backs the "Undo" action on an automatic clock-in/out notification.
+     *
+     * Scoping to the exact event is the point. A notification can outlive the event it announced —
+     * a clock-in card the user never dismissed is still tappable after the clock-out has been
+     * recorded — and "undo whatever is most recent for this location" would then reverse the
+     * clock-out instead, which is not what the button the user pressed said it would do. A stale tap
+     * matches nothing and is a no-op.
+     *
+     * @return true if the event was found and removed, false if it was already gone.
      */
-    fun undoLast(locationId: String)
+    fun undoEvent(locationId: String, type: ClockType, epochMillis: Long): Boolean
 
     /** Deletes all recorded attendance. Backs "delete all data". */
     fun clearAll() {}
@@ -146,7 +156,8 @@ class DefaultAttendanceRepository(
         type: ClockType,
         epochMillis: Long,
         source: ClockSource,
-    ): Boolean = super<AttendanceRepository>.recordIfStateChanges(locationId, type, epochMillis, source)
+    ): AttendanceEvent? =
+        super<AttendanceRepository>.recordIfStateChanges(locationId, type, epochMillis, source)
 
     @Synchronized
     private fun append(event: AttendanceEvent) {
@@ -159,19 +170,22 @@ class DefaultAttendanceRepository(
     }
 
     @Synchronized
-    override fun undoLast(locationId: String) {
-        val index = events.indexOfLast { it.locationId == locationId }
+    override fun undoEvent(locationId: String, type: ClockType, epochMillis: Long): Boolean {
+        val index = events.indexOfLast {
+            it.locationId == locationId && it.type == type && it.epochMillis == epochMillis
+        }
         if (index < 0) {
-            Log.d(TAG, "undoLast: nothing to undo for $locationId")
-            return
+            Log.d(TAG, "undoEvent: no $type for $locationId at $epochMillis; stale undo ignored")
+            return false
         }
         val removed = events[index]
-        Log.d(TAG, "undoLast: removing ${removed.type} for $locationId at ${removed.epochMillis}")
+        Log.d(TAG, "undoEvent: removing ${removed.type} for $locationId at ${removed.epochMillis}")
         publish(events.toMutableList().apply { removeAt(index) })
         ioScope.launch {
             runCatching { remote.delete(removed) }
                 .onFailure { Log.w(TAG, "remote delete failed", it) }
         }
+        return true
     }
 
     @Synchronized

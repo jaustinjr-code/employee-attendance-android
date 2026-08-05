@@ -114,7 +114,7 @@ class AttendanceAutoClockControllerTest {
         events.emit(ProximityEvent.Arrived("site-a"))
         runCurrent()
         // The user taps Undo on the clock-in notification (what ClockActionReceiver does).
-        attendance.undoLast("site-a")
+        attendance.undoMostRecent("site-a")
 
         events.emit(ProximityEvent.Departed("site-a"))
         runCurrent()

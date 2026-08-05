@@ -69,7 +69,7 @@ class WorksitesViewModel(
                 type = ClockType.CLOCK_OUT,
                 source = ClockSource.MANUAL,
             )
-            if (recorded) notifier.notifyRecorded(previous, ClockType.CLOCK_OUT, withUndo = false)
+            if (recorded != null) notifier.notifyRecorded(previous, recorded, withUndo = false)
         }
         workLocationRepository.setActiveWorkLocation(newId)
     }
