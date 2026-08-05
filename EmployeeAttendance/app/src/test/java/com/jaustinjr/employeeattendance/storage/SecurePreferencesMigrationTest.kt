@@ -32,8 +32,9 @@ class SecurePreferencesMigrationTest {
 
         // The encrypted store must be written with a synchronous commit, and that commit must land
         // strictly before the plaintext file is cleared. Any apply() on the encrypted store means
-        // the clear could win the race and destroy the only copy.
-        assertEquals(listOf("encrypted.commit", "plaintext.commit"), log)
+        // the clear could win the race and destroy the only copy. The trailing commit is the
+        // completion marker, which must come last of all.
+        assertEquals(listOf("encrypted.commit", "plaintext.commit", "encrypted.commit"), log)
         assertFalse("migration must not use apply()", log.any { it.endsWith(".apply") })
         assertEquals("[{\"id\":\"a\"}]", encrypted.durable["worksites"])
         assertTrue(plaintext.durable.isEmpty())
@@ -118,14 +119,59 @@ class SecurePreferencesMigrationTest {
     }
 
     @Test
-    fun `an empty plaintext store performs no writes at all`() {
+    fun `an empty plaintext store only records the completion marker`() {
         val plaintext = plaintext(emptyMap())
         val encrypted = encrypted(mapOf("existing" to "value"))
 
         SecurePreferences.migratePlaintext("work_locations", plaintext, encrypted)
 
-        assertTrue("no store should be touched", log.isEmpty())
+        assertFalse("the plaintext file must not be touched", log.contains("plaintext.commit"))
         assertEquals("value", encrypted.durable["existing"])
+        assertEquals(true, encrypted.durable[SecurePreferences.MIGRATION_COMPLETE_KEY])
+    }
+
+    @Test
+    fun `a second run with the marker already set writes nothing`() {
+        val plaintext = plaintext(emptyMap())
+        val encrypted = encrypted(mapOf(SecurePreferences.MIGRATION_COMPLETE_KEY to true))
+
+        SecurePreferences.migratePlaintext("work_locations", plaintext, encrypted)
+
+        assertTrue("no store should be touched", log.isEmpty())
+    }
+
+    @Test
+    fun `values written during a plaintext-fallback session are recovered, not destroyed`() {
+        // A completed migration, then a session where create() fell back to the plaintext store
+        // because the keystore was unavailable: the user re-registered a worksite and it landed in
+        // the plaintext file. Those values are NEWER than the encrypted copies and must win.
+        val plaintext = plaintext(mapOf("worksites" to "re-registered"))
+        val encrypted = encrypted(
+            mapOf(
+                "worksites" to "pre-fallback",
+                SecurePreferences.MIGRATION_COMPLETE_KEY to true,
+            ),
+        )
+
+        SecurePreferences.migratePlaintext("work_locations", plaintext, encrypted)
+
+        assertEquals("re-registered", encrypted.durable["worksites"])
+        assertTrue("plaintext must be cleared once recovered", plaintext.durable.isEmpty())
+    }
+
+    @Test
+    fun `a forged completion marker in the plaintext file is never migrated`() {
+        val plaintext = plaintext(
+            mapOf(SecurePreferences.MIGRATION_COMPLETE_KEY to true, "worksites" to "site"),
+        )
+        val encrypted = encrypted()
+
+        SecurePreferences.migratePlaintext("work_locations", plaintext, encrypted)
+
+        // The marker must come from step 3 of this migration, not from the untrusted plaintext file
+        // — otherwise a tampered file could make the next run treat stale plaintext as newer.
+        assertEquals("site", encrypted.durable["worksites"])
+        assertEquals(listOf("encrypted.commit", "plaintext.commit", "encrypted.commit"), log)
     }
 
     @Test

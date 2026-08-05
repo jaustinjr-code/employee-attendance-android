@@ -8,6 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.File
 
 class SecurePreferencesTest {
 
@@ -45,36 +46,52 @@ class SecurePreferencesTest {
     }
 
     @Test
-    fun migratedValuesAreDurableOnDiskBeforePlaintextIsCleared() {
-        // Regression test for issue #24: the migration must not clear the plaintext file until the
-        // encrypted write is durable. Re-opening the encrypted store from a *fresh* instance (which
-        // reads back from disk rather than any in-memory editor state) proves the write landed,
-        // while the plaintext file is already empty.
+    fun encryptedValuesAreOnDiskBeforeThePlaintextFileIsCleared() {
+        // Regression test for issue #24. Asserting via SharedPreferences would prove nothing: the
+        // framework caches one in-memory instance per file per process, so a value written with the
+        // old async apply() still reads back fine. Instead, inspect the backing XML file directly —
+        // commit() writes it synchronously, apply() does not.
         val legacy = context.getSharedPreferences(name, Context.MODE_PRIVATE)
         legacy.edit().putString("worksites", "[{\"id\":\"a\"}]").commit()
 
         SecurePreferences.create(context, name)
 
+        val encryptedFile = File(context.dataDir, "shared_prefs/${name}_secure.xml")
+        assertTrue("encrypted prefs file must exist on disk", encryptedFile.exists())
+        assertTrue("encrypted prefs file must be non-empty", encryptedFile.length() > 0)
         assertTrue(context.getSharedPreferences(name, Context.MODE_PRIVATE).all.isEmpty())
-        assertEquals(
-            "[{\"id\":\"a\"}]",
-            SecurePreferences.create(context, name).getString("worksites", null),
-        )
     }
 
     @Test
-    fun rerunningMigrationDoesNotResurrectStalePlaintextValues() {
-        // If a previous migration's plaintext clear didn't land, the retry must leave the (newer)
-        // encrypted value alone rather than overwriting it with the stale plaintext copy.
+    fun retryOfAnInterruptedMigrationDoesNotResurrectStalePlaintextValues() {
+        // Migration committed the encrypted values but died before clearing the plaintext file, so
+        // no completion marker was recorded. The retry must leave the newer encrypted value alone.
         val legacy = context.getSharedPreferences(name, Context.MODE_PRIVATE)
         legacy.edit().putString("k", "stale").commit()
 
         val secure = SecurePreferences.create(context, name)
-        secure.edit().putString("k", "fresh").commit()
-        // Re-plant the legacy file as if the earlier clear had failed.
+        secure.edit()
+            .putString("k", "fresh")
+            .remove(SecurePreferences.MIGRATION_COMPLETE_KEY)
+            .commit()
         legacy.edit().putString("k", "stale").commit()
 
         assertEquals("fresh", SecurePreferences.create(context, name).getString("k", null))
+        assertTrue(context.getSharedPreferences(name, Context.MODE_PRIVATE).all.isEmpty())
+    }
+
+    @Test
+    fun plaintextFallbackWritesAreRecoveredOnTheNextHealthyLaunch() {
+        // Migration completed (marker present), then a session fell back to the plaintext store
+        // because encryption was unavailable and wrote there. Those values are newer and must win.
+        SecurePreferences.create(context, name).edit().putString("k", "pre-fallback").commit()
+        context.getSharedPreferences(name, Context.MODE_PRIVATE)
+            .edit().putString("k", "written-during-fallback").commit()
+
+        assertEquals(
+            "written-during-fallback",
+            SecurePreferences.create(context, name).getString("k", null),
+        )
         assertTrue(context.getSharedPreferences(name, Context.MODE_PRIVATE).all.isEmpty())
     }
 

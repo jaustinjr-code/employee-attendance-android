@@ -27,21 +27,24 @@ class FakeSharedPreferences(
 
     override fun getAll(): MutableMap<String, Any?> = LinkedHashMap(durable)
 
+    // Wrong-type reads throw, matching SharedPreferencesImpl, so a type-confusion bug in the
+    // migration surfaces as a failure rather than a silently-returned default.
     override fun getString(key: String?, defValue: String?): String? =
-        durable[key] as? String ?: defValue
+        durable[key] as String? ?: defValue
 
     @Suppress("UNCHECKED_CAST")
     override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? =
-        (durable[key] as? Set<String>)?.toMutableSet() ?: defValues
+        (durable[key] as Set<String>?)?.toMutableSet() ?: defValues
 
-    override fun getInt(key: String?, defValue: Int): Int = durable[key] as? Int ?: defValue
+    override fun getInt(key: String?, defValue: Int): Int = durable[key] as Int? ?: defValue
 
-    override fun getLong(key: String?, defValue: Long): Long = durable[key] as? Long ?: defValue
+    override fun getLong(key: String?, defValue: Long): Long = durable[key] as Long? ?: defValue
 
-    override fun getFloat(key: String?, defValue: Float): Float = durable[key] as? Float ?: defValue
+    override fun getFloat(key: String?, defValue: Float): Float =
+        durable[key] as Float? ?: defValue
 
     override fun getBoolean(key: String?, defValue: Boolean): Boolean =
-        durable[key] as? Boolean ?: defValue
+        durable[key] as Boolean? ?: defValue
 
     override fun contains(key: String?): Boolean = durable.containsKey(key)
 
