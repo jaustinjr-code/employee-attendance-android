@@ -25,9 +25,11 @@
         up. allowBackup="false" is therefore the fail-CLOSED default: anything added later is
         excluded automatically instead of being auto-included by an out-of-date deny list.
 
-        allowBackup="false" alone is NOT sufficient. On Android 12+ it stops Google cloud backup
-        but does NOT stop device-to-device transfer, which is governed solely by
-        @xml/data_extraction_rules. So the rule files stay, and stay exhaustive: they block D2D
+        allowBackup="false" alone is NOT sufficient. Per Android's backup docs: "On devices from
+        some device manufacturers, specifying android:allowBackup='false' does disable backups to
+        Google Drive, but doesn't disable D2D transfers for the app." Device-to-device transfer is
+        governed by @xml/data_extraction_rules, so the rule files stay, and stay exhaustive: they
+        block D2D
         transfer today, and they are defence in depth for cloud backup should allowBackup ever be
         turned back on. @xml/backup_rules covers API < 31 (minSdk is 24).
 

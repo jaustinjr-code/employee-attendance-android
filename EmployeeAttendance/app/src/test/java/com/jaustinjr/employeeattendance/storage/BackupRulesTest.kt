@@ -104,21 +104,26 @@ class BackupRulesTest {
 
     @Test
     fun `every secure prefs store is named by a discoverable PREFS_NAME constant`() {
-        // The exclusion tests above are only as complete as [prefsNames]. If a store is ever
-        // opened with an inline literal instead of a PREFS_NAME constant, discovery would miss it
-        // and the rules would silently under-cover it, so require the constant convention.
-        val inlineNames = File(moduleDir, "src/main/java")
+        // The exclusion tests above are only as complete as [prefsNames]. If a store is ever opened
+        // with anything other than a `PREFS_NAME` constant — an inline literal, a differently named
+        // constant — discovery would miss it and the rules would silently under-cover it. So this
+        // asserts positively that the name argument IS the identifier `PREFS_NAME`, rather than
+        // blacklisting the shapes we happened to think of.
+        val offenders = File(moduleDir, "src/main/java")
             .walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
             .flatMap { file ->
                 SECURE_PREFS_CALL_REGEX.findAll(file.readText())
-                    .map { "${file.name}: ${it.value}" }
+                    .map { file.name to it.groupValues[1] }
             }
+            .filter { (_, args) -> nameArgumentOf(args) != "PREFS_NAME" }
+            .map { (fileName, args) -> "$fileName: SecurePreferences.create($args)" }
             .toList()
         assertTrue(
-            "SecurePreferences.create() must be passed a PREFS_NAME constant, not a string " +
-                "literal, so BackupRulesTest can discover the store: $inlineNames",
-            inlineNames.isEmpty(),
+            "SecurePreferences.create() must be passed the store's PREFS_NAME constant so " +
+                "BackupRulesTest can discover the store and prove it is excluded from backup: " +
+                "$offenders",
+            offenders.isEmpty(),
         )
     }
 
@@ -160,9 +165,22 @@ class BackupRulesTest {
     private companion object {
         val PREFS_NAME_REGEX = Regex("""const\s+val\s+PREFS_NAME\s*=\s*"([^"]+)"""")
 
-        /** A `SecurePreferences.create(...)` whose name argument is an inline string literal. */
-        val SECURE_PREFS_CALL_REGEX =
-            Regex("""SecurePreferences\.create\([^)]*,\s*"[^"]*"\s*\)""")
+        /** Any `SecurePreferences.create(...)` call; group 1 is its raw argument list. */
+        val SECURE_PREFS_CALL_REGEX = Regex("""SecurePreferences\.create\(([^)]*)\)""")
+
+        /**
+         * The store-name argument of a `SecurePreferences.create` argument list, normalised.
+         * Tolerates multiline calls, trailing commas, and named arguments (`name = PREFS_NAME`),
+         * all of which an earlier literal-blacklisting version of this check let through.
+         */
+        fun nameArgumentOf(args: String): String =
+            args.split(',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .lastOrNull()
+                ?.substringAfter('=')
+                ?.trim()
+                .orEmpty()
 
         /**
          * Unit tests run with the Gradle module directory as the working directory, but resolve by
