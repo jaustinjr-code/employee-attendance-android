@@ -96,11 +96,7 @@ class ProximityRepository(
         if (previous == ProximityState.UNKNOWN) return
         _proximity.value = ProximityState.UNKNOWN
         val departedFrom = lastTargetId
-        // The target id is only meaningful as the label on a live INSIDE/OUTSIDE state. Once the
-        // state is UNKNOWN there is nothing left for it to label, so drop it instead of leaving the
-        // (possibly deleted) worksite id sitting in the encrypted store indefinitely.
-        lastTargetId = null
-        store.save(ProximityState.UNKNOWN, null)
+        erase()
         Log.d(TAG, "reset: $previous -> UNKNOWN")
         if (previous == ProximityState.INSIDE && departedFrom != null) {
             Log.d(TAG, "emit Departed($departedFrom) on reset")
@@ -117,6 +113,18 @@ class ProximityRepository(
     @Synchronized
     override fun clear() {
         Log.d(TAG, "clear: erasing proximity state and target id")
+        erase()
+    }
+
+    /**
+     * Drops the state and the target id together, in memory and in the store.
+     *
+     * The target id is only meaningful as the label on a live INSIDE/OUTSIDE state; once the state is
+     * UNKNOWN there is nothing left for it to label, so persisting it would just leave a (possibly
+     * deleted) worksite id sitting in the encrypted store indefinitely. Callers own the logging and
+     * any event emission. Always invoked from a `@Synchronized` member, so it holds the monitor.
+     */
+    private fun erase() {
         _proximity.value = ProximityState.UNKNOWN
         lastTargetId = null
         store.save(ProximityState.UNKNOWN, null)
@@ -138,12 +146,10 @@ class ProximityRepository(
         if (newTargetId == oldTarget) return
         if (_proximity.value != ProximityState.UNKNOWN) {
             Log.d(TAG, "target changed $oldTarget -> $newTargetId; clearing stale proximity")
-            _proximity.value = ProximityState.UNKNOWN
-            // Same rule as reset(): an UNKNOWN state has no target to label, and the old target may
-            // be a worksite the user just deleted. The caller's setState() re-stamps the new target
-            // id if the evaluation actually commits a transition.
-            lastTargetId = null
-            store.save(ProximityState.UNKNOWN, null)
+            // erase() also drops the old target id: it labelled the state we are discarding, and it
+            // may name a worksite the user just deleted. The caller's setState() re-stamps the new
+            // target id if the evaluation actually commits a transition.
+            erase()
         }
     }
 
