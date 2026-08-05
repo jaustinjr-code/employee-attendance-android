@@ -52,6 +52,44 @@ class SharedPrefsWorkLocationLocalDataSourceTest {
     }
 
     @Test
+    fun keepsValidEntriesWhenOneStoredEntryIsMalformed() {
+        // Issue #25: one bad entry used to discard the whole list. Plant a payload with a blank id
+        // in the middle — WorkLocation's init rejects it, so it can only come from corruption,
+        // tampering, or schema drift — and assert the two valid worksites survive.
+        val raw = """
+            [
+              {"id":"a","name":"Downtown Office","latitudeDegrees":37.7749,"longitudeDegrees":-122.4194,"radiusMeters":150.0},
+              {"id":"","name":"Corrupt","latitudeDegrees":37.0,"longitudeDegrees":-122.0,"radiusMeters":150.0},
+              {"id":"c","name":"Warehouse","latitudeDegrees":37.80,"longitudeDegrees":-122.27,"radiusMeters":200.0}
+            ]
+        """.trimIndent()
+        SecurePreferences.create(context, "work_locations")
+            .edit().putString("locations", raw).putString("active_id", "c").commit()
+
+        val loaded = newStore().load()
+
+        assertEquals(listOf("a", "c"), loaded.locations.map { it.id })
+        assertEquals("c", loaded.activeId)
+    }
+
+    @Test
+    fun dropsActiveIdWhenItsEntryWasTheMalformedOne() {
+        val raw = """
+            [
+              {"id":"a","name":"Downtown Office","latitudeDegrees":37.7749,"longitudeDegrees":-122.4194,"radiusMeters":150.0},
+              {"id":"bad","name":"","latitudeDegrees":37.0,"longitudeDegrees":-122.0,"radiusMeters":150.0}
+            ]
+        """.trimIndent()
+        SecurePreferences.create(context, "work_locations")
+            .edit().putString("locations", raw).putString("active_id", "bad").commit()
+
+        val loaded = newStore().load()
+
+        assertEquals(listOf("a"), loaded.locations.map { it.id })
+        assertNull("the dangling-active-id guard must still apply", loaded.activeId)
+    }
+
+    @Test
     fun toleratesCorruptPayload() {
         context.getSharedPreferences("work_locations", Context.MODE_PRIVATE)
             .edit().putString("locations", "{not valid json").commit()
