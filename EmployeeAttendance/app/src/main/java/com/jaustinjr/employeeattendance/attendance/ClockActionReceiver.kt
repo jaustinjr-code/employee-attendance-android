@@ -32,9 +32,11 @@ class ClockActionReceiver : BroadcastReceiver() {
             }
             ACTION_CONFIRM -> {
                 Log.d(TAG, "confirm $clockType for $locationId")
-                when (clockType) {
-                    ClockType.CLOCK_IN -> repository.recordClockIn(locationId)
-                    ClockType.CLOCK_OUT -> repository.recordClockOut(locationId)
+                // Guarded like the auto path: the prompt may be stale (already confirmed from
+                // another card, or clocked out manually since), and confirming it must not write a
+                // clock-out with no open session behind it.
+                if (!repository.recordIfStateChanges(locationId, clockType)) {
+                    Log.d(TAG, "confirm ignored; $locationId already in the target state")
                 }
             }
             else -> return

@@ -62,12 +62,14 @@ class WorksitesViewModel(
      */
     fun onConfirmSwitchActive(newId: String) {
         val previous = workLocationRepository.activeWorkLocation.value
-        if (previous != null && previous.id != newId &&
-            attendanceRepository.attendance.value[previous.id]?.isClockedIn == true
-        ) {
+        if (previous != null && previous.id != newId && attendanceRepository.isClockedIn(previous.id)) {
             Log.d(TAG, "switch away from clocked-in ${previous.id}; clocking out first")
-            attendanceRepository.recordClockOut(previous.id, source = ClockSource.MANUAL)
-            notifier.notifyRecorded(previous, ClockType.CLOCK_OUT, withUndo = false)
+            val recorded = attendanceRepository.recordIfStateChanges(
+                locationId = previous.id,
+                type = ClockType.CLOCK_OUT,
+                source = ClockSource.MANUAL,
+            )
+            if (recorded) notifier.notifyRecorded(previous, ClockType.CLOCK_OUT, withUndo = false)
         }
         workLocationRepository.setActiveWorkLocation(newId)
     }

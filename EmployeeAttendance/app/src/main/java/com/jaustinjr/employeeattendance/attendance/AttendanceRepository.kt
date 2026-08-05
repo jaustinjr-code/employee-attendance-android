@@ -183,8 +183,8 @@ class DefaultAttendanceRepository(
         _attendance.value = attendanceByLocation(updated)
     }
 
-    private fun attendanceByLocation(events: List<AttendanceEvent>): Map<String, LocationAttendance> =
-        events.groupBy { it.locationId }.mapValues { (_, locationEvents) ->
+    private fun attendanceByLocation(log: List<AttendanceEvent>): Map<String, LocationAttendance> =
+        log.groupBy { it.locationId }.mapValues { (_, locationEvents) ->
             val lastIn = locationEvents
                 .filter { it.type == ClockType.CLOCK_IN }
                 .maxByOrNull { it.epochMillis }
