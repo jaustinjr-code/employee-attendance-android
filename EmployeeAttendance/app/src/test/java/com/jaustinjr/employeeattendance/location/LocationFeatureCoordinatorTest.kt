@@ -80,7 +80,7 @@ class LocationFeatureCoordinatorTest {
             lastTarget = target
         }
         override fun reset() { resetCount++ }
-        override fun clear() { clearCount++ }
+        override fun clear(deletedTargetIds: Set<String>) { clearCount++ }
     }
 
     private class RecordingLauncher : TrackingServiceLauncher {

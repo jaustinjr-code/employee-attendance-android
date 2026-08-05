@@ -47,10 +47,13 @@ class SettingsViewModel(
      * `LocationFeatureCoordinator` eventually call `reset()`, but that is an indirect side effect of
      * an unrelated reactive pipeline, not a guarantee this screen owns — and clearing proximity up
      * front also means that later `reset()` is a no-op, so no Departed event is emitted naming a
-     * worksite that no longer exists.
+     * worksite that no longer exists. The ids being deleted are handed over so that a geofence
+     * transition still in flight — the OS geofences are unregistered asynchronously — cannot write
+     * a just-deleted worksite id back into the proximity store.
      */
     fun onDeleteAllData() {
-        proximityUpdater.clear()
+        val deletedIds = workLocationRepository.workLocations.value.mapTo(mutableSetOf()) { it.id }
+        proximityUpdater.clear(deletedIds)
         workLocationRepository.clearAll()
         attendanceRepository.clearAll()
     }

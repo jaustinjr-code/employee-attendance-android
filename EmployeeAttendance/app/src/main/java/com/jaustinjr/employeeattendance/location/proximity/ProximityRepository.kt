@@ -50,8 +50,32 @@ class ProximityRepository(
 
     private var lastTargetId: String? = store.loadTargetId()
 
+    /**
+     * Ids of targets erased by [clear] whose transitions must be ignored.
+     *
+     * "Delete all data" removes the worksites synchronously, but the OS geofences registered for them
+     * are torn down later and asynchronously (by `LocationFeatureCoordinator` reacting to the active
+     * work location going null), and a fix already in flight can still be delivered. Without this
+     * gate, such a straggler would call [setState] and write the just-deleted worksite id straight
+     * back into the store — undoing the erasure this class just performed.
+     *
+     * Deliberately in-memory only and never persisted: persisting it would re-create exactly the
+     * on-disk worksite id the erasure exists to remove. The window it guards is seconds long, so
+     * process lifetime is more than enough, and the set is dropped as soon as any other target
+     * reports in (see [isSuppressed]) so deleted ids do not linger in memory either. Safe because
+     * work location ids are random UUIDs, so a re-registered worksite never reuses a suppressed id.
+     */
+    private var suppressedTargetIds: Set<String> = emptySet()
+
     init {
         Log.d(TAG, "seeded from store: state=${_proximity.value} target=$lastTargetId")
+        // Heal residue written by builds before the #21 fix (and by any reset() that short-circuited
+        // on an already-UNKNOWN state): a target id with no live state to label is orphaned data.
+        if (_proximity.value == ProximityState.UNKNOWN && lastTargetId != null) {
+            Log.d(TAG, "dropping orphaned target id persisted alongside an UNKNOWN state")
+            lastTargetId = null
+            store.save(ProximityState.UNKNOWN, null)
+        }
     }
 
     private val _events = MutableSharedFlow<ProximityEvent>(
@@ -63,6 +87,7 @@ class ProximityRepository(
     /** Feed from OS geofence transitions (background path). */
     @Synchronized
     fun onGeofenceTransition(targetId: String, state: ProximityState) {
+        if (isSuppressed(targetId)) return
         clearStaleStateIfTargetChanged(targetId)
         setState(state, targetId)
     }
@@ -73,6 +98,7 @@ class ProximityRepository(
         // Read current state, compute, and commit all under the monitor so a concurrent
         // geofence-driven commit can't slip in between the read and the write and get clobbered by
         // a decision made from stale state.
+        if (isSuppressed(target.id)) return
         clearStaleStateIfTargetChanged(target.id)
         val distance = ProximityCalculator.distanceMeters(sample, target)
         val next = ProximityCalculator.evaluate(
@@ -94,7 +120,7 @@ class ProximityRepository(
     override fun reset() {
         val previous = _proximity.value
         if (previous == ProximityState.UNKNOWN) return
-        _proximity.value = ProximityState.UNKNOWN
+        // Read the departed-from id before erase() nulls it.
         val departedFrom = lastTargetId
         erase()
         Log.d(TAG, "reset: $previous -> UNKNOWN")
@@ -111,9 +137,30 @@ class ProximityRepository(
      * because a stale target id can outlive the state) and emits no events. See [ProximityUpdater.clear].
      */
     @Synchronized
-    override fun clear() {
+    override fun clear(deletedTargetIds: Set<String>) {
         Log.d(TAG, "clear: erasing proximity state and target id")
+        // Also suppress whatever this repository itself was tracking: the caller's list comes from
+        // the work location registry, but a geofence can outlive its registry entry.
+        suppressedTargetIds = deletedTargetIds + setOfNotNull(lastTargetId)
         erase()
+    }
+
+    /**
+     * Whether [targetId] names a target erased by [clear] and must therefore be ignored.
+     *
+     * A report from any *other* target means tracking has legitimately moved on to a live worksite,
+     * so the suppression list has done its job and is dropped — keeping deleted ids out of memory
+     * beyond the moment they are needed.
+     */
+    private fun isSuppressed(targetId: String): Boolean {
+        if (suppressedTargetIds.isEmpty()) return false
+        if (targetId !in suppressedTargetIds) {
+            Log.d(TAG, "live target reported in; dropping suppression list")
+            suppressedTargetIds = emptySet()
+            return false
+        }
+        Log.d(TAG, "ignoring transition for a target erased by delete-all-data")
+        return true
     }
 
     /**

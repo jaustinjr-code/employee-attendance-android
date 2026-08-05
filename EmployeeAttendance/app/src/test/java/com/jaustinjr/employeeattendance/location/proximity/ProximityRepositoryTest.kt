@@ -122,7 +122,7 @@ class ProximityRepositoryTest {
         val repo = ProximityRepository(store)
 
         repo.onGeofenceTransition("deleted-site", ProximityState.INSIDE)
-        repo.clear()
+        repo.clear(emptySet())
 
         assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
         assertEquals(ProximityState.UNKNOWN, store.state)
@@ -131,16 +131,86 @@ class ProximityRepositoryTest {
 
     @Test
     fun `clear erases a target id left over from an already-UNKNOWN state`() = runTest {
-        // reset() short-circuits on UNKNOWN, so a target id persisted by an older build (or by a
-        // reset that ran before this fix) can still be sitting on disk at delete-all-data time.
-        // clear() must be unconditional.
-        val store = FakeStore(state = ProximityState.UNKNOWN, targetId = "deleted-site")
+        // reset() short-circuits on UNKNOWN, so a target id can be sitting next to an UNKNOWN state
+        // at delete-all-data time. clear() must be unconditional, unlike reset().
+        val store = FakeStore()
         val repo = ProximityRepository(store)
+        repo.onGeofenceTransition("deleted-site", ProximityState.OUTSIDE)
+        store.targetId = "deleted-site"
+        store.state = ProximityState.UNKNOWN
 
-        repo.clear()
+        repo.clear(emptySet())
 
         assertNull(store.targetId)
         assertEquals(ProximityState.UNKNOWN, store.state)
+    }
+
+    @Test
+    fun `an orphaned target id persisted alongside UNKNOWN is dropped on construction`() = runTest {
+        // Heals residue left on disk by builds from before this fix, for users who never happen to
+        // run "Delete all data".
+        val store = FakeStore(state = ProximityState.UNKNOWN, targetId = "stale-site")
+
+        ProximityRepository(store)
+
+        assertNull(store.targetId)
+    }
+
+    @Test
+    fun `seeded INSIDE state keeps its target id on construction`() = runTest {
+        // Guards the healing above against over-reach: the cold-start-to-deliver-a-geofence-EXIT
+        // path depends on the seeded target id surviving.
+        val store = FakeStore(state = ProximityState.INSIDE, targetId = "office")
+
+        ProximityRepository(store)
+
+        assertEquals("office", store.targetId)
+        assertEquals(ProximityState.INSIDE, store.state)
+    }
+
+    @Test
+    fun `a straggling geofence transition after clear cannot re-persist the deleted id`() = runTest {
+        // Delete-all-data removes worksites synchronously, but the OS geofences are torn down
+        // asynchronously — a transition already in flight must not write the deleted id back.
+        val store = FakeStore()
+        val repo = ProximityRepository(store)
+        val events = mutableListOf<ProximityEvent>()
+        backgroundScope.launch { repo.events.collect(events::add) }
+        runCurrent()
+
+        repo.clear(setOf("deleted-site"))
+        repo.onGeofenceTransition("deleted-site", ProximityState.INSIDE)
+        runCurrent()
+
+        assertNull(store.targetId)
+        assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun `the id the repository was tracking is suppressed even if the caller omits it`() = runTest {
+        val store = FakeStore()
+        val repo = ProximityRepository(store)
+
+        repo.onGeofenceTransition("deleted-site", ProximityState.INSIDE)
+        repo.clear(emptySet())
+        repo.onGeofenceTransition("deleted-site", ProximityState.INSIDE)
+
+        assertNull(store.targetId)
+        assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
+    }
+
+    @Test
+    fun `suppression does not block a newly registered worksite`() = runTest {
+        // Ids are random UUIDs, so a live report from any other target means tracking has moved on.
+        val store = FakeStore()
+        val repo = ProximityRepository(store)
+
+        repo.clear(setOf("deleted-site"))
+        repo.onGeofenceTransition("new-site", ProximityState.INSIDE)
+
+        assertEquals(ProximityState.INSIDE, repo.proximity.value)
+        assertEquals("new-site", store.targetId)
     }
 
     @Test
@@ -153,7 +223,7 @@ class ProximityRepositoryTest {
         runCurrent()
 
         repo.onGeofenceTransition("t1", ProximityState.INSIDE)
-        repo.clear()
+        repo.clear(emptySet())
         runCurrent()
 
         assertEquals(listOf(ProximityEvent.Arrived("t1")), events)
@@ -170,7 +240,7 @@ class ProximityRepositoryTest {
         runCurrent()
 
         repo.onGeofenceTransition("deleted-site", ProximityState.INSIDE)
-        repo.clear()
+        repo.clear(emptySet())
         repo.reset()
         runCurrent()
 

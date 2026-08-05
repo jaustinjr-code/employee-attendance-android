@@ -22,6 +22,10 @@ interface ProximityUpdater {
      * just left", so it still emits a Departed when the user was INSIDE. [clear] means "this data
      * must not exist anymore", so it emits nothing — the worksite it would name has already been
      * deleted, and attendance history is being wiped alongside it.
+     *
+     * @param deletedTargetIds ids of the targets being deleted alongside this erasure. Their OS
+     *   geofences are torn down asynchronously, so a straggling transition can still arrive after
+     *   this call; implementations must ignore those rather than let them re-persist a deleted id.
      */
-    fun clear()
+    fun clear(deletedTargetIds: Set<String> = emptySet())
 }

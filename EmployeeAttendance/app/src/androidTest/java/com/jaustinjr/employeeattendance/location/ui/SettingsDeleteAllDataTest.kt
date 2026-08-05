@@ -69,8 +69,11 @@ class SettingsDeleteAllDataTest {
     @Before
     @After
     fun clearPrefs() {
-        context.getSharedPreferences("proximity_state", Context.MODE_PRIVATE)
-            .edit().clear().commit()
+        // SecurePreferences stores under "<name>_secure"; "proximity_state" is only the legacy
+        // plaintext file that migration drains. Both must be cleared for real test isolation.
+        for (name in listOf("proximity_state", "proximity_state_secure")) {
+            context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
+        }
     }
 
     @Test
@@ -103,6 +106,10 @@ class SettingsDeleteAllDataTest {
         assertEquals("site-to-delete", store.loadTargetId())
 
         viewModel.onDeleteAllData()
+
+        // The OS geofence for the deleted worksite is unregistered asynchronously, so a transition
+        // can still be delivered after the purge. It must not resurrect the id.
+        proximity.onGeofenceTransition("site-to-delete", ProximityState.INSIDE)
 
         // Read through a *fresh* store instance so this asserts on persisted bytes, not memory.
         val reread = SharedPrefsProximityStateStore(context)
