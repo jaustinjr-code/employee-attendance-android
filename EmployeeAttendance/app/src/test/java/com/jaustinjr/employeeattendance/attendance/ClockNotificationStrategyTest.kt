@@ -2,9 +2,8 @@ package com.jaustinjr.employeeattendance.attendance
 
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.settings.ClockNotificationPreference
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -12,40 +11,17 @@ class ClockNotificationStrategyTest {
 
     private val worksite = WorkLocation("site-a", "Office", null, 37.0, -122.0, 100f)
 
-    private class RecordingAttendance : AttendanceRepository {
-        val clockIns = mutableListOf<String>()
-        val clockOuts = mutableListOf<String>()
-        override val attendance: StateFlow<Map<String, LocationAttendance>> =
-            MutableStateFlow(emptyMap())
-        override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) {
-            clockIns += locationId
-        }
-        override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) {
-            clockOuts += locationId
-        }
-        override fun undoLast(locationId: String) = Unit
-    }
-
-    private class RecordingNotifier : ClockNotifications {
-        data class Recorded(val id: String, val type: ClockType, val withUndo: Boolean)
-        data class Confirm(val id: String, val type: ClockType)
-        val recorded = mutableListOf<Recorded>()
-        val confirms = mutableListOf<Confirm>()
-        override fun notifyRecorded(worksite: WorkLocation, clockType: ClockType, withUndo: Boolean) {
-            recorded += Recorded(worksite.id, clockType, withUndo)
-        }
-        override fun notifyConfirm(worksite: WorkLocation, clockType: ClockType) {
-            confirms += Confirm(worksite.id, clockType)
-        }
-    }
+    private fun strategy(
+        preference: ClockNotificationPreference,
+        attendance: AttendanceRepository,
+        notifier: ClockNotifications,
+    ) = ClockNotificationStrategy.forPreference(preference, attendance, notifier)
 
     @Test
     fun `silent records without notifying`() {
-        val attendance = RecordingAttendance()
-        val notifier = RecordingNotifier()
-        val strategy = ClockNotificationStrategy.forPreference(
-            ClockNotificationPreference.SILENT, attendance, notifier,
-        )
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val strategy = strategy(ClockNotificationPreference.SILENT, attendance, notifier)
 
         strategy.onArrived(worksite)
         strategy.onDeparted(worksite)
@@ -58,11 +34,9 @@ class ClockNotificationStrategyTest {
 
     @Test
     fun `notify-with-undo records and posts an undoable notification`() {
-        val attendance = RecordingAttendance()
-        val notifier = RecordingNotifier()
-        val strategy = ClockNotificationStrategy.forPreference(
-            ClockNotificationPreference.NOTIFY_UNDO, attendance, notifier,
-        )
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val strategy = strategy(ClockNotificationPreference.NOTIFY_UNDO, attendance, notifier)
 
         strategy.onArrived(worksite)
         strategy.onDeparted(worksite)
@@ -71,8 +45,8 @@ class ClockNotificationStrategyTest {
         assertEquals(listOf("site-a"), attendance.clockOuts)
         assertEquals(
             listOf(
-                RecordingNotifier.Recorded("site-a", ClockType.CLOCK_IN, withUndo = true),
-                RecordingNotifier.Recorded("site-a", ClockType.CLOCK_OUT, withUndo = true),
+                RecordingClockNotifier.Recorded("site-a", ClockType.CLOCK_IN, withUndo = true),
+                RecordingClockNotifier.Recorded("site-a", ClockType.CLOCK_OUT, withUndo = true),
             ),
             notifier.recorded,
         )
@@ -80,23 +54,93 @@ class ClockNotificationStrategyTest {
 
     @Test
     fun `confirm posts a prompt and records nothing yet`() {
-        val attendance = RecordingAttendance()
-        val notifier = RecordingNotifier()
-        val strategy = ClockNotificationStrategy.forPreference(
-            ClockNotificationPreference.CONFIRM, attendance, notifier,
-        )
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val strategy = strategy(ClockNotificationPreference.CONFIRM, attendance, notifier)
 
         strategy.onArrived(worksite)
-        strategy.onDeparted(worksite)
 
         assertTrue(attendance.clockIns.isEmpty())
         assertTrue(attendance.clockOuts.isEmpty())
         assertEquals(
-            listOf(
-                RecordingNotifier.Confirm("site-a", ClockType.CLOCK_IN),
-                RecordingNotifier.Confirm("site-a", ClockType.CLOCK_OUT),
-            ),
+            listOf(RecordingClockNotifier.Confirm("site-a", ClockType.CLOCK_IN)),
             notifier.confirms,
+        )
+    }
+
+    // --- Issue #13: departure must be guarded on the actual clocked-in state ---
+
+    @Test
+    fun `notify-with-undo departure after an undone clock-in records and notifies nothing`() {
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val strategy = strategy(ClockNotificationPreference.NOTIFY_UNDO, attendance, notifier)
+
+        strategy.onArrived(worksite)
+        // The user taps "Undo" on the clock-in notification while still inside the radius.
+        attendance.undoLast(worksite.id)
+        notifier.recorded.clear()
+
+        // ...and only later walks out of the radius.
+        strategy.onDeparted(worksite)
+
+        assertTrue("clock-out must not be recorded", attendance.clockOuts.isEmpty())
+        assertTrue("no clock-out notification must be posted", notifier.recorded.isEmpty())
+        assertFalse(attendance.attendance.value[worksite.id]?.isClockedIn == true)
+    }
+
+    @Test
+    fun `silent departure without an open clock-in records nothing`() {
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val strategy = strategy(ClockNotificationPreference.SILENT, attendance, notifier)
+
+        strategy.onDeparted(worksite)
+
+        assertTrue(attendance.clockOuts.isEmpty())
+    }
+
+    @Test
+    fun `confirm departure without an open clock-in posts no prompt`() {
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val strategy = strategy(ClockNotificationPreference.CONFIRM, attendance, notifier)
+
+        // Arrival prompt is never confirmed, so nothing is recorded.
+        strategy.onArrived(worksite)
+        notifier.confirms.clear()
+
+        strategy.onDeparted(worksite)
+
+        assertTrue(notifier.confirms.isEmpty())
+    }
+
+    @Test
+    fun `arriving while already clocked in does not double-record`() {
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val strategy = strategy(ClockNotificationPreference.NOTIFY_UNDO, attendance, notifier)
+
+        strategy.onArrived(worksite)
+        strategy.onArrived(worksite)
+
+        assertEquals(listOf("site-a"), attendance.clockIns)
+        assertEquals(1, notifier.recorded.size)
+    }
+
+    @Test
+    fun `departure still clocks out a manually recorded clock-in`() {
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val strategy = strategy(ClockNotificationPreference.NOTIFY_UNDO, attendance, notifier)
+
+        attendance.recordClockIn(worksite.id, epochMillis = 1_000L, source = ClockSource.MANUAL)
+        strategy.onDeparted(worksite)
+
+        assertEquals(listOf("site-a"), attendance.clockOuts)
+        assertEquals(
+            listOf(RecordingClockNotifier.Recorded("site-a", ClockType.CLOCK_OUT, withUndo = true)),
+            notifier.recorded,
         )
     }
 }

@@ -10,21 +10,9 @@ import org.junit.Test
 
 class DefaultAttendanceRepositoryTest {
 
-    /** In-memory [AttendanceLocalDataSource] backing the persistence assertions. */
-    private class FakeLocalDataSource(
-        var stored: List<AttendanceEvent> = emptyList(),
-    ) : AttendanceLocalDataSource {
-        var saveCount = 0
-        override fun load(): List<AttendanceEvent> = stored
-        override fun save(events: List<AttendanceEvent>) {
-            saveCount++
-            stored = events
-        }
-    }
-
     private val scope = CoroutineScope(Dispatchers.Unconfined)
 
-    private fun repo(local: FakeLocalDataSource = FakeLocalDataSource()) =
+    private fun repo(local: FakeAttendanceLocalDataSource = FakeAttendanceLocalDataSource()) =
         DefaultAttendanceRepository(local = local, ioScope = scope)
 
     @Test
@@ -59,7 +47,7 @@ class DefaultAttendanceRepositoryTest {
 
     @Test
     fun `events are persisted through the local data source`() {
-        val local = FakeLocalDataSource()
+        val local = FakeAttendanceLocalDataSource()
         val repo = repo(local)
         repo.recordClockIn("site-a", 1_000L, ClockSource.MANUAL)
 
@@ -72,7 +60,7 @@ class DefaultAttendanceRepositoryTest {
 
     @Test
     fun `state is seeded from persisted events on construction`() {
-        val local = FakeLocalDataSource(
+        val local = FakeAttendanceLocalDataSource(
             stored = listOf(AttendanceEvent("site-a", ClockType.CLOCK_IN, 4_000L)),
         )
         val repo = repo(local)
@@ -96,7 +84,7 @@ class DefaultAttendanceRepositoryTest {
 
     @Test
     fun `clearAll deletes all recorded attendance`() {
-        val local = FakeLocalDataSource()
+        val local = FakeAttendanceLocalDataSource()
         val repo = repo(local)
         repo.recordClockIn("site-a", 1_000L)
         repo.recordClockOut("site-b", 2_000L)
@@ -109,7 +97,7 @@ class DefaultAttendanceRepositoryTest {
 
     @Test
     fun `undoLast is a no-op when there is nothing for the location`() {
-        val local = FakeLocalDataSource()
+        val local = FakeAttendanceLocalDataSource()
         val repo = repo(local)
         val before = local.saveCount
 
@@ -127,5 +115,16 @@ class DefaultAttendanceRepositoryTest {
         repo.undoLast("site-a")
 
         assertNull(repo.attendance.value["site-a"]?.lastClockInMillis)
+    }
+
+    @Test
+    fun `undoing a clock-in leaves the location not clocked in`() {
+        val repo = repo()
+        repo.recordClockIn("site-a", 1_000L)
+        assertTrue(repo.attendance.value["site-a"]?.isClockedIn == true)
+
+        repo.undoLast("site-a")
+
+        assertFalse(repo.attendance.value["site-a"]?.isClockedIn == true)
     }
 }
