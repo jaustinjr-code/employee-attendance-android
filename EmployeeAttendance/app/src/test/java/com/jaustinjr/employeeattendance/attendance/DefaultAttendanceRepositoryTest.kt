@@ -90,17 +90,33 @@ class DefaultAttendanceRepositoryTest {
     }
 
     @Test
-    fun `undoEvent reverses the named event, not merely the newest one`() {
-        // Issue #23: a stale clock-in card is tapped after the clock-out has been recorded.
+    fun `undoEvent refuses a clock-in that a later clock-out has already closed`() {
+        // Issue #23: a stale clock-in card is tapped after the clock-out has been recorded. It must
+        // not reverse the clock-out (the old type-agnostic behaviour) and must not reverse the
+        // clock-in either, which would leave a clock-out closing a session that never opened.
+        val local = FakeAttendanceLocalDataSource()
+        val repo = repo(local)
+        repo.recordClockIn("site-a", 1_000L)
+        repo.recordClockOut("site-a", 2_000L)
+        val saves = local.saveCount
+
+        assertFalse(repo.undoEvent("site-a", ClockType.CLOCK_IN, 1_000L))
+
+        assertEquals(saves, local.saveCount)
+        assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
+        assertEquals(2_000L, repo.attendance.value["site-a"]?.lastClockOutMillis)
+    }
+
+    @Test
+    fun `undoEvent reverses the latest event when it is the one named`() {
         val repo = repo()
         repo.recordClockIn("site-a", 1_000L)
         repo.recordClockOut("site-a", 2_000L)
 
-        assertTrue(repo.undoEvent("site-a", ClockType.CLOCK_IN, 1_000L))
+        assertTrue(repo.undoEvent("site-a", ClockType.CLOCK_OUT, 2_000L))
 
-        // The clock-out must survive; only the clock-in it named is reversed.
-        assertEquals(2_000L, repo.attendance.value["site-a"]?.lastClockOutMillis)
-        assertNull(repo.attendance.value["site-a"]?.lastClockInMillis)
+        assertTrue(repo.isClockedIn("site-a"))
+        assertNull(repo.attendance.value["site-a"]?.lastClockOutMillis)
     }
 
     @Test

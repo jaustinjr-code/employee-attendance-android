@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.getSystemService
@@ -166,9 +167,8 @@ class ClockNotifier(context: Context) : ClockNotifications {
         )
     }
 
-    /** Stable per-worksite, per-type id so a later state change replaces (not stacks) the card. */
     private fun notificationId(locationId: String, clockType: ClockType): Int =
-        (locationId.hashCode() * 31 + clockType.ordinal) and 0x7FFFFFFF
+        notificationIdFor(locationId, clockType)
 
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -184,8 +184,17 @@ class ClockNotifier(context: Context) : ClockNotifications {
         manager.createNotificationChannel(channel)
     }
 
-    private companion object {
-        const val TAG = "ClockNotifier"
-        const val CHANNEL_ID = "auto_clock"
+    companion object {
+        private const val TAG = "ClockNotifier"
+        private const val CHANNEL_ID = "auto_clock"
+
+        /**
+         * Stable per-worksite, per-type id so a later state change replaces (not stacks) the card.
+         * Exposed so the instrumented test can identify this app's cards in the shade rather than
+         * re-deriving the formula and silently drifting from it.
+         */
+        @VisibleForTesting
+        fun notificationIdFor(locationId: String, clockType: ClockType): Int =
+            (locationId.hashCode() * 31 + clockType.ordinal) and 0x7FFFFFFF
     }
 }

@@ -88,16 +88,18 @@ interface AttendanceRepository {
         attendance.value[locationId]?.isClockedIn == true
 
     /**
-     * Reverses one *specific* event: the most recent one for [locationId] matching both [type] and
-     * [epochMillis]. Backs the "Undo" action on an automatic clock-in/out notification.
+     * Reverses one *specific* event: the latest event for [locationId], and only if it is the one
+     * named by [type] and [epochMillis]. Backs the "Undo" action on a clock-in/out notification.
      *
-     * Scoping to the exact event is the point. A notification can outlive the event it announced —
-     * a clock-in card the user never dismissed is still tappable after the clock-out has been
-     * recorded — and "undo whatever is most recent for this location" would then reverse the
-     * clock-out instead, which is not what the button the user pressed said it would do. A stale tap
-     * matches nothing and is a no-op.
+     * Both halves of that sentence matter. A notification can outlive the event it announced — a
+     * clock-in card the user never dismissed is still tappable after the clock-out has been recorded
+     * — so "undo whatever is most recent" would reverse the clock-out, which is not what the button
+     * says. But undoing the named clock-in *underneath* a clock-out is no better: it would leave a
+     * clock-out closing a session that never opened. An event that something else has already built
+     * on is no longer undoable, so a stale tap is a no-op either way.
      *
-     * @return true if the event was found and removed, false if it was already gone.
+     * @return true if the event was the latest and was removed, false if it was already gone or has
+     *   since been superseded.
      */
     fun undoEvent(locationId: String, type: ClockType, epochMillis: Long): Boolean
 
@@ -171,11 +173,13 @@ class DefaultAttendanceRepository(
 
     @Synchronized
     override fun undoEvent(locationId: String, type: ClockType, epochMillis: Long): Boolean {
-        val index = events.indexOfLast {
-            it.locationId == locationId && it.type == type && it.epochMillis == epochMillis
-        }
-        if (index < 0) {
-            Log.d(TAG, "undoEvent: no $type for $locationId at $epochMillis; stale undo ignored")
+        // Only the location's latest event is undoable: reversing an earlier one would leave the
+        // events built on top of it dangling (an undone clock-in under a clock-out, say).
+        val index = events.indexOfLast { it.locationId == locationId }
+        val named = index >= 0 &&
+            events[index].type == type && events[index].epochMillis == epochMillis
+        if (!named) {
+            Log.d(TAG, "undoEvent: $type for $locationId at $epochMillis is gone or superseded; ignoring")
             return false
         }
         val removed = events[index]
