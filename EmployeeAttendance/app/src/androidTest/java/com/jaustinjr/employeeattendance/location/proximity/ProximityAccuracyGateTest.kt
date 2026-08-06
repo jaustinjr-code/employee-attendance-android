@@ -49,13 +49,28 @@ class ProximityAccuracyGateTest {
         const val METERS_PER_DEGREE_LATITUDE = 111_320.0
     }
 
-    /** A fix [northMeters] due north of the target centre, reporting [accuracyMeters] of error. */
-    private fun sample(northMeters: Double, accuracyMeters: Float) = LocationSample(
-        latitudeDegrees = target.latitudeDegrees + northMeters / METERS_PER_DEGREE_LATITUDE,
-        longitudeDegrees = target.longitudeDegrees,
-        accuracyMeters = accuracyMeters,
-        timestampEpochMillis = 0L,
-    )
+    /**
+     * A fix [northMeters] due north of the target centre, reporting [accuracyMeters] of error and
+     * taken at [atMillis]. Fix times matter: corroborating fixes must be properly spaced, so tests
+     * that build a streak advance the clock between fixes.
+     */
+    private fun sample(northMeters: Double, accuracyMeters: Float, atMillis: Long = 0L) =
+        LocationSample(
+            latitudeDegrees = target.latitudeDegrees + northMeters / METERS_PER_DEGREE_LATITUDE,
+            longitudeDegrees = target.longitudeDegrees,
+            accuracyMeters = accuracyMeters,
+            timestampEpochMillis = atMillis,
+        )
+
+    /** A well-spaced sequence of fix times, comfortably above the minimum corroboration spacing. */
+    private fun fixTime(index: Int) = index * 30_000L
+
+    /** Feeds [count] properly spaced marginal-but-inside fixes, starting at fix index [from]. */
+    private fun ProximityRepository.feedMarginalInsideFixes(count: Int, from: Int = 0) {
+        repeat(count) { i ->
+            onLocation(sample(140.0, accuracyMeters = 60f, atMillis = fixTime(from + i)), target)
+        }
+    }
 
     @Test
     fun aSingleCoarseFixInsideTheRadiusDoesNotClockTheUserIn() = runTest {
@@ -82,7 +97,9 @@ class ProximityAccuracyGateTest {
         backgroundScope.launch { repo.events.collect(events::add) }
         runCurrent()
 
-        repeat(10) { repo.onLocation(sample(northMeters = 140.0, accuracyMeters = 500f), target) }
+        repeat(10) { i ->
+            repo.onLocation(sample(140.0, accuracyMeters = 500f, atMillis = fixTime(i)), target)
+        }
         runCurrent()
 
         assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
@@ -114,32 +131,111 @@ class ProximityAccuracyGateTest {
         backgroundScope.launch { repo.events.collect(events::add) }
         runCurrent()
 
-        repeat(ProximityCalculator.MIN_CORROBORATING_INSIDE_FIXES) {
-            repo.onLocation(sample(northMeters = 140.0, accuracyMeters = 60f), target)
-        }
+        repo.feedMarginalInsideFixes(ProximityCalculator.MIN_CORROBORATING_INSIDE_FIXES)
         runCurrent()
         assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
         assertTrue(events.isEmpty())
 
-        repo.onLocation(sample(northMeters = 140.0, accuracyMeters = 60f), target)
+        repo.feedMarginalInsideFixes(1, from = ProximityCalculator.MIN_CORROBORATING_INSIDE_FIXES)
         runCurrent()
         assertEquals(ProximityState.INSIDE, repo.proximity.value)
         assertEquals(listOf(ProximityEvent.Arrived("office")), events)
     }
 
     @Test
+    fun resetDiscardsTheCorroborationStreakEvenFromUNKNOWN() = runTest {
+        // reset() short-circuits on an already-UNKNOWN state — and UNKNOWN is exactly the state a
+        // streak accumulates in, since marginal fixes hold rather than commit. If the streak
+        // survived, the first inside-reading fix after tracking resumed (another day, another
+        // place) would clock the user in on its own: the very defect this gate exists to prevent.
+        val repo = ProximityRepository(FakeStore())
+        val events = mutableListOf<ProximityEvent>()
+        backgroundScope.launch { repo.events.collect(events::add) }
+        runCurrent()
+
+        val n = ProximityCalculator.MIN_CORROBORATING_INSIDE_FIXES
+        repo.feedMarginalInsideFixes(n)
+        assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
+
+        repo.reset()
+
+        repo.feedMarginalInsideFixes(1, from = n + 1)
+        runCurrent()
+        assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun aStreakGatheredForOneWorksiteDoesNotCorroborateAnother() = runTest {
+        // Evidence is only evidence about the target it was gathered for.
+        val other = target.copy(id = "warehouse", latitudeDegrees = 40.0)
+        val repo = ProximityRepository(FakeStore())
+        val events = mutableListOf<ProximityEvent>()
+        backgroundScope.launch { repo.events.collect(events::add) }
+        runCurrent()
+
+        val n = ProximityCalculator.MIN_CORROBORATING_INSIDE_FIXES
+        repo.feedMarginalInsideFixes(n)
+
+        // One marginal fix for a different worksite must not inherit the streak and commit.
+        repo.onLocation(
+            LocationSample(
+                latitudeDegrees = other.latitudeDegrees + 140.0 / METERS_PER_DEGREE_LATITUDE,
+                longitudeDegrees = other.longitudeDegrees,
+                accuracyMeters = 60f,
+                timestampEpochMillis = fixTime(n),
+            ),
+            other,
+        )
+        runCurrent()
+
+        assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun batchedFixesFromTheSameMomentDoNotCorroborateEachOther() = runTest {
+        // The OUTSIDE power profile batches up to 120 s of fixes into one delivery. Counting a batch
+        // as several independent observations would be self-deception, so fixes closer together than
+        // MIN_CORROBORATION_SPACING_MILLIS are ignored rather than counted.
+        val repo = ProximityRepository(FakeStore())
+
+        repeat(20) { i ->
+            repo.onLocation(sample(140.0, accuracyMeters = 60f, atMillis = i * 100L), target)
+        }
+
+        assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
+    }
+
+    @Test
+    fun aStaleInsideFixDoesNotCorroborateAMuchLaterOne() = runTest {
+        val repo = ProximityRepository(FakeStore())
+
+        repo.onLocation(sample(140.0, accuracyMeters = 60f, atMillis = 0L), target)
+        // Hours later — far beyond MAX_CORROBORATION_GAP_MILLIS — the run restarts from scratch.
+        val muchLater = ProximityRepository.MAX_CORROBORATION_GAP_MILLIS * 10
+        repo.onLocation(sample(140.0, accuracyMeters = 60f, atMillis = muchLater), target)
+        repo.onLocation(
+            sample(140.0, accuracyMeters = 60f, atMillis = muchLater + 30_000L),
+            target,
+        )
+
+        // Only two corroborations have accrued since the restart, so nothing commits yet.
+        assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
+    }
+
+    @Test
     fun aFixThatReadsOutsideBreaksTheCorroborationStreak() = runTest {
         val repo = ProximityRepository(FakeStore())
 
-        repeat(ProximityCalculator.MIN_CORROBORATING_INSIDE_FIXES) {
-            repo.onLocation(sample(northMeters = 140.0, accuracyMeters = 60f), target)
-        }
+        val n = ProximityCalculator.MIN_CORROBORATING_INSIDE_FIXES
+        repo.feedMarginalInsideFixes(n)
         // A usable fix well outside the band resets the run of evidence...
-        repo.onLocation(sample(northMeters = 400.0, accuracyMeters = 20f), target)
+        repo.onLocation(sample(400.0, accuracyMeters = 20f, atMillis = fixTime(n)), target)
         assertEquals(ProximityState.OUTSIDE, repo.proximity.value)
 
         // ...so the next marginal fix starts over and must not commit an entry.
-        repo.onLocation(sample(northMeters = 140.0, accuracyMeters = 60f), target)
+        repo.feedMarginalInsideFixes(1, from = n + 1)
         assertEquals(ProximityState.OUTSIDE, repo.proximity.value)
     }
 
@@ -149,13 +245,12 @@ class ProximityAccuracyGateTest {
         // reset the run.
         val repo = ProximityRepository(FakeStore())
 
-        repeat(ProximityCalculator.MIN_CORROBORATING_INSIDE_FIXES) {
-            repo.onLocation(sample(northMeters = 140.0, accuracyMeters = 60f), target)
-        }
-        repo.onLocation(sample(northMeters = 140.0, accuracyMeters = 5_000f), target)
+        val n = ProximityCalculator.MIN_CORROBORATING_INSIDE_FIXES
+        repo.feedMarginalInsideFixes(n)
+        repo.onLocation(sample(140.0, accuracyMeters = 5_000f, atMillis = fixTime(n)), target)
         assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
 
-        repo.onLocation(sample(northMeters = 140.0, accuracyMeters = 60f), target)
+        repo.feedMarginalInsideFixes(1, from = n + 1)
         assertEquals(ProximityState.INSIDE, repo.proximity.value)
     }
 

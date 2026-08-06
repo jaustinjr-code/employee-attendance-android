@@ -79,8 +79,19 @@ object ProximityCalculator {
      *    The corroboration path is the escape hatch that keeps auto clock-in working on devices
      *    whose fixes are merely mediocre rather than useless (e.g. a 40 m fix against a 50 m radius,
      *    which can never satisfy the confidence test). Such users still clock in — a couple of fix
-     *    intervals later — instead of losing the feature. It is not a free pass: a single noisy fix,
-     *    which is the actual false-positive mechanism in this bug, cannot satisfy it.
+     *    intervals later — instead of losing the feature.
+     *
+     *    Be clear about what it does and does not buy. It rejects a **single transient outlier**,
+     *    which is the mechanism behind this bug. It does **not** defend against a *systematically*
+     *    biased source: consecutive cell-tower or wifi fixes are derived from the same beacons and
+     *    agree with each other by construction, so they would corroborate happily. The real defence
+     *    against those is rule 1 — they are also coarse, and [isUsable] rejects them. Corroboration
+     *    is the second line, not the first. The caller is responsible for only counting fixes that
+     *    are meaningfully separated in time; see
+     *    [ProximityRepository.MIN_CORROBORATION_SPACING_MILLIS] and
+     *    [ProximityRepository.MAX_CORROBORATION_GAP_MILLIS], which exist because the OUTSIDE power
+     *    profile batches fixes and would otherwise deliver three "independent" corroborations in one
+     *    callback.
      * 3. **Leaving is unchanged**, beyond requiring a usable fix — and rule 1 is relaxed for exits
      *    that are beyond doubt: a fix reporting `distanceMeters - accuracyMeters` still outside the
      *    band commits an exit however coarse it is. Refusing to clock out on low-confidence evidence
@@ -94,6 +105,12 @@ object ProximityCalculator {
      * usability bound scales with the radius, the user-facing remedy is to pick a wider radius
      * ([com.jaustinjr.employeeattendance.location.registration.RadiusOption.DISTANT] gives a 650 m
      * budget), or to grant precise location so higher-priority fixes are available.
+     *
+     * A second, narrower case: a user loitering exactly on the boundary, whose fixes alternate just
+     * inside and just outside, resets the streak on every outside reading and so may not clock in
+     * until they move properly inside. Before this change the first inside reading committed. That
+     * is the intended trade — on the boundary, "inside" is genuinely not established — but it is a
+     * real behaviour change for tight radii.
      *
      * @param current the previous state, used to apply the hysteresis band.
      * @param distanceMeters measured distance from the target center.
