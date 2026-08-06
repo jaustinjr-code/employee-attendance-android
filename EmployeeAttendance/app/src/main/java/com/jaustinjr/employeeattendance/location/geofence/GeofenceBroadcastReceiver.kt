@@ -9,6 +9,7 @@ import com.google.android.gms.location.GeofencingEvent
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.location.proximity.ProximityState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -59,7 +60,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         // goAsync() keeps the receiver (and the process) alive across the suspension. Startup is a
         // few prefs reads, so this settles in milliseconds — far inside the ~10s broadcast budget.
         val pendingResult = goAsync()
-        app.applicationScope.launch {
+        // Dispatchers.IO, not the scope's default: reading container.proximityRepository below is
+        // blocking Keystore + disk work and must not occupy a Dispatchers.Default worker.
+        val job = app.applicationScope.launch(Dispatchers.IO) {
             try {
                 app.awaitStarted()
                 val repository = app.container.proximityRepository
@@ -72,10 +75,13 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 // Never let a startup failure take down the process from a broadcast.
                 Log.e(TAG, "Failed to forward geofence transition", e)
-            } finally {
-                pendingResult.finish()
             }
         }
+        // finish() is hung off job completion rather than a `finally` inside the body: if
+        // applicationScope were already cancelled, the coroutine is born cancelled and its body —
+        // including any `finally` — never runs, leaking the PendingResult until the OS times the
+        // receiver out. invokeOnCompletion fires even for an already-completed job.
+        job.invokeOnCompletion { pendingResult.finish() }
     }
 
     companion object {

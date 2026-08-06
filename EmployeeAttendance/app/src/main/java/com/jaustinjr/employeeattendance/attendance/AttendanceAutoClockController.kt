@@ -44,7 +44,7 @@ class AttendanceAutoClockController(
     /** Begins consuming proximity events on [scope]; call once with an app-lifetime scope. */
     fun start(scope: CoroutineScope): Job {
         Log.d(TAG, "start: consuming proximity events for auto clock in/out")
-        return scope.launch {
+        val job = scope.launch {
             proximityEvents
                 .onSubscription {
                     Log.d(TAG, "subscribed to proximity events")
@@ -52,6 +52,19 @@ class AttendanceAutoClockController(
                 }
                 .collect(::handle)
         }
+        // Failure-safety for [subscribed]. It is completed from inside the collector, so if that
+        // coroutine never reaches onSubscription — [scope] already cancelled (the coroutine is then
+        // born cancelled and its body never runs), or a throw during setup — nothing would ever
+        // complete it. On a SupervisorJob scope that failure is not propagated anywhere, so every
+        // awaitSubscribed() caller would hang forever, and with them app startup and any geofence
+        // broadcast waiting on it. invokeOnCompletion runs even for an already-completed job, so
+        // waiters are always released; auto clock-in is then degraded rather than the app wedged.
+        job.invokeOnCompletion { cause ->
+            if (subscribed.complete(Unit)) {
+                Log.w(TAG, "collector finished before subscribing; released waiters", cause)
+            }
+        }
+        return job
     }
 
     /** Suspends until [start]'s collector is subscribed. See [subscribed]. */
