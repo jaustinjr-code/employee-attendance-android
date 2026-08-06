@@ -81,9 +81,11 @@ object ProximityCalculator {
      *    which can never satisfy the confidence test). Such users still clock in — a couple of fix
      *    intervals later — instead of losing the feature. It is not a free pass: a single noisy fix,
      *    which is the actual false-positive mechanism in this bug, cannot satisfy it.
-     * 3. **Leaving is unchanged**, beyond requiring a usable fix. Refusing to clock out on
-     *    low-confidence evidence would strand sessions open and over-report hours, which is the same
-     *    harm the gate exists to prevent.
+     * 3. **Leaving is unchanged**, beyond requiring a usable fix — and rule 1 is relaxed for exits
+     *    that are beyond doubt: a fix reporting `distanceMeters - accuracyMeters` still outside the
+     *    band commits an exit however coarse it is. Refusing to clock out on low-confidence evidence
+     *    would strand sessions open and over-report hours, which is the same harm the gate exists to
+     *    prevent.
      *
      * ### Known residual exposure
      * A device that *only* ever produces fixes coarser than `radius + exitBuffer` will never auto
@@ -109,6 +111,17 @@ object ProximityCalculator {
         exitBufferMeters: Float,
         corroboratingInsideFixes: Int = 0,
     ): ProximityState = when {
+        // 0. Unambiguously outside even at its own error bound. Checked BEFORE the usability gate:
+        // a fix can be far too coarse to say anything about *entering* a 150 m radius and still be
+        // beyond doubt about the user having left — a 5 km-error fix reporting 50 km away is one.
+        // Without this, a user whose fixes all degrade below the usability bound while INSIDE would
+        // be stranded clocked in indefinitely (the OS geofence EXIT covers background users, but a
+        // When-In-Use user has no geofence to fall back on), which over-reports hours just as badly
+        // as the false clock-in this gate exists to prevent.
+        accuracyMeters.isFinite() && accuracyMeters >= 0f &&
+            distanceMeters - accuracyMeters > radiusMeters + exitBufferMeters ->
+            ProximityState.OUTSIDE
+
         // 1. The fix cannot tell inside from outside at this radius: change nothing.
         !isUsable(accuracyMeters, radiusMeters, exitBufferMeters) -> current
 

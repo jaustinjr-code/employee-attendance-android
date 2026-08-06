@@ -41,7 +41,11 @@ class ProximityAccuracyGateTest {
     }
 
     private companion object {
-        /** Meters per degree of latitude — good to ~0.1% and constant with longitude. */
+        /**
+         * Approximate meters per degree of latitude. Off by ~0.3% against the WGS84 ellipsoid that
+         * `Location.distanceBetween` uses, which is immaterial here — every assertion below sits at
+         * least several meters clear of a decision boundary.
+         */
         const val METERS_PER_DEGREE_LATITUDE = 111_320.0
     }
 
@@ -169,6 +173,23 @@ class ProximityAccuracyGateTest {
 
         assertEquals(ProximityState.INSIDE, repo.proximity.value)
         assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun aCoarseFixThatIsOutsideEvenAtItsErrorBoundStillClocksTheUserOut() = runTest {
+        // The anti-stranding rule: 5 km away with 500 m of error is unusable for *entering* a 150 m
+        // radius, but leaves no doubt the user has left.
+        val repo = ProximityRepository(FakeStore())
+        repo.onGeofenceTransition("office", ProximityState.INSIDE)
+        val events = mutableListOf<ProximityEvent>()
+        backgroundScope.launch { repo.events.collect(events::add) }
+        runCurrent()
+
+        repo.onLocation(sample(northMeters = 5_000.0, accuracyMeters = 500f), target)
+        runCurrent()
+
+        assertEquals(ProximityState.OUTSIDE, repo.proximity.value)
+        assertEquals(listOf(ProximityEvent.Departed("office")), events)
     }
 
     @Test

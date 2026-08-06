@@ -100,12 +100,32 @@ class ProximityCalculatorTest {
     }
 
     @Test
-    fun `a coarse fix cannot force an exit either`() {
+    fun `an ambiguous coarse fix cannot force an exit`() {
         // The gate is symmetric about *deciding nothing*: an uninformative fix must not eject a
-        // user who is legitimately clocked in.
+        // user who is legitimately clocked in. 200 - 500 < 150, so this fix's error circle still
+        // overlaps the worksite.
         assertEquals(
             ProximityState.INSIDE,
+            evaluate(ProximityState.INSIDE, distanceMeters = 200f, accuracyMeters = 500f),
+        )
+    }
+
+    @Test
+    fun `a coarse fix that is outside even at its error bound still exits`() {
+        // Otherwise a user whose fixes all degrade below the usability bound while INSIDE would be
+        // stranded clocked in forever — over-reporting hours just as badly as a false clock-in.
+        // 5000 - 500 > 150: wherever the user really is, it is not the worksite.
+        assertEquals(
+            ProximityState.OUTSIDE,
             evaluate(ProximityState.INSIDE, distanceMeters = 5_000f, accuracyMeters = 500f),
+        )
+    }
+
+    @Test
+    fun `a NaN accuracy cannot force an exit through the error-bound path`() {
+        assertEquals(
+            ProximityState.INSIDE,
+            evaluate(ProximityState.INSIDE, distanceMeters = 5_000f, accuracyMeters = Float.NaN),
         )
     }
 
