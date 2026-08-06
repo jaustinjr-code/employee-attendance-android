@@ -24,12 +24,20 @@ private const val DECODE_TAG = "WorkLocStore"
  * If the payload isn't a JSON array at all there is nothing to salvage, so that still yields an
  * empty list. Nothing here throws: a corrupt store must not crash startup.
  *
- * Privacy: failures are logged with the entry's *index* and the exception, never the raw element —
- * these entries contain the user's worksite coordinates and must not be echoed into logcat.
+ * Note: dropped entries are not preserved. The next [WorkLocationLocalDataSource.save] re-encodes
+ * only the survivors, so the pruning becomes permanent on disk.
+ *
+ * Privacy: failures are logged as an entry *index* plus the exception's class name only — never the
+ * throwable itself. `JsonDecodingException` appends a window of the raw input to its message, and
+ * [WorkLocation]'s `require` failures interpolate the offending value, so passing the exception to
+ * [Log] would echo worksite names, addresses and coordinates into logcat in the clear — precisely
+ * the data this store keeps encrypted at rest. The class name is enough to triage.
  */
 internal fun decodeWorkLocations(json: Json, raw: String): List<WorkLocation> {
     val elements = runCatching { json.parseToJsonElement(raw).jsonArray }
-        .onFailure { e -> Log.w(DECODE_TAG, "Stored work locations are not a JSON array; ignoring", e) }
+        .onFailure { e ->
+            Log.w(DECODE_TAG, "Stored work locations are not a JSON array; ignoring (${e.javaClass.simpleName})")
+        }
         .getOrNull() ?: return emptyList()
 
     val locations = ArrayList<WorkLocation>(elements.size)
@@ -39,7 +47,10 @@ internal fun decodeWorkLocations(json: Json, raw: String): List<WorkLocation> {
             .onSuccess { locations += it }
             .onFailure { e ->
                 dropped++
-                Log.w(DECODE_TAG, "Dropping invalid stored work location at index $index", e)
+                Log.w(
+                    DECODE_TAG,
+                    "Dropping invalid stored work location at index $index (${e.javaClass.simpleName})",
+                )
             }
     }
     if (dropped > 0) {
