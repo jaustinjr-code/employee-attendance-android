@@ -44,6 +44,10 @@ android {
             // so pure-JVM tests can exercise code paths that log.
             isReturnDefaultValues = true
         }
+        // Screenshot comparisons are pixel-exact within a small tolerance, so a half-finished
+        // ripple or fade would read as a regression. Also removes a common source of flake from
+        // the behavioural instrumentation tests.
+        animationsDisabled = true
     }
 }
 

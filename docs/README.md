@@ -15,6 +15,7 @@ touch.
 | Find the code for one feature | [features/](features/) |
 | Know what breaks if you change file X | [maintenance/change-impact-map.md](maintenance/change-impact-map.md) |
 | Add a new feature the way this repo does it | [maintenance/adding-a-feature.md](maintenance/adding-a-feature.md) |
+| Know which tests to write, and how to validate a change | [maintenance/testing.md](maintenance/testing.md) |
 | Understand the docs-sync automation | [maintenance/documentation-workflow.md](maintenance/documentation-workflow.md) |
 
 ## Feature guides
