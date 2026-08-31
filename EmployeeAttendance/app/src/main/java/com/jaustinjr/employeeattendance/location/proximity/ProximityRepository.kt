@@ -60,10 +60,16 @@ class ProximityRepository(
      * back into the store — undoing the erasure this class just performed.
      *
      * Deliberately in-memory only and never persisted: persisting it would re-create exactly the
-     * on-disk worksite id the erasure exists to remove. The window it guards is seconds long, so
-     * process lifetime is more than enough, and the set is dropped as soon as any other target
-     * reports in (see [isSuppressed]) so deleted ids do not linger in memory either. Safe because
-     * work location ids are random UUIDs, so a re-registered worksite never reuses a suppressed id.
+     * on-disk worksite id the erasure exists to remove.
+     *
+     * Entries live for the rest of the process, and are replaced wholesale by the next [clear].
+     * They are deliberately NOT dropped when some other target reports in: the straggler that this
+     * gate exists to catch can arrive *after* a newly registered worksite has already reported, and
+     * un-suppressing on that report would let the straggler both re-persist the deleted id and
+     * clobber the new worksite's freshly committed tracking. Retention costs nothing unbounded —
+     * [clear] assigns rather than accumulates, so the set never exceeds one delete-all's worth of
+     * ids. Safe because work location ids are random UUIDs (see `WorksiteRegistrationViewModel`),
+     * so a re-registered worksite never reuses a suppressed id and can never be wrongly ignored.
      */
     private var suppressedTargetIds: Set<String> = emptySet()
 
@@ -148,17 +154,13 @@ class ProximityRepository(
     /**
      * Whether [targetId] names a target erased by [clear] and must therefore be ignored.
      *
-     * A report from any *other* target means tracking has legitimately moved on to a live worksite,
-     * so the suppression list has done its job and is dropped — keeping deleted ids out of memory
-     * beyond the moment they are needed.
+     * A report from another target does NOT retire the list. Only one geofence is registered at a
+     * time, so the ordering that matters is: delete worksite A, register worksite D, D reports in,
+     * and only then A's already-dispatched transition lands. Retiring the list on D's report would
+     * un-suppress A just in time for that straggler to wipe D's tracking and write A back to disk.
      */
     private fun isSuppressed(targetId: String): Boolean {
-        if (suppressedTargetIds.isEmpty()) return false
-        if (targetId !in suppressedTargetIds) {
-            Log.d(TAG, "live target reported in; dropping suppression list")
-            suppressedTargetIds = emptySet()
-            return false
-        }
+        if (targetId !in suppressedTargetIds) return false
         Log.d(TAG, "ignoring transition for a target erased by delete-all-data")
         return true
     }

@@ -130,9 +130,12 @@ class ProximityRepositoryTest {
     }
 
     @Test
-    fun `clear erases a target id left over from an already-UNKNOWN state`() = runTest {
-        // reset() short-circuits on UNKNOWN, so a target id can be sitting next to an UNKNOWN state
-        // at delete-all-data time. clear() must be unconditional, unlike reset().
+    fun `clear erases store residue that disagrees with the in-memory state`() = runTest {
+        // Note the in-memory state here is OUTSIDE, not UNKNOWN — only the store is forced to
+        // UNKNOWN with a target id still beside it. That mismatch is the point: clear() must erase
+        // unconditionally rather than deciding from the state it happens to hold. (The genuinely
+        // in-memory-UNKNOWN-with-a-target-id case is only reachable at construction, and is covered
+        // by `an orphaned target id persisted alongside UNKNOWN is dropped on construction`.)
         val store = FakeStore()
         val repo = ProximityRepository(store)
         repo.onGeofenceTransition("deleted-site", ProximityState.OUTSIDE)
@@ -202,7 +205,7 @@ class ProximityRepositoryTest {
 
     @Test
     fun `suppression does not block a newly registered worksite`() = runTest {
-        // Ids are random UUIDs, so a live report from any other target means tracking has moved on.
+        // Suppression is by id, so it never blocks a target it does not name.
         val store = FakeStore()
         val repo = ProximityRepository(store)
 
@@ -211,6 +214,32 @@ class ProximityRepositoryTest {
 
         assertEquals(ProximityState.INSIDE, repo.proximity.value)
         assertEquals("new-site", store.targetId)
+    }
+
+    @Test
+    fun `a straggler arriving after a new worksite reports in is still suppressed`() = runTest {
+        // The gate used to retire the whole suppression list as soon as any unsuppressed target
+        // reported in. Only one geofence is registered at a time, so the damaging order is exactly
+        // this one: delete A, register D, D reports, and only THEN A's already-dispatched
+        // transition lands. Retiring on D's report un-suppressed A just in time for the straggler
+        // to wipe D's tracking and write the deleted id back to disk — reopening #21.
+        val store = FakeStore()
+        val repo = ProximityRepository(store)
+        val events = mutableListOf<ProximityEvent>()
+        backgroundScope.launch { repo.events.collect(events::add) }
+        runCurrent()
+
+        repo.clear(setOf("A"))
+        repo.onGeofenceTransition("D", ProximityState.INSIDE)
+        repo.onGeofenceTransition("A", ProximityState.OUTSIDE)
+        runCurrent()
+
+        // The deleted id must not be back on disk...
+        assertEquals("D", store.targetId)
+        // ...and D's tracking must be exactly as it was before the straggler landed.
+        assertEquals(ProximityState.INSIDE, repo.proximity.value)
+        assertEquals(ProximityState.INSIDE, store.state)
+        assertEquals(listOf(ProximityEvent.Arrived("D")), events)
     }
 
     @Test
