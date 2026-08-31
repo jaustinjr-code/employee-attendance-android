@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.location.proximity
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.jaustinjr.employeeattendance.testutil.clearPersistedProximityState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -24,8 +25,7 @@ class ProximityPersistenceE2ETest {
     @Before
     @After
     fun clearPrefs() {
-        context.getSharedPreferences("proximity_state", Context.MODE_PRIVATE)
-            .edit().clear().commit()
+        clearPersistedProximityState(context)
     }
 
     @Test

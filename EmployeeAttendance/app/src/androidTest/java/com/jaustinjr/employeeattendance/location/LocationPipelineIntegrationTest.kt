@@ -18,6 +18,7 @@ import com.jaustinjr.employeeattendance.location.tracking.LocationSample
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationTrackingController
 import com.jaustinjr.employeeattendance.location.tracking.TrackingServiceLauncher
+import com.jaustinjr.employeeattendance.testutil.clearPersistedProximityState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,8 +60,7 @@ class LocationPipelineIntegrationTest {
     @Before
     @After
     fun clearPersistedProximity() {
-        context.getSharedPreferences("proximity_state", Context.MODE_PRIVATE)
-            .edit().clear().commit()
+        clearPersistedProximityState(context)
     }
 
     private class FakePermissionRepository(initial: LocationAccessLevel) : LocationPermissionRepository {
