@@ -2,7 +2,7 @@ package com.jaustinjr.employeeattendance.location.proximity
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.jaustinjr.employeeattendance.storage.SecurePreferences
+import com.jaustinjr.employeeattendance.testutil.clearPersistedProximityState
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -18,10 +18,7 @@ class SharedPrefsProximityStateStoreTest {
     @Before
     @After
     fun clearPrefs() {
-        // Data now lives in the encrypted store; clear both it and any legacy plaintext file.
-        SecurePreferences.create(context, "proximity_state").edit().clear().commit()
-        context.getSharedPreferences("proximity_state", Context.MODE_PRIVATE)
-            .edit().clear().commit()
+        clearPersistedProximityState(context)
     }
 
     @Test
