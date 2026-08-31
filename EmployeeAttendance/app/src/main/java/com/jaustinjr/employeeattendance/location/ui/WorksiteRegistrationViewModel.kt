@@ -290,6 +290,9 @@ class WorksiteRegistrationViewModel(
     /** Captures the device's current position as the worksite center. Requires foreground access. */
     fun captureCurrentLocation() {
         if (!permissionRepository.refresh().isGranted) {
+            // Abandon any capture still in flight from an earlier tap; otherwise its result would
+            // land later and overwrite this permission error.
+            cancelCapture()
             _uiState.update { it.copy(status = CaptureStatus.Error(R.string.worksite_needs_permission)) }
             return
         }
@@ -297,15 +300,17 @@ class WorksiteRegistrationViewModel(
             operation = "current-location capture",
             timeoutMessageRes = R.string.worksite_capture_timeout,
             failureMessageRes = R.string.worksite_capture_failed,
-            // The reverse-geocode sub-budget is headroom on top of the fix budget, not carved out
-            // of it — otherwise a slow-but-successful fix could leave too little time for the
-            // address lookup and the outer timeout would discard the fix we already have.
+            // Headroom on top of the fix budget, so the reverse-geocode sub-budget is never carved
+            // out of it. The fix step carries its own bound below, which keeps this outer one a
+            // pure safety net: it can't fire while the sub-budget is still running its full 5s and
+            // throw away a fix we already have.
             timeoutMillis = CAPTURE_TIMEOUT_MILLIS + REVERSE_GEOCODE_TIMEOUT_MILLIS,
             produce = produce@{
                 // A worksite center doesn't need GPS-grade precision, so BALANCED avoids waking the
                 // GPS radio at full power. The captured accuracy is surfaced so the user can retry.
-                val fix = locationTracker.currentLocation(LocationPriority.BALANCED)
-                    ?: return@produce null
+                val fix = withTimeout(CAPTURE_TIMEOUT_MILLIS) {
+                    locationTracker.currentLocation(LocationPriority.BALANCED)
+                } ?: return@produce null
                 // Reverse-geocode the fix to the nearest building address so the worksite carries a
                 // human-readable address (for future mapping/navigation), not just coordinates. This
                 // is a network lookup, so honor the user's privacy setting to disable it. Neither a

@@ -40,10 +40,19 @@ class WorksiteRegistrationViewModelTest {
     val mainRule = MainDispatcherRule()
 
     private class FakePermissionRepository(granted: Boolean) : LocationPermissionRepository {
-        private val level = if (granted) LocationAccessLevel.ALWAYS else LocationAccessLevel.NONE
-        private val _state = MutableStateFlow(LocationPermissionState(level, isPrecise = granted))
+        private val _state = MutableStateFlow(stateFor(granted))
         override val permissionState: StateFlow<LocationPermissionState> = _state
         override fun refresh(): LocationPermissionState = _state.value
+
+        /** Models the user revoking location access between two taps. */
+        fun revoke() { _state.value = stateFor(granted = false) }
+
+        private companion object {
+            fun stateFor(granted: Boolean) = LocationPermissionState(
+                if (granted) LocationAccessLevel.ALWAYS else LocationAccessLevel.NONE,
+                isPrecise = granted,
+            )
+        }
     }
 
     private class FakeTracker(private val fix: LocationSample?) : LocationTracker {
@@ -61,6 +70,16 @@ class WorksiteRegistrationViewModelTest {
             emptyFlow()
         override suspend fun currentLocation(priority: LocationPriority): LocationSample? {
             delay(1_000_000)
+            return SAMPLE
+        }
+    }
+
+    /** A tracker whose fix eventually arrives, after [delayMillis] of virtual time. */
+    private class DelayedTracker(private val delayMillis: Long) : LocationTracker {
+        override fun locationUpdates(config: LocationRequestConfig): Flow<LocationSample> =
+            emptyFlow()
+        override suspend fun currentLocation(priority: LocationPriority): LocationSample? {
+            delay(delayMillis)
             return SAMPLE
         }
     }
@@ -111,13 +130,14 @@ class WorksiteRegistrationViewModelTest {
         geocoder: AddressGeocoder = FakeGeocoder(POINT),
         autocomplete: AddressAutocomplete = FakeAutocomplete(),
         granted: Boolean = true,
+        permissions: FakePermissionRepository = FakePermissionRepository(granted),
         reverseGeocodeEnabled: StateFlow<Boolean> = MutableStateFlow(true),
     ) = WorksiteRegistrationViewModel(
         workLocationRepository = repo,
         locationTracker = tracker,
         addressGeocoder = geocoder,
         addressAutocomplete = autocomplete,
-        permissionRepository = FakePermissionRepository(granted),
+        permissionRepository = permissions,
         reverseGeocodeEnabled = reverseGeocodeEnabled,
     )
 
@@ -266,6 +286,87 @@ class WorksiteRegistrationViewModelTest {
         assertTrue(state.hasCoordinates)
         assertNull(state.resolvedAddress)
         assertTrue(state.canSave)
+    }
+
+    @Test
+    fun `the location fix is bounded on its own, not by the shared outer budget`() = runTest {
+        // The outer budget is 15s + 5s of reverse-geocode headroom. If only that outer bound
+        // existed, a fix taking 16s would still be pending here and the reverse-geocode leg would
+        // then get 4s of the outer budget instead of its own full 5s. The fix step carries its own
+        // 15s bound, so the capture fails at 15s and the sub-budget is never squeezed.
+        val model = vm(
+            tracker = DelayedTracker(16_000),
+            geocoder = FakeGeocoder(POINT, reverseBehavior = { awaitCancellation() }),
+        )
+
+        model.captureCurrentLocation()
+        advanceTimeBy(14_900)
+        runCurrent()
+        assertTrue("expected the spinner while the fix is still in flight",
+            model.uiState.value.status is CaptureStatus.Working)
+
+        advanceTimeBy(200) // now past the 15s fix budget, well short of the 20s outer bound
+        runCurrent()
+
+        val status = model.uiState.value.status
+        assertTrue("expected the fix itself to time out at 15s, got $status",
+            status is CaptureStatus.Error)
+        assertEquals(
+            R.string.worksite_capture_timeout,
+            (status as CaptureStatus.Error).messageRes,
+        )
+    }
+
+    @Test
+    fun `a slow fix still gets the full reverse-geocode sub-budget`() = runTest {
+        // The invariant the sub-budget exists for: a fix that lands late but within budget must
+        // still be kept when the address lookup then hangs for its entire 5s (14s + 5s = 19s,
+        // inside the 20s outer bound only because the fix step is capped at 15s).
+        val model = vm(
+            tracker = DelayedTracker(14_000),
+            geocoder = FakeGeocoder(POINT, reverseBehavior = { awaitCancellation() }),
+        )
+        model.onNameChange("Downtown Office")
+
+        model.captureCurrentLocation()
+        advanceTimeBy(25_000)
+        runCurrent()
+
+        val state = model.uiState.value
+        assertTrue("the fix must not be discarded, got ${state.status}",
+            state.status is CaptureStatus.Idle)
+        assertTrue(state.hasCoordinates)
+        assertNull(state.resolvedAddress)
+        assertTrue(state.canSave)
+    }
+
+    @Test
+    fun `a permission error is not overwritten by a stale in-flight capture`() = runTest {
+        // Two taps on "Capture current location" with the permission revoked in between: the first
+        // capture is still pending when the second one bails out on permission. Without
+        // cancelCapture() on that early return, the stale job later times out and replaces the
+        // permission error with a generic capture-timeout.
+        val permissions = FakePermissionRepository(granted = true)
+        val model = vm(tracker = SlowTracker(), permissions = permissions)
+
+        model.captureCurrentLocation()
+        runCurrent()
+        assertTrue(model.uiState.value.status is CaptureStatus.Working)
+
+        permissions.revoke()
+        model.captureCurrentLocation()
+        runCurrent()
+
+        advanceTimeBy(30_000) // past every capture budget the stale job could still be holding
+        runCurrent()
+
+        val status = model.uiState.value.status
+        assertTrue("expected the permission error to survive, got $status",
+            status is CaptureStatus.Error)
+        assertEquals(
+            R.string.worksite_needs_permission,
+            (status as CaptureStatus.Error).messageRes,
+        )
     }
 
     @Test
