@@ -243,6 +243,25 @@ class ProximityRepositoryTest {
     }
 
     @Test
+    fun `a second delete-all does not un-suppress the first one's ids`() = runTest {
+        // Delete-all is repeatable, and the second pass runs with no worksites left to enumerate and
+        // an already-erased lastTargetId — so it hands clear() an empty set. If clear() assigned
+        // instead of accumulating, that would wipe the suppression list while A's straggler was
+        // still in flight, letting it write the deleted id back to disk: #21 all over again.
+        val store = FakeStore()
+        val repo = ProximityRepository(store)
+
+        repo.clear(setOf("A"))
+        // Second confirm of "Delete all data": nothing left to name, nothing left being tracked.
+        repo.clear(emptySet())
+        // A's transition was dispatched before its geofence came down, and only lands now.
+        repo.onGeofenceTransition("A", ProximityState.INSIDE)
+
+        assertNull(store.targetId)
+        assertEquals(ProximityState.UNKNOWN, repo.proximity.value)
+    }
+
+    @Test
     fun `clear emits no event even when INSIDE`() = runTest {
         // "Delete all data" is not a departure: the worksite the event would name is being deleted,
         // and the attendance log it would write to is wiped in the same action.

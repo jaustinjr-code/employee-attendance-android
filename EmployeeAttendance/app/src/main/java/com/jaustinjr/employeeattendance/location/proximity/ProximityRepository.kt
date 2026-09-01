@@ -62,14 +62,24 @@ class ProximityRepository(
      * Deliberately in-memory only and never persisted: persisting it would re-create exactly the
      * on-disk worksite id the erasure exists to remove.
      *
-     * Entries live for the rest of the process, and are replaced wholesale by the next [clear].
-     * They are deliberately NOT dropped when some other target reports in: the straggler that this
-     * gate exists to catch can arrive *after* a newly registered worksite has already reported, and
-     * un-suppressing on that report would let the straggler both re-persist the deleted id and
-     * clobber the new worksite's freshly committed tracking. Retention costs nothing unbounded —
-     * [clear] assigns rather than accumulates, so the set never exceeds one delete-all's worth of
-     * ids. Safe because work location ids are random UUIDs (see `WorksiteRegistrationViewModel`),
-     * so a re-registered worksite never reuses a suppressed id and can never be wrongly ignored.
+     * Entries live for the rest of the process, and [clear] only ever adds to them. Both properties
+     * are load-bearing:
+     *
+     * - They are NOT dropped when some other target reports in. The straggler this gate exists to
+     *   catch can arrive *after* a newly registered worksite has already reported, and un-suppressing
+     *   on that report would let the straggler both re-persist the deleted id and clobber the new
+     *   worksite's freshly committed tracking.
+     * - [clear] accumulates rather than assigns. A second delete-all lands with no worksites left to
+     *   enumerate and an already-erased [lastTargetId], so assigning would compute an *empty* set and
+     *   un-suppress the first delete-all's ids — while its straggler may still be in flight.
+     *
+     * Growth is bounded in practice: ids are only ever added by an explicit delete-all, and each adds
+     * at most the worksites that existed at that moment.
+     *
+     * Safe because work location ids are random UUIDs (see `WorksiteRegistrationViewModel`), so a
+     * re-registered worksite never reuses a suppressed id and can never be wrongly ignored. That
+     * argument holds only while every id reaching [clear] belongs to a worksite being deleted — see
+     * the precondition on [ProximityUpdater.clear].
      */
     private var suppressedTargetIds: Set<String> = emptySet()
 
@@ -147,7 +157,11 @@ class ProximityRepository(
         Log.d(TAG, "clear: erasing proximity state and target id")
         // Also suppress whatever this repository itself was tracking: the caller's list comes from
         // the work location registry, but a geofence can outlive its registry entry.
-        suppressedTargetIds = deletedTargetIds + setOfNotNull(lastTargetId)
+        //
+        // Accumulate rather than assign. A second delete-all finds no worksites left to enumerate
+        // and an already-erased lastTargetId, so assigning would compute an empty set and un-
+        // suppress the first delete-all's ids while its straggler may still be in flight.
+        suppressedTargetIds = suppressedTargetIds + deletedTargetIds + setOfNotNull(lastTargetId)
         erase()
     }
 
