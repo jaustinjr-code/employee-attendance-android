@@ -9,6 +9,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -75,17 +76,70 @@ class DefaultAttendanceRepositoryTest {
     }
 
     @Test
-    fun `undoLast removes the most recent event for a location only`() {
+    fun `undoEvent removes the named event for a location only`() {
         val repo = repo()
         repo.recordClockIn("site-a", 1_000L)
         repo.recordClockIn("site-b", 2_000L)
         repo.recordClockIn("site-a", 3_000L)
 
-        repo.undoLast("site-a")
+        assertTrue(repo.undoEvent("site-a", ClockType.CLOCK_IN, 3_000L))
 
         // The 3_000 clock-in is gone; the earlier 1_000 remains as the latest for site-a.
         assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
         assertEquals(2_000L, repo.attendance.value["site-b"]?.lastClockInMillis)
+    }
+
+    @Test
+    fun `undoEvent refuses a clock-in that a later clock-out has already closed`() {
+        // Issue #23: a stale clock-in card is tapped after the clock-out has been recorded. It must
+        // not reverse the clock-out (the old type-agnostic behaviour) and must not reverse the
+        // clock-in either, which would leave a clock-out closing a session that never opened.
+        val local = FakeAttendanceLocalDataSource()
+        val repo = repo(local)
+        repo.recordClockIn("site-a", 1_000L)
+        repo.recordClockOut("site-a", 2_000L)
+        val saves = local.saveCount
+
+        assertFalse(repo.undoEvent("site-a", ClockType.CLOCK_IN, 1_000L))
+
+        assertEquals(saves, local.saveCount)
+        assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
+        assertEquals(2_000L, repo.attendance.value["site-a"]?.lastClockOutMillis)
+    }
+
+    @Test
+    fun `undoEvent reverses the latest event when it is the one named`() {
+        val repo = repo()
+        repo.recordClockIn("site-a", 1_000L)
+        repo.recordClockOut("site-a", 2_000L)
+
+        assertTrue(repo.undoEvent("site-a", ClockType.CLOCK_OUT, 2_000L))
+
+        assertTrue(repo.isClockedIn("site-a"))
+        assertNull(repo.attendance.value["site-a"]?.lastClockOutMillis)
+    }
+
+    @Test
+    fun `undoEvent ignores an event that does not match on type or timestamp`() {
+        val local = FakeAttendanceLocalDataSource()
+        val repo = repo(local)
+        repo.recordClockIn("site-a", 1_000L)
+        val saves = local.saveCount
+
+        assertFalse(repo.undoEvent("site-a", ClockType.CLOCK_OUT, 1_000L))  // wrong type
+        assertFalse(repo.undoEvent("site-a", ClockType.CLOCK_IN, 999L))     // wrong timestamp
+
+        assertEquals(saves, local.saveCount)
+        assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
+    }
+
+    @Test
+    fun `undoEvent applied twice is a no-op the second time`() {
+        val repo = repo()
+        repo.recordClockIn("site-a", 1_000L)
+
+        assertTrue(repo.undoEvent("site-a", ClockType.CLOCK_IN, 1_000L))
+        assertFalse(repo.undoEvent("site-a", ClockType.CLOCK_IN, 1_000L))
     }
 
     @Test
@@ -102,23 +156,23 @@ class DefaultAttendanceRepositoryTest {
     }
 
     @Test
-    fun `undoLast is a no-op when there is nothing for the location`() {
+    fun `undoEvent is a no-op when there is nothing for the location`() {
         val local = FakeAttendanceLocalDataSource()
         val repo = repo(local)
         val before = local.saveCount
 
-        repo.undoLast("unknown")
+        assertFalse(repo.undoEvent("unknown", ClockType.CLOCK_IN, 1_000L))
 
         assertEquals(before, local.saveCount)
         assertTrue(repo.attendance.value.isEmpty())
     }
 
     @Test
-    fun `undoLast on a clock-in falls back to no clock-in when none remain`() {
+    fun `undoEvent on a clock-in falls back to no clock-in when none remain`() {
         val repo = repo()
         repo.recordClockIn("site-a", 1_000L)
 
-        repo.undoLast("site-a")
+        repo.undoEvent("site-a", ClockType.CLOCK_IN, 1_000L)
 
         assertNull(repo.attendance.value["site-a"]?.lastClockInMillis)
     }
@@ -129,7 +183,7 @@ class DefaultAttendanceRepositoryTest {
         repo.recordClockIn("site-a", 1_000L)
         assertTrue(repo.attendance.value["site-a"]?.isClockedIn == true)
 
-        repo.undoLast("site-a")
+        repo.undoEvent("site-a", ClockType.CLOCK_IN, 1_000L)
 
         assertFalse(repo.attendance.value["site-a"]?.isClockedIn == true)
     }
@@ -138,9 +192,9 @@ class DefaultAttendanceRepositoryTest {
     fun `recordIfStateChanges records a clock-in only when clocked out`() {
         val repo = repo()
 
-        assertTrue(repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 1_000L))
+        assertNotNull(repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 1_000L))
         // Second arrival while the session is still open must be a no-op.
-        assertFalse(repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 2_000L))
+        assertNull(repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 2_000L))
 
         assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
     }
@@ -150,12 +204,12 @@ class DefaultAttendanceRepositoryTest {
         val repo = repo()
 
         // Nothing is open, so there is nothing to close.
-        assertFalse(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 1_000L))
+        assertNull(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 1_000L))
         assertTrue(repo.attendance.value.isEmpty())
 
         repo.recordClockIn("site-a", 2_000L)
-        assertTrue(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 3_000L))
-        assertFalse(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 4_000L))
+        assertNotNull(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 3_000L))
+        assertNull(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 4_000L))
         assertEquals(3_000L, repo.attendance.value["site-a"]?.lastClockOutMillis)
     }
 
@@ -189,7 +243,7 @@ class DefaultAttendanceRepositoryTest {
         val threads = (0 until threadCount).map {
             Thread {
                 start.await()
-                if (repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 1_000L)) {
+                if (repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 1_000L) != null) {
                     recorded.incrementAndGet()
                 }
             }.apply { start() }

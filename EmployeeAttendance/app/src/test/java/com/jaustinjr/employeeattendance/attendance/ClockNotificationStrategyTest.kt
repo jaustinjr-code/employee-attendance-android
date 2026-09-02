@@ -78,7 +78,7 @@ class ClockNotificationStrategyTest {
 
         strategy.onArrived(worksite)
         // The user taps "Undo" on the clock-in notification while still inside the radius.
-        attendance.undoLast(worksite.id)
+        attendance.undoMostRecent(worksite.id)
         notifier.recorded.clear()
 
         // ...and only later walks out of the radius.

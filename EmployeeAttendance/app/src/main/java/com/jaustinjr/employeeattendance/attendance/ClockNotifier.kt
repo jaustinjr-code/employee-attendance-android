@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.getSystemService
@@ -18,8 +19,13 @@ import com.jaustinjr.employeeattendance.location.registration.WorkLocation
  * implementation is [ClockNotifier].
  */
 interface ClockNotifications {
-    /** Posts a "clocked in/out" notification, optionally with an Undo action. */
-    fun notifyRecorded(worksite: WorkLocation, clockType: ClockType, withUndo: Boolean)
+    /**
+     * Posts a "clocked in/out" notification for [event], optionally with an Undo action.
+     *
+     * The whole [AttendanceEvent] is taken (not just its type) so the Undo action can name the exact
+     * event it reverses; see [AttendanceRepository.undoEvent].
+     */
+    fun notifyRecorded(worksite: WorkLocation, event: AttendanceEvent, withUndo: Boolean)
 
     /** Posts an "arrived/left — confirm?" prompt with a Confirm action. */
     fun notifyConfirm(worksite: WorkLocation, clockType: ClockType)
@@ -48,7 +54,8 @@ class ClockNotifier(context: Context) : ClockNotifications {
     private val appContext = context.applicationContext
 
     /** Posts "Clocked in/out" with an optional Undo action. Used by the immediate-record strategies. */
-    override fun notifyRecorded(worksite: WorkLocation, clockType: ClockType, withUndo: Boolean) {
+    override fun notifyRecorded(worksite: WorkLocation, event: AttendanceEvent, withUndo: Boolean) {
+        val clockType = event.type
         val id = notificationId(worksite.id, clockType)
         val title = appContext.getString(
             when (clockType) {
@@ -62,9 +69,16 @@ class ClockNotifier(context: Context) : ClockNotifications {
             builder.addAction(
                 0,
                 appContext.getString(R.string.clock_notification_undo),
-                pendingIntent(ClockActionReceiver.ACTION_UNDO, worksite.id, clockType, id),
+                pendingIntent(
+                    action = ClockActionReceiver.ACTION_UNDO,
+                    locationId = worksite.id,
+                    clockType = clockType,
+                    notificationId = id,
+                    epochMillis = event.epochMillis,
+                ),
             )
         }
+        replacePrevious(worksite, clockType)
         post(id, builder)
     }
 
@@ -83,7 +97,24 @@ class ClockNotifier(context: Context) : ClockNotifications {
             appContext.getString(R.string.clock_notification_confirm),
             pendingIntent(ClockActionReceiver.ACTION_CONFIRM, worksite.id, clockType, id),
         )
+        replacePrevious(worksite, clockType)
         post(id, builder)
+    }
+
+    /**
+     * Dismisses the opposite-direction card for [worksite] before posting the [clockType] one.
+     *
+     * Notification ids are per (worksite, type), so Android's own replace-by-id never fires between
+     * a clock-in and the clock-out that ends it: both cards would sit in the shade at once, each
+     * with its own live Undo. Retiring the previous one keeps at most one actionable card per
+     * worksite, so there is never an ambiguous Undo to tap.
+     */
+    private fun replacePrevious(worksite: WorkLocation, clockType: ClockType) {
+        val previous = when (clockType) {
+            ClockType.CLOCK_IN -> ClockType.CLOCK_OUT
+            ClockType.CLOCK_OUT -> ClockType.CLOCK_IN
+        }
+        cancel(worksite, previous)
     }
 
     /** Dismisses the [worksite]/[clockType] card if it is still showing; a no-op if it is not. */
@@ -121,9 +152,10 @@ class ClockNotifier(context: Context) : ClockNotifications {
         locationId: String,
         clockType: ClockType,
         notificationId: Int,
+        epochMillis: Long? = null,
     ): PendingIntent {
         val intent = ClockActionReceiver.actionIntent(
-            appContext, action, locationId, clockType, notificationId,
+            appContext, action, locationId, clockType, notificationId, epochMillis,
         )
         // Unique request code per (action, notification) so extras aren't collapsed across posts.
         val requestCode = (action + notificationId).hashCode()
@@ -135,9 +167,8 @@ class ClockNotifier(context: Context) : ClockNotifications {
         )
     }
 
-    /** Stable per-worksite, per-type id so a later state change replaces (not stacks) the card. */
     private fun notificationId(locationId: String, clockType: ClockType): Int =
-        (locationId.hashCode() * 31 + clockType.ordinal) and 0x7FFFFFFF
+        notificationIdFor(locationId, clockType)
 
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -153,8 +184,17 @@ class ClockNotifier(context: Context) : ClockNotifications {
         manager.createNotificationChannel(channel)
     }
 
-    private companion object {
-        const val TAG = "ClockNotifier"
-        const val CHANNEL_ID = "auto_clock"
+    companion object {
+        private const val TAG = "ClockNotifier"
+        private const val CHANNEL_ID = "auto_clock"
+
+        /**
+         * Stable per-worksite, per-type id so a later state change replaces (not stacks) the card.
+         * Exposed so the instrumented test can identify this app's cards in the shade rather than
+         * re-deriving the formula and silently drifting from it.
+         */
+        @VisibleForTesting
+        fun notificationIdFor(locationId: String, clockType: ClockType): Int =
+            (locationId.hashCode() * 31 + clockType.ordinal) and 0x7FFFFFFF
     }
 }

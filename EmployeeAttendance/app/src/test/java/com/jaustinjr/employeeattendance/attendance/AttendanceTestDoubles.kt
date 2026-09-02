@@ -52,7 +52,14 @@ class RecordingAttendanceRepository(
         delegate.recordClockOut(locationId, epochMillis, source)
     }
 
-    override fun undoLast(locationId: String) = delegate.undoLast(locationId)
+    override fun undoEvent(locationId: String, type: ClockType, epochMillis: Long): Boolean =
+        delegate.undoEvent(locationId, type, epochMillis)
+
+    /** Convenience for tests: undoes the most recent event for [locationId], as the UI's Undo did. */
+    fun undoMostRecent(locationId: String): Boolean {
+        val last = events.lastOrNull { it.locationId == locationId } ?: return false
+        return undoEvent(last.locationId, last.type, last.epochMillis)
+    }
 
     override fun clearAll() = delegate.clearAll()
 }
@@ -65,11 +72,15 @@ class RecordingClockNotifier : ClockNotifications {
     data class Cancelled(val id: String, val type: ClockType)
 
     val recorded = mutableListOf<Recorded>()
+
+    /** The exact events handed to [notifyRecorded] — what each card's Undo action would reverse. */
+    val undoTargets = mutableListOf<AttendanceEvent>()
     val confirms = mutableListOf<Confirm>()
     val cancelled = mutableListOf<Cancelled>()
 
-    override fun notifyRecorded(worksite: WorkLocation, clockType: ClockType, withUndo: Boolean) {
-        recorded += Recorded(worksite.id, clockType, withUndo)
+    override fun notifyRecorded(worksite: WorkLocation, event: AttendanceEvent, withUndo: Boolean) {
+        recorded += Recorded(worksite.id, event.type, withUndo)
+        undoTargets += event
     }
 
     override fun notifyConfirm(worksite: WorkLocation, clockType: ClockType) {

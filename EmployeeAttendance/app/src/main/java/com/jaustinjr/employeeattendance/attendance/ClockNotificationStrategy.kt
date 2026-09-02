@@ -78,10 +78,10 @@ abstract class GuardedClockStrategy(
      * append. The check above already filtered the common case; this one closes the window in which
      * another producer (manual button, notification action) records the same transition first.
      *
-     * @return true if the event was recorded — false means it was redundant and nothing changed, so
+     * @return the recorded event, or null if it was redundant and nothing changed — in which case
      *   callers must not announce it.
      */
-    protected fun record(worksite: WorkLocation, clockType: ClockType): Boolean =
+    protected fun record(worksite: WorkLocation, clockType: ClockType): AttendanceEvent? =
         attendance.recordIfStateChanges(worksite.id, clockType)
 
     private companion object {
@@ -104,9 +104,10 @@ class NotifyWithUndoStrategy(
     private val notifier: ClockNotifications,
 ) : GuardedClockStrategy(attendance) {
     override fun onCrossing(worksite: WorkLocation, clockType: ClockType) {
-        if (record(worksite, clockType)) {
-            notifier.notifyRecorded(worksite, clockType, withUndo = true)
-        }
+        // The recorded event, not just its type: the notification's Undo action must reverse this
+        // exact event and nothing else, even if it is tapped long after the fact.
+        val event = record(worksite, clockType) ?: return
+        notifier.notifyRecorded(worksite, event, withUndo = true)
     }
 }
 
