@@ -27,42 +27,28 @@ class AttendanceAutoClockControllerTest {
         override fun removeWorkLocation(id: String) = Unit
     }
 
-    private class RecordingAttendance : AttendanceRepository {
-        val clockIns = mutableListOf<String>()
-        val clockOuts = mutableListOf<String>()
-        override val attendance: StateFlow<Map<String, LocationAttendance>> =
-            MutableStateFlow(emptyMap())
-        override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) {
-            clockIns += locationId
-        }
-        override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) {
-            clockOuts += locationId
-        }
-        override fun undoLast(locationId: String) = Unit
-    }
-
-    private class RecordingNotifier : ClockNotifications {
-        var recordedCount = 0
-        var confirmCount = 0
-        override fun notifyRecorded(worksite: WorkLocation, clockType: ClockType, withUndo: Boolean) {
-            recordedCount++
-        }
-        override fun notifyConfirm(worksite: WorkLocation, clockType: ClockType) { confirmCount++ }
-    }
+    private fun controller(
+        events: MutableSharedFlow<ProximityEvent>,
+        attendance: AttendanceRepository,
+        notifier: ClockNotifications,
+        preference: StateFlow<ClockNotificationPreference>,
+    ) = AttendanceAutoClockController(
+        proximityEvents = events,
+        workLocationRepository = SingleWorkLocationRepository(worksite),
+        attendanceRepository = attendance,
+        notifier = notifier,
+        preference = preference,
+    )
 
     @Test
     fun `arrived and departed drive clock-in and clock-out under the notify-undo preference`() = runTest {
         val events = MutableSharedFlow<ProximityEvent>(extraBufferCapacity = 8)
-        val attendance = RecordingAttendance()
-        val notifier = RecordingNotifier()
-        val controller = AttendanceAutoClockController(
-            proximityEvents = events,
-            workLocationRepository = SingleWorkLocationRepository(worksite),
-            attendanceRepository = attendance,
-            notifier = notifier,
-            preference = MutableStateFlow(ClockNotificationPreference.NOTIFY_UNDO),
-        )
-        controller.start(backgroundScope)
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        controller(
+            events, attendance, notifier,
+            MutableStateFlow(ClockNotificationPreference.NOTIFY_UNDO),
+        ).start(backgroundScope)
         runCurrent()
 
         events.emit(ProximityEvent.Arrived("site-a"))
@@ -71,30 +57,23 @@ class AttendanceAutoClockControllerTest {
 
         assertEquals(listOf("site-a"), attendance.clockIns)
         assertEquals(listOf("site-a"), attendance.clockOuts)
-        assertEquals(2, notifier.recordedCount)
+        assertEquals(2, notifier.recorded.size)
     }
 
     @Test
     fun `changing preference switches strategy on the next event`() = runTest {
         val events = MutableSharedFlow<ProximityEvent>(extraBufferCapacity = 8)
-        val attendance = RecordingAttendance()
-        val notifier = RecordingNotifier()
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
         val preference = MutableStateFlow(ClockNotificationPreference.CONFIRM)
-        val controller = AttendanceAutoClockController(
-            proximityEvents = events,
-            workLocationRepository = SingleWorkLocationRepository(worksite),
-            attendanceRepository = attendance,
-            notifier = notifier,
-            preference = preference,
-        )
-        controller.start(backgroundScope)
+        controller(events, attendance, notifier, preference).start(backgroundScope)
         runCurrent()
 
         // Confirm mode: prompt, record nothing.
         events.emit(ProximityEvent.Arrived("site-a"))
         runCurrent()
         assertTrue(attendance.clockIns.isEmpty())
-        assertEquals(1, notifier.confirmCount)
+        assertEquals(1, notifier.confirms.size)
 
         // Switch to silent: next arrival records with no notification.
         preference.value = ClockNotificationPreference.SILENT
@@ -106,21 +85,42 @@ class AttendanceAutoClockControllerTest {
     @Test
     fun `events for an unknown target are ignored`() = runTest {
         val events = MutableSharedFlow<ProximityEvent>(extraBufferCapacity = 8)
-        val attendance = RecordingAttendance()
-        val notifier = RecordingNotifier()
-        val controller = AttendanceAutoClockController(
-            proximityEvents = events,
-            workLocationRepository = SingleWorkLocationRepository(worksite),
-            attendanceRepository = attendance,
-            notifier = notifier,
-            preference = MutableStateFlow(ClockNotificationPreference.SILENT),
-        )
-        controller.start(backgroundScope)
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        controller(
+            events, attendance, notifier,
+            MutableStateFlow(ClockNotificationPreference.SILENT),
+        ).start(backgroundScope)
         runCurrent()
 
         events.emit(ProximityEvent.Arrived("some-other-site"))
         runCurrent()
 
         assertTrue(attendance.clockIns.isEmpty())
+    }
+
+    /** Issue #13: an undone auto clock-in must not be followed by a clock-out on the way out. */
+    @Test
+    fun `departure after the clock-in was undone records and notifies nothing`() = runTest {
+        val events = MutableSharedFlow<ProximityEvent>(extraBufferCapacity = 8)
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        controller(
+            events, attendance, notifier,
+            MutableStateFlow(ClockNotificationPreference.NOTIFY_UNDO),
+        ).start(backgroundScope)
+        runCurrent()
+
+        events.emit(ProximityEvent.Arrived("site-a"))
+        runCurrent()
+        // The user taps Undo on the clock-in notification (what ClockActionReceiver does).
+        attendance.undoLast("site-a")
+
+        events.emit(ProximityEvent.Departed("site-a"))
+        runCurrent()
+
+        assertTrue(attendance.clockOuts.isEmpty())
+        assertTrue(attendance.events.isEmpty())
+        assertTrue(notifier.recorded.none { it.type == ClockType.CLOCK_OUT })
     }
 }

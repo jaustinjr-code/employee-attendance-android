@@ -1,30 +1,24 @@
 package com.jaustinjr.employeeattendance.attendance
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DefaultAttendanceRepositoryTest {
-
-    /** In-memory [AttendanceLocalDataSource] backing the persistence assertions. */
-    private class FakeLocalDataSource(
-        var stored: List<AttendanceEvent> = emptyList(),
-    ) : AttendanceLocalDataSource {
-        var saveCount = 0
-        override fun load(): List<AttendanceEvent> = stored
-        override fun save(events: List<AttendanceEvent>) {
-            saveCount++
-            stored = events
-        }
-    }
 
     private val scope = CoroutineScope(Dispatchers.Unconfined)
 
-    private fun repo(local: FakeLocalDataSource = FakeLocalDataSource()) =
+    private fun repo(local: FakeAttendanceLocalDataSource = FakeAttendanceLocalDataSource()) =
         DefaultAttendanceRepository(local = local, ioScope = scope)
 
     @Test
@@ -59,7 +53,7 @@ class DefaultAttendanceRepositoryTest {
 
     @Test
     fun `events are persisted through the local data source`() {
-        val local = FakeLocalDataSource()
+        val local = FakeAttendanceLocalDataSource()
         val repo = repo(local)
         repo.recordClockIn("site-a", 1_000L, ClockSource.MANUAL)
 
@@ -72,7 +66,7 @@ class DefaultAttendanceRepositoryTest {
 
     @Test
     fun `state is seeded from persisted events on construction`() {
-        val local = FakeLocalDataSource(
+        val local = FakeAttendanceLocalDataSource(
             stored = listOf(AttendanceEvent("site-a", ClockType.CLOCK_IN, 4_000L)),
         )
         val repo = repo(local)
@@ -96,7 +90,7 @@ class DefaultAttendanceRepositoryTest {
 
     @Test
     fun `clearAll deletes all recorded attendance`() {
-        val local = FakeLocalDataSource()
+        val local = FakeAttendanceLocalDataSource()
         val repo = repo(local)
         repo.recordClockIn("site-a", 1_000L)
         repo.recordClockOut("site-b", 2_000L)
@@ -109,7 +103,7 @@ class DefaultAttendanceRepositoryTest {
 
     @Test
     fun `undoLast is a no-op when there is nothing for the location`() {
-        val local = FakeLocalDataSource()
+        val local = FakeAttendanceLocalDataSource()
         val repo = repo(local)
         val before = local.saveCount
 
@@ -127,5 +121,83 @@ class DefaultAttendanceRepositoryTest {
         repo.undoLast("site-a")
 
         assertNull(repo.attendance.value["site-a"]?.lastClockInMillis)
+    }
+
+    @Test
+    fun `undoing a clock-in leaves the location not clocked in`() {
+        val repo = repo()
+        repo.recordClockIn("site-a", 1_000L)
+        assertTrue(repo.attendance.value["site-a"]?.isClockedIn == true)
+
+        repo.undoLast("site-a")
+
+        assertFalse(repo.attendance.value["site-a"]?.isClockedIn == true)
+    }
+
+    @Test
+    fun `recordIfStateChanges records a clock-in only when clocked out`() {
+        val repo = repo()
+
+        assertTrue(repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 1_000L))
+        // Second arrival while the session is still open must be a no-op.
+        assertFalse(repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 2_000L))
+
+        assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
+    }
+
+    @Test
+    fun `recordIfStateChanges records a clock-out only when clocked in`() {
+        val repo = repo()
+
+        // Nothing is open, so there is nothing to close.
+        assertFalse(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 1_000L))
+        assertTrue(repo.attendance.value.isEmpty())
+
+        repo.recordClockIn("site-a", 2_000L)
+        assertTrue(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 3_000L))
+        assertFalse(repo.recordIfStateChanges("site-a", ClockType.CLOCK_OUT, 4_000L))
+        assertEquals(3_000L, repo.attendance.value["site-a"]?.lastClockOutMillis)
+    }
+
+    @Test
+    fun `derived attendance is visible immediately even when the io scope never runs`() {
+        // A dispatcher whose queued work is never executed: if `attendance` were derived via
+        // stateIn(ioScope) the guards would read stale state right after recording.
+        val idleScope = CoroutineScope(StandardTestDispatcher(TestCoroutineScheduler()))
+        val repo = DefaultAttendanceRepository(
+            local = FakeAttendanceLocalDataSource(),
+            ioScope = idleScope,
+        )
+
+        repo.recordClockIn("site-a", 1_000L)
+
+        assertTrue(repo.isClockedIn("site-a"))
+        assertEquals(1_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
+    }
+
+    @Test
+    fun `concurrent recordIfStateChanges opens exactly one session`() {
+        // The auto-clock path runs on a background dispatcher while the manual button and the
+        // notification receiver run on the main thread, so the check and the append have to be
+        // atomic. Without the @Synchronized override several threads pass the check together.
+        val local = FakeAttendanceLocalDataSource()
+        val repo = repo(local)
+        val threadCount = 8
+        val start = CountDownLatch(1)
+        val recorded = AtomicInteger(0)
+
+        val threads = (0 until threadCount).map {
+            Thread {
+                start.await()
+                if (repo.recordIfStateChanges("site-a", ClockType.CLOCK_IN, 1_000L)) {
+                    recorded.incrementAndGet()
+                }
+            }.apply { start() }
+        }
+        start.countDown()
+        threads.forEach { it.join(10_000L) }
+
+        assertEquals(1, recorded.get())
+        assertEquals(1, local.stored.count { it.type == ClockType.CLOCK_IN })
     }
 }
