@@ -44,6 +44,42 @@ class SecurePreferencesTest {
         assertTrue(context.getSharedPreferences(name, Context.MODE_PRIVATE).all.isEmpty())
     }
 
+    // These two exercise the conflict-resolution rules against a real EncryptedSharedPreferences.
+    // The commit-ordering/durability contract itself is owned by the JVM tier
+    // (SecurePreferencesMigrationTest), which can observe commit() vs apply() directly.
+    @Test
+    fun retryOfAnInterruptedMigrationDoesNotResurrectStalePlaintextValues() {
+        // Migration committed the encrypted values but died before clearing the plaintext file, so
+        // no completion marker was recorded. The retry must leave the newer encrypted value alone.
+        val legacy = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+        legacy.edit().putString("k", "stale").commit()
+
+        val secure = SecurePreferences.create(context, name)
+        secure.edit()
+            .putString("k", "fresh")
+            .remove(SecurePreferences.MIGRATION_COMPLETE_KEY)
+            .commit()
+        legacy.edit().putString("k", "stale").commit()
+
+        assertEquals("fresh", SecurePreferences.create(context, name).getString("k", null))
+        assertTrue(context.getSharedPreferences(name, Context.MODE_PRIVATE).all.isEmpty())
+    }
+
+    @Test
+    fun plaintextFallbackWritesAreRecoveredOnTheNextHealthyLaunch() {
+        // Migration completed (marker present), then a session fell back to the plaintext store
+        // because encryption was unavailable and wrote there. Those values are newer and must win.
+        SecurePreferences.create(context, name).edit().putString("k", "pre-fallback").commit()
+        context.getSharedPreferences(name, Context.MODE_PRIVATE)
+            .edit().putString("k", "written-during-fallback").commit()
+
+        assertEquals(
+            "written-during-fallback",
+            SecurePreferences.create(context, name).getString("k", null),
+        )
+        assertTrue(context.getSharedPreferences(name, Context.MODE_PRIVATE).all.isEmpty())
+    }
+
     @Test
     fun missingKeyReturnsDefault() {
         assertNull(SecurePreferences.create(context, name).getString("absent", null))
