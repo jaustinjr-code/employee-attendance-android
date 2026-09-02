@@ -50,8 +50,48 @@ class ProximityRepository(
 
     private var lastTargetId: String? = store.loadTargetId()
 
+    /**
+     * Ids of targets erased by [clear] whose transitions must be ignored.
+     *
+     * "Delete all data" removes the worksites synchronously, but the OS geofences registered for them
+     * are torn down later and asynchronously (by `LocationFeatureCoordinator` reacting to the active
+     * work location going null), and a fix already in flight can still be delivered. Without this
+     * gate, such a straggler would call [setState] and write the just-deleted worksite id straight
+     * back into the store — undoing the erasure this class just performed.
+     *
+     * Deliberately in-memory only and never persisted: persisting it would re-create exactly the
+     * on-disk worksite id the erasure exists to remove.
+     *
+     * Entries live for the rest of the process, and [clear] only ever adds to them. Both properties
+     * are load-bearing:
+     *
+     * - They are NOT dropped when some other target reports in. The straggler this gate exists to
+     *   catch can arrive *after* a newly registered worksite has already reported, and un-suppressing
+     *   on that report would let the straggler both re-persist the deleted id and clobber the new
+     *   worksite's freshly committed tracking.
+     * - [clear] accumulates rather than assigns. A second delete-all lands with no worksites left to
+     *   enumerate and an already-erased [lastTargetId], so assigning would compute an *empty* set and
+     *   un-suppress the first delete-all's ids — while its straggler may still be in flight.
+     *
+     * Growth is bounded in practice: ids are only ever added by an explicit delete-all, and each adds
+     * at most the worksites that existed at that moment.
+     *
+     * Safe because work location ids are random UUIDs (see `WorksiteRegistrationViewModel`), so a
+     * re-registered worksite never reuses a suppressed id and can never be wrongly ignored. That
+     * argument holds only while every id reaching [clear] belongs to a worksite being deleted — see
+     * the precondition on [ProximityUpdater.clear].
+     */
+    private var suppressedTargetIds: Set<String> = emptySet()
+
     init {
         Log.d(TAG, "seeded from store: state=${_proximity.value} target=$lastTargetId")
+        // Heal residue written by builds before the #21 fix (and by any reset() that short-circuited
+        // on an already-UNKNOWN state): a target id with no live state to label is orphaned data.
+        if (_proximity.value == ProximityState.UNKNOWN && lastTargetId != null) {
+            Log.d(TAG, "dropping orphaned target id persisted alongside an UNKNOWN state")
+            lastTargetId = null
+            store.save(ProximityState.UNKNOWN, null)
+        }
     }
 
     private val _events = MutableSharedFlow<ProximityEvent>(
@@ -63,6 +103,7 @@ class ProximityRepository(
     /** Feed from OS geofence transitions (background path). */
     @Synchronized
     fun onGeofenceTransition(targetId: String, state: ProximityState) {
+        if (isSuppressed(targetId)) return
         clearStaleStateIfTargetChanged(targetId)
         setState(state, targetId)
     }
@@ -73,6 +114,7 @@ class ProximityRepository(
         // Read current state, compute, and commit all under the monitor so a concurrent
         // geofence-driven commit can't slip in between the read and the write and get clobbered by
         // a decision made from stale state.
+        if (isSuppressed(target.id)) return
         clearStaleStateIfTargetChanged(target.id)
         val distance = ProximityCalculator.distanceMeters(sample, target)
         val next = ProximityCalculator.evaluate(
@@ -94,14 +136,61 @@ class ProximityRepository(
     override fun reset() {
         val previous = _proximity.value
         if (previous == ProximityState.UNKNOWN) return
-        _proximity.value = ProximityState.UNKNOWN
+        // Read the departed-from id before erase() nulls it.
         val departedFrom = lastTargetId
-        store.save(ProximityState.UNKNOWN, departedFrom)
+        erase()
         Log.d(TAG, "reset: $previous -> UNKNOWN")
         if (previous == ProximityState.INSIDE && departedFrom != null) {
             Log.d(TAG, "emit Departed($departedFrom) on reset")
             _events.tryEmit(ProximityEvent.Departed(departedFrom))
         }
+    }
+
+    /**
+     * Erases every trace of proximity tracking: state and target id, in memory and in the store.
+     *
+     * Unlike [reset] this is unconditional (it does not short-circuit on an already-UNKNOWN state,
+     * because a stale target id can outlive the state) and emits no events. See [ProximityUpdater.clear].
+     */
+    @Synchronized
+    override fun clear(deletedTargetIds: Set<String>) {
+        Log.d(TAG, "clear: erasing proximity state and target id")
+        // Also suppress whatever this repository itself was tracking: the caller's list comes from
+        // the work location registry, but a geofence can outlive its registry entry.
+        //
+        // Accumulate rather than assign. A second delete-all finds no worksites left to enumerate
+        // and an already-erased lastTargetId, so assigning would compute an empty set and un-
+        // suppress the first delete-all's ids while its straggler may still be in flight.
+        suppressedTargetIds = suppressedTargetIds + deletedTargetIds + setOfNotNull(lastTargetId)
+        erase()
+    }
+
+    /**
+     * Whether [targetId] names a target erased by [clear] and must therefore be ignored.
+     *
+     * A report from another target does NOT retire the list. Only one geofence is registered at a
+     * time, so the ordering that matters is: delete worksite A, register worksite D, D reports in,
+     * and only then A's already-dispatched transition lands. Retiring the list on D's report would
+     * un-suppress A just in time for that straggler to wipe D's tracking and write A back to disk.
+     */
+    private fun isSuppressed(targetId: String): Boolean {
+        if (targetId !in suppressedTargetIds) return false
+        Log.d(TAG, "ignoring transition for a target erased by delete-all-data")
+        return true
+    }
+
+    /**
+     * Drops the state and the target id together, in memory and in the store.
+     *
+     * The target id is only meaningful as the label on a live INSIDE/OUTSIDE state; once the state is
+     * UNKNOWN there is nothing left for it to label, so persisting it would just leave a (possibly
+     * deleted) worksite id sitting in the encrypted store indefinitely. Callers own the logging and
+     * any event emission. Always invoked from a `@Synchronized` member, so it holds the monitor.
+     */
+    private fun erase() {
+        _proximity.value = ProximityState.UNKNOWN
+        lastTargetId = null
+        store.save(ProximityState.UNKNOWN, null)
     }
 
     /**
@@ -120,8 +209,10 @@ class ProximityRepository(
         if (newTargetId == oldTarget) return
         if (_proximity.value != ProximityState.UNKNOWN) {
             Log.d(TAG, "target changed $oldTarget -> $newTargetId; clearing stale proximity")
-            _proximity.value = ProximityState.UNKNOWN
-            store.save(ProximityState.UNKNOWN, oldTarget)
+            // erase() also drops the old target id: it labelled the state we are discarding, and it
+            // may name a worksite the user just deleted. The caller's setState() re-stamps the new
+            // target id if the evaluation actually commits a transition.
+            erase()
         }
     }
 

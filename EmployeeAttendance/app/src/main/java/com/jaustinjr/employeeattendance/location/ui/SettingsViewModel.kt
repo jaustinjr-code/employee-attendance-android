@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
+import com.jaustinjr.employeeattendance.location.proximity.ProximityUpdater
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.settings.ClockNotificationPreference
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
@@ -23,6 +24,7 @@ class SettingsViewModel(
     private val privacySettingsStore: PrivacySettingsStore,
     private val workLocationRepository: WorkLocationRepository,
     private val attendanceRepository: AttendanceRepository,
+    private val proximityUpdater: ProximityUpdater,
 ) : ViewModel() {
 
     val preference: StateFlow<ClockNotificationPreference> = settingsStore.preference
@@ -38,8 +40,20 @@ class SettingsViewModel(
         privacySettingsStore.setReverseGeocodeEnabled(enabled)
     }
 
-    /** Deletes all locally-stored worksites and attendance history. */
+    /**
+     * Deletes all locally-stored worksites, attendance history, and proximity tracking state.
+     *
+     * Proximity is cleared *first, and explicitly*. Clearing the work locations does make
+     * `LocationFeatureCoordinator` eventually call `reset()`, but that is an indirect side effect of
+     * an unrelated reactive pipeline, not a guarantee this screen owns — and clearing proximity up
+     * front also means that later `reset()` is a no-op, so no Departed event is emitted naming a
+     * worksite that no longer exists. The ids being deleted are handed over so that a geofence
+     * transition still in flight — the OS geofences are unregistered asynchronously — cannot write
+     * a just-deleted worksite id back into the proximity store.
+     */
     fun onDeleteAllData() {
+        val deletedIds = workLocationRepository.workLocations.value.mapTo(mutableSetOf()) { it.id }
+        proximityUpdater.clear(deletedIds)
         workLocationRepository.clearAll()
         attendanceRepository.clearAll()
     }
@@ -53,6 +67,7 @@ class SettingsViewModel(
                     privacySettingsStore = container.privacySettingsStore,
                     workLocationRepository = container.workLocationRepository,
                     attendanceRepository = container.attendanceRepository,
+                    proximityUpdater = container.proximityRepository,
                 )
             }
         }
