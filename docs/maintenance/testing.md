@@ -96,6 +96,14 @@ See [`assets/screenshots/README.md`](../../EmployeeAttendance/app/src/androidTes
 The emulator job enables KVM (without hardware acceleration the emulator is too slow to finish) and
 caches an AVD snapshot, so subsequent runs boot from the snapshot rather than cold-booting.
 
+> [!IMPORTANT]
+> The emulator step's `script:` **must stay a single line.** `android-emulator-runner` splits that
+> input on newlines and runs each line through its own `sh -c`, so multi-line shell control flow is
+> torn apart — an `if`/`else` block there died with `Syntax error: end of file unexpected` before
+> Gradle was ever invoked, and the job failed in seconds without running a test. Branch with a
+> GitHub expression instead of shell syntax, or move the logic into a committed script file that
+> `script:` invokes in one line.
+
 Reports and screenshot diffs are uploaded as artifacts on every run, pass or fail.
 
 ## 5. Running the emulator locally
