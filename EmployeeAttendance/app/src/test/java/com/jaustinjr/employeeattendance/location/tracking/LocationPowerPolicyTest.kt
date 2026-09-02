@@ -22,6 +22,11 @@ class LocationPowerPolicyTest {
 
     @Test
     fun `outside uses low power with batching`() {
+        // This is the low-accuracy exposure window behind #12: while the user is OUTSIDE, every fix
+        // feeding the proximity engine is LOW_POWER (cell-tower derived, often hundreds of meters of
+        // error) — and OUTSIDE is exactly the state an auto clock-in has to be entered from. The
+        // policy is intentionally unchanged; the defence lives in ProximityCalculator's accuracy
+        // gate, which refuses to enter INSIDE on a fix this coarse.
         val c = LocationPowerPolicy.foregroundConfig(ProximityState.OUTSIDE)
         assertEquals(LocationPriority.LOW_POWER, c.priority)
         assertTrue(c.maxUpdateDelayMillis > 0) // batches to save power while away

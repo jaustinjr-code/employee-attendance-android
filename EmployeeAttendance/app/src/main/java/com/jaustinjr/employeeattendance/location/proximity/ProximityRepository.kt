@@ -83,6 +83,24 @@ class ProximityRepository(
      */
     private var suppressedTargetIds: Set<String> = emptySet()
 
+    /**
+     * Consecutive foreground fixes that read inside the current target's radius, feeding
+     * [ProximityCalculator]'s corroboration path.
+     *
+     * Deliberately not persisted: after a process death there is no run of fixes to corroborate, and
+     * a stale streak would let the first fix of a new session commit an entry it hasn't earned. For
+     * the same reason it is tagged with [insideStreakTargetId] and timestamped with
+     * [lastCountedInsideFixMillis] — evidence is only evidence about the target it was gathered for,
+     * and only while it is fresh and properly spaced. See [countInsideFix].
+     */
+    private var consecutiveInsideFixes = 0
+
+    /** The target [consecutiveInsideFixes] was gathered for; a different target invalidates it. */
+    private var insideStreakTargetId: String? = null
+
+    /** Fix time of the most recent fix counted into [consecutiveInsideFixes]. */
+    private var lastCountedInsideFixMillis = 0L
+
     init {
         Log.d(TAG, "seeded from store: state=${_proximity.value} target=$lastTargetId")
         // Heal residue written by builds before the #21 fix (and by any reset() that short-circuited
@@ -116,14 +134,37 @@ class ProximityRepository(
         // a decision made from stale state.
         if (isSuppressed(target.id)) return
         clearStaleStateIfTargetChanged(target.id)
+        // Evidence gathered for another worksite says nothing about this one. This is checked here
+        // rather than relying on clearStaleStateIfTargetChanged, which bails out early when nothing
+        // has committed yet — precisely the situation in which a streak is being built.
+        if (target.id != insideStreakTargetId) {
+            clearInsideStreak()
+            insideStreakTargetId = target.id
+        }
         val distance = ProximityCalculator.distanceMeters(sample, target)
         val next = ProximityCalculator.evaluate(
             current = _proximity.value,
             distanceMeters = distance,
+            accuracyMeters = sample.accuracyMeters,
             radiusMeters = target.radiusMeters,
             exitBufferMeters = exitBufferMeters,
+            corroboratingInsideFixes = consecutiveInsideFixes,
         )
-        Log.v(TAG, "onLocation: distance=${distance}m radius=${target.radiusMeters}m -> $next")
+        Log.v(
+            TAG,
+            "onLocation: distance=${distance}m accuracy=${sample.accuracyMeters}m " +
+                "radius=${target.radiusMeters}m insideStreak=$consecutiveInsideFixes -> $next",
+        )
+        // Update the streak *after* evaluating, so a fix corroborates only its predecessors. An
+        // unusable fix leaves the streak untouched rather than resetting it: it is not evidence of
+        // being outside, it is no evidence at all.
+        if (ProximityCalculator.isUsable(sample.accuracyMeters, target.radiusMeters, exitBufferMeters)) {
+            if (ProximityCalculator.readsInside(distance, target.radiusMeters)) {
+                countInsideFix(sample.timestampEpochMillis)
+            } else {
+                clearInsideStreak()
+            }
+        }
         setState(next, target.id)
     }
 
@@ -134,6 +175,15 @@ class ProximityRepository(
      */
     @Synchronized
     override fun reset() {
+        // Unconditionally, ahead of the short-circuit below: tracking stopping ends any run of
+        // evidence, and the state is *typically* already UNKNOWN while a streak is accumulating
+        // (marginal fixes hold the state rather than committing). Leaving the streak alive here
+        // would let the first inside-reading fix after tracking resumes — a different day, a
+        // different place — commit an entry on its own, which is the very defect this gate exists
+        // to prevent.
+        clearInsideStreak()
+        insideStreakTargetId = null
+
         val previous = _proximity.value
         if (previous == ProximityState.UNKNOWN) return
         // Read the departed-from id before erase() nulls it.
@@ -190,7 +240,43 @@ class ProximityRepository(
     private fun erase() {
         _proximity.value = ProximityState.UNKNOWN
         lastTargetId = null
+        clearInsideStreak()
         store.save(ProximityState.UNKNOWN, null)
+    }
+
+    /**
+     * Counts a fix that read inside the radius toward the corroboration streak, if it is independent
+     * enough of the previously counted one to be worth anything.
+     *
+     * Two guards, both keyed on the fix's own [LocationSample.timestampEpochMillis] rather than
+     * arrival time — batched delivery (`maxUpdateDelayMillis` is 120 s while OUTSIDE) hands several
+     * fixes over at once, and counting them as separate corroborations would be self-deception:
+     *
+     * - Fixes closer together than [MIN_CORROBORATION_SPACING_MILLIS] are ignored — not reset, just
+     *   not counted. They are re-reports of the same moment, not a second observation of it.
+     * - A gap longer than [MAX_CORROBORATION_GAP_MILLIS] (or a backwards one, from a wall-clock
+     *   change) restarts the streak: stale evidence must not corroborate a fix taken hours later,
+     *   possibly kilometres away.
+     */
+    private fun countInsideFix(fixTimeMillis: Long) {
+        val elapsed = fixTimeMillis - lastCountedInsideFixMillis
+        when {
+            consecutiveInsideFixes == 0 || elapsed < 0L || elapsed > MAX_CORROBORATION_GAP_MILLIS -> {
+                consecutiveInsideFixes = 1
+                lastCountedInsideFixMillis = fixTimeMillis
+            }
+            elapsed >= MIN_CORROBORATION_SPACING_MILLIS -> {
+                consecutiveInsideFixes++
+                lastCountedInsideFixMillis = fixTimeMillis
+            }
+            else -> Log.v(TAG, "inside fix too close to the last to corroborate it; not counted")
+        }
+    }
+
+    /** Discards the corroboration streak. Callers hold the monitor. */
+    private fun clearInsideStreak() {
+        consecutiveInsideFixes = 0
+        lastCountedInsideFixMillis = 0L
     }
 
     /**
@@ -225,6 +311,9 @@ class ProximityRepository(
         if (next == previous) return
         _proximity.value = next
         lastTargetId = targetId
+        // A committed transition (including one the OS geofence forced) starts a fresh run of
+        // evidence; the old streak described a state we have now left.
+        consecutiveInsideFixes = 0
         store.save(next, targetId)
         Log.d(TAG, "state: $previous -> $next (target=$targetId)")
         when (next) {
@@ -243,6 +332,20 @@ class ProximityRepository(
     }
 
     companion object {
+        /**
+         * Minimum spacing between two fixes for the second to corroborate the first. Sits below the
+         * 30 s `minUpdateIntervalMillis` that `LocationPowerPolicy` uses while OUTSIDE, so genuinely
+         * separate fixes always qualify, while a batch delivered in one callback does not.
+         */
+        const val MIN_CORROBORATION_SPACING_MILLIS = 20_000L
+
+        /**
+         * Maximum spacing before the streak is considered stale and restarts. Generous against the
+         * 60 s foreground / 120 s background OUTSIDE cadences, but far short of the hours over which
+         * a user could travel somewhere entirely different.
+         */
+        const val MAX_CORROBORATION_GAP_MILLIS = 10 * 60_000L
+
         private const val TAG = "ProxRepo"
         private const val DEFAULT_EXIT_BUFFER_METERS = 50f
         private const val EVENT_BUFFER = 8
