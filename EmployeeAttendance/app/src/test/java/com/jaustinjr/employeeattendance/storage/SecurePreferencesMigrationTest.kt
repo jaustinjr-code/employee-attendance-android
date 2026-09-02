@@ -215,4 +215,97 @@ class SecurePreferencesMigrationTest {
         assertEquals("keep-me", encrypted.durable["good"])
         assertFalse(encrypted.durable.containsKey("badSet"))
     }
+
+    @Test
+    fun `an entry that cannot be migrated is left on disk, not destroyed`() {
+        // It was never copied into the encrypted store, so the plaintext file is its only copy. A
+        // blanket clear() would drop it with nothing but a Log.w to show for it.
+        val plaintext = plaintext(
+            mapOf(
+                "good" to "keep-me",
+                "badSet" to setOf("ok", 5),
+            ),
+        )
+        val encrypted = encrypted()
+
+        SecurePreferences.migratePlaintext("work_locations", plaintext, encrypted)
+
+        // The migratable entry is secured and swept out of the plaintext file...
+        assertEquals("keep-me", encrypted.durable["good"])
+        assertFalse(plaintext.durable.containsKey("good"))
+        // ...and the one we could not migrate survives.
+        assertEquals(setOf("ok", 5), plaintext.durable["badSet"])
+    }
+
+    @Test
+    fun `a migration that leaves unmigratable entries does not record completion`() {
+        // The marker's premise is that a non-empty plaintext file can only be a fallback session's
+        // work. Leftover junk breaks that, so completion is withheld and the safe merge semantics
+        // stay in force on every later launch.
+        val plaintext = plaintext(mapOf("badSet" to setOf(1, 2)))
+        val encrypted = encrypted()
+
+        SecurePreferences.migratePlaintext("work_locations", plaintext, encrypted)
+
+        assertFalse(encrypted.getBoolean(SecurePreferences.MIGRATION_COMPLETE_KEY, false))
+    }
+
+    @Test
+    fun `a plaintext file holding only unmigratable entries never replaces the encrypted store`() {
+        // The replace-on-recovery path clears the encrypted store before repopulating it. If it
+        // fired for a file with nothing migratable in it, the clear would land and nothing would go
+        // back — destroying good encrypted data on the strength of junk.
+        val plaintext = plaintext(mapOf("badSet" to setOf(1, 2)))
+        val encrypted = encrypted(
+            mapOf(
+                "worksites" to "[{\"id\":\"a\"}]",
+                SecurePreferences.MIGRATION_COMPLETE_KEY to true,
+            ),
+        )
+
+        SecurePreferences.migratePlaintext("work_locations", plaintext, encrypted)
+
+        assertEquals("[{\"id\":\"a\"}]", encrypted.durable["worksites"])
+        assertEquals(setOf(1, 2), plaintext.durable["badSet"])
+    }
+
+    @Test
+    fun `the read-only fallback serves existing values`() {
+        // A pre-migration install must still start up with its data when the keystore is unusable.
+        val legacy = plaintext(mapOf("worksites" to "[{\"id\":\"a\"}]"))
+        val readOnly = SecurePreferences.ReadOnlyPreferences("work_locations", legacy)
+
+        assertEquals("[{\"id\":\"a\"}]", readOnly.getString("worksites", null))
+        assertTrue(readOnly.contains("worksites"))
+    }
+
+    @Test
+    fun `the read-only fallback refuses to persist writes`() {
+        // Fail closed: worksite coordinates and attendance are personal location data, and a
+        // durable unencrypted copy is a worse outcome than a session that cannot save.
+        val legacy = plaintext(mapOf("worksites" to "[{\"id\":\"a\"}]"))
+        val readOnly = SecurePreferences.ReadOnlyPreferences("work_locations", legacy)
+
+        val committed = readOnly.edit()
+            .putString("worksites", "[{\"id\":\"leaked\"}]")
+            .putBoolean("flag", true)
+            .commit()
+
+        assertFalse(committed)
+        assertEquals("[{\"id\":\"a\"}]", legacy.durable["worksites"])
+        assertFalse(legacy.durable.containsKey("flag"))
+        // apply() has no return value to reject with; it must still persist nothing.
+        readOnly.edit().putString("worksites", "[{\"id\":\"leaked\"}]").apply()
+        assertEquals("[{\"id\":\"a\"}]", legacy.durable["worksites"])
+    }
+
+    @Test
+    fun `the read-only fallback cannot erase the legacy file`() {
+        val legacy = plaintext(mapOf("worksites" to "[{\"id\":\"a\"}]"))
+        val readOnly = SecurePreferences.ReadOnlyPreferences("work_locations", legacy)
+
+        assertFalse(readOnly.edit().clear().commit())
+        assertFalse(readOnly.edit().remove("worksites").commit())
+        assertEquals("[{\"id\":\"a\"}]", legacy.durable["worksites"])
+    }
 }
