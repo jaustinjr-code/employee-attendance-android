@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Geocoder
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -92,6 +93,13 @@ class PlatformAddressGeocoder(
         }
     }
 
+    /**
+     * The listener overload of [Geocoder.getFromLocation] is API 33+. The annotation is what carries
+     * that contract to lint across the method boundary — lint does not propagate the caller's
+     * `SDK_INT` check into a helper, so without it the call reads as unguarded. [reverseGeocode]
+     * satisfies the contract.
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private suspend fun reverseGeocodeAsync(
         geocoder: Geocoder,
         latitude: Double,
@@ -109,6 +117,8 @@ class PlatformAddressGeocoder(
         })
     }
 
+    /** API 33+ for the same reason as [reverseGeocodeAsync]; [geocode] guards the call. */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private suspend fun geocodeAsync(geocoder: Geocoder, query: String): GeocodedPoint? =
         suspendCancellableCoroutine { cont ->
             geocoder.getFromLocationName(query, 1, object : Geocoder.GeocodeListener {
