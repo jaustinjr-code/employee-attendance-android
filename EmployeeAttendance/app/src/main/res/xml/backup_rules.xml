@@ -1,16 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
+   Auto-backup rules used on API < 31 (android:fullBackupContent).
+   On API 31+ this file is ignored and res/xml/data_extraction_rules.xml applies instead.
    See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+
+   Every SharedPreferences store this app writes holds sensitive personal data — worksite
+   coordinates, attendance clock-in/out history, proximity state, and the notification/privacy
+   settings derived from them — so none of it may leave the device via Google auto-backup.
+
+   Two file names are excluded per store because SecurePreferences writes to "<name>_secure.xml"
+   (EncryptedSharedPreferences) while "<name>.xml" is the legacy plaintext file that older installs
+   may still have on disk and that SecurePreferences.migratePlaintext() reads from on next launch.
+   Excluding both stops the data escaping AND stops a restored plaintext file being migrated back in.
+
+   Keep this list in sync with the PREFS_NAME constants in the app; BackupRulesTest enforces that.
 -->
 <full-backup-content>
-    <!-- TODO(#9): Exclude sensitive prefs (work_locations, attendance_events, proximity_state) from
-         auto-backup on API < 31 so location/attendance data doesn't sync off-device.
-         See https://github.com/jaustinjr-code/employee-attendance-android/issues/9
-   <exclude domain="sharedpref" path="work_locations.xml"/>
-   <exclude domain="sharedpref" path="attendance_events.xml"/>
-   <exclude domain="sharedpref" path="proximity_state.xml"/>
--->
+    <!-- attendance_events: clock-in/out history -->
+    <exclude domain="sharedpref" path="attendance_events.xml"/>
+    <exclude domain="sharedpref" path="attendance_events_secure.xml"/>
+    <!-- clock_notification_settings: auto clock notification preferences -->
+    <exclude domain="sharedpref" path="clock_notification_settings.xml"/>
+    <exclude domain="sharedpref" path="clock_notification_settings_secure.xml"/>
+    <!-- privacy_settings: user's location/privacy choices -->
+    <exclude domain="sharedpref" path="privacy_settings.xml"/>
+    <exclude domain="sharedpref" path="privacy_settings_secure.xml"/>
+    <!-- proximity_state: which worksite the user is currently inside -->
+    <exclude domain="sharedpref" path="proximity_state.xml"/>
+    <exclude domain="sharedpref" path="proximity_state_secure.xml"/>
+    <!-- work_locations: registered worksite coordinates -->
+    <exclude domain="sharedpref" path="work_locations.xml"/>
+    <exclude domain="sharedpref" path="work_locations_secure.xml"/>
 </full-backup-content>

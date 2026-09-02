@@ -1,22 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
+   Data extraction rules used on API 31+ (android:dataExtractionRules). Covers both Google cloud
+   auto-backup and direct device-to-device transfer.
    See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+
+   Every SharedPreferences store this app writes holds sensitive personal data — worksite
+   coordinates, attendance clock-in/out history, proximity state, and the notification/privacy
+   settings derived from them — so none of it may leave the device by either route.
+
+   Two file names are excluded per store because SecurePreferences writes to "<name>_secure.xml"
+   (EncryptedSharedPreferences) while "<name>.xml" is the legacy plaintext file that older installs
+   may still have on disk and that SecurePreferences.migratePlaintext() reads from on next launch.
+   Excluding both stops the data escaping AND stops a restored plaintext file being migrated back in.
+
+   Keep these lists in sync with the PREFS_NAME constants in the app; BackupRulesTest enforces that.
 -->
 <data-extraction-rules>
-    <cloud-backup>
-        <!-- TODO(#9): Exclude sensitive prefs (work_locations, attendance_events, proximity_state)
-             from cloud backup so worksite coordinates and attendance history don't sync off-device.
-             See https://github.com/jaustinjr-code/employee-attendance-android/issues/9
-        <exclude domain="sharedpref" path="work_locations.xml"/>
-        <exclude domain="sharedpref" path="attendance_events.xml"/>
-        <exclude domain="sharedpref" path="proximity_state.xml"/>
-        -->
-    </cloud-backup>
     <!--
-    <device-transfer>
-        <include .../>
-        <exclude .../>
-    </device-transfer>
+        disableIfNoEncryptionCapabilities: defence in depth. If a device can't produce a
+        client-side-encrypted backup (no lock screen / unsupported), skip cloud backup entirely
+        rather than uploading whatever is left after the excludes below.
     -->
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <!-- attendance_events: clock-in/out history -->
+        <exclude domain="sharedpref" path="attendance_events.xml"/>
+        <exclude domain="sharedpref" path="attendance_events_secure.xml"/>
+        <!-- clock_notification_settings: auto clock notification preferences -->
+        <exclude domain="sharedpref" path="clock_notification_settings.xml"/>
+        <exclude domain="sharedpref" path="clock_notification_settings_secure.xml"/>
+        <!-- privacy_settings: user's location/privacy choices -->
+        <exclude domain="sharedpref" path="privacy_settings.xml"/>
+        <exclude domain="sharedpref" path="privacy_settings_secure.xml"/>
+        <!-- proximity_state: which worksite the user is currently inside -->
+        <exclude domain="sharedpref" path="proximity_state.xml"/>
+        <exclude domain="sharedpref" path="proximity_state_secure.xml"/>
+        <!-- work_locations: registered worksite coordinates -->
+        <exclude domain="sharedpref" path="work_locations.xml"/>
+        <exclude domain="sharedpref" path="work_locations_secure.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <!-- attendance_events: clock-in/out history -->
+        <exclude domain="sharedpref" path="attendance_events.xml"/>
+        <exclude domain="sharedpref" path="attendance_events_secure.xml"/>
+        <!-- clock_notification_settings: auto clock notification preferences -->
+        <exclude domain="sharedpref" path="clock_notification_settings.xml"/>
+        <exclude domain="sharedpref" path="clock_notification_settings_secure.xml"/>
+        <!-- privacy_settings: user's location/privacy choices -->
+        <exclude domain="sharedpref" path="privacy_settings.xml"/>
+        <exclude domain="sharedpref" path="privacy_settings_secure.xml"/>
+        <!-- proximity_state: which worksite the user is currently inside -->
+        <exclude domain="sharedpref" path="proximity_state.xml"/>
+        <exclude domain="sharedpref" path="proximity_state_secure.xml"/>
+        <!-- work_locations: registered worksite coordinates -->
+        <exclude domain="sharedpref" path="work_locations.xml"/>
+        <exclude domain="sharedpref" path="work_locations_secure.xml"/>
+    </device-transfer>
 </data-extraction-rules>

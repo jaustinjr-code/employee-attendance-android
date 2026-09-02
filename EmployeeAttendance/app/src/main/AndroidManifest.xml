@@ -18,9 +18,27 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+        Backup posture (issue #9). 100% of what this app persists is sensitive personal data —
+        worksite coordinates, attendance clock-in/out history, proximity state, and the
+        notification/privacy settings derived from them — so there is nothing left worth backing
+        up. allowBackup="false" is therefore the fail-CLOSED default: anything added later is
+        excluded automatically instead of being auto-included by an out-of-date deny list.
+
+        allowBackup="false" alone is NOT sufficient. Per Android's backup docs: "On devices from
+        some device manufacturers, specifying android:allowBackup='false' does disable backups to
+        Google Drive, but doesn't disable D2D transfers for the app." Device-to-device transfer is
+        governed by @xml/data_extraction_rules, so the rule files stay, and stay exhaustive: they
+        block D2D
+        transfer today, and they are defence in depth for cloud backup should allowBackup ever be
+        turned back on. @xml/backup_rules covers API < 31 (minSdk is 24).
+
+        BackupRulesTest asserts allowBackup stays false and that every store following the
+        PREFS_NAME convention has exclude entries in all three rule sections.
+    -->
     <application
         android:name=".EmployeeAttendanceApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
