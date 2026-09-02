@@ -109,6 +109,7 @@
     <string name="worksite_capture_failed">Couldn\'t get your current location. Try again or enter an address.</string>
     <string name="worksite_capture_timeout">Location is taking too long. Move to an open area and try again.</string>
     <string name="worksite_geocode_failed">Couldn\'t find that address. Check it and try again.</string>
+    <string name="worksite_geocode_timeout">Address lookup is taking too long. Check your connection and try again.</string>
     <string name="worksite_needs_permission">Grant location access on the attendance screen first to capture your current location.</string>
     <string name="worksite_save">Save worksite</string>
     <string name="worksite_saved">Worksite saved</string>
