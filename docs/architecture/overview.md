@@ -36,6 +36,7 @@ graph TB
     subgraph Coordination["Coordination — app-scoped"]
         APP["EmployeeAttendanceApplication"]
         DIC["AppContainer / DefaultAppContainer"]
+        AST["AppStartup<br/>+ ForegroundGate"]
         LFC["LocationFeatureCoordinator<br/>2 reactive pipelines"]
     end
 
@@ -64,7 +65,8 @@ graph TB
     LDS --> LVM
 
     APP --> DIC
-    APP -->|start applicationScope| LFC
+    APP --> AST
+    AST -->|start on applicationScope, once foreground| LFC
     DIC -.creates.-> LPR & WLR & LSR & PR & LCIR & LTC & LFC & LT & GM
 
     LVM --> WLR & PR & LSR & LPR & LT & LCIR
@@ -101,6 +103,7 @@ graph TB
 | --- | --- | --- |
 | `` (root) | app shell, navigation, DI bootstrap | `EmployeeAttendanceApplication`, `MainActivity` |
 | `di` | hand-wired object graph | `AppContainer`, `DefaultAppContainer` |
+| `startup` | when each piece of app-lifetime coordination is allowed to begin | `AppStartup`, `StartupTask`, `ForegroundGate`, `appLifetimeScope` |
 | `ui.attendance` | home screen, clock in/out, live clock | `AttendanceScreen`, `AttendanceViewModel` |
 | `ui.main` | top app bar | `MainAppBar` |
 | `ui.theme` | Material 3 theme, colors, typography | `EmployeeAttendanceTheme` |
@@ -136,7 +139,7 @@ Three consumption patterns exist, and you should follow the matching one:
 
 | Scope | Created in | Lives as long as | What runs on it |
 | --- | --- | --- | --- |
-| `applicationScope` (`SupervisorJob + Dispatchers.Default`) | `EmployeeAttendanceApplication` | the process | both `LocationFeatureCoordinator` pipelines |
+| `applicationScope` (`SupervisorJob + Dispatchers.Default + CoroutineExceptionHandler`) | `appLifetimeScope()`, held by `EmployeeAttendanceApplication` | the process | both `LocationFeatureCoordinator` pipelines, `AttendanceAutoClockController` |
 | `serviceScope` (`SupervisorJob + Dispatchers.Main.immediate`) | `LocationTrackingService` | the service | the background location collection job |
 | `viewModelScope` | each ViewModel | its Activity (both location ViewModels are Activity-scoped from `MainActivity`) | `uiState` sharing, foreground fix collection |
 | repository singletons | `DefaultAppContainer` | the process | hold `StateFlow` state |
@@ -145,6 +148,11 @@ Three consumption patterns exist, and you should follow the matching one:
 so the Attendance and LocationDetail destinations **share one instance each**. That is deliberate:
 one foreground collector, one consistent permission state. If you create them per-destination
 instead, you get two competing location streams.
+
+The `CoroutineExceptionHandler` on `applicationScope` is load-bearing, not decoration. `SupervisorJob`
+stops a failing pipeline from cancelling its siblings, but it does **not** stop an unhandled throw
+from reaching the thread's default handler and killing the process — which is exactly how a refused
+foreground-service start became a fatal crash (issue #49). Do not drop it.
 
 `SharingStarted.WhileSubscribed(5_000)` is used for both ViewModels' `uiState`, so upstream flows
 stay warm across configuration changes but shut down 5 s after the last subscriber leaves.
@@ -177,7 +185,21 @@ These are intentional placeholders. Treat them as the natural next features.
 | Single active geofence target | `ProximityRepository` holds one global state — see the class doc | per-target membership set |
 | App bar buttons | `MainAppBar` — both `IconButton`s have empty `onClick` | profile + settings destinations |
 
-## 8. Constraint the architecture depends on
+## 8. Constraints the architecture depends on
+
+> Anything that reaches `startForegroundService()` must run **behind `ForegroundGate`**, never from
+> `Application.onCreate()`.
+
+Since Android 12 the system refuses a foreground-service start from a background process, and a
+process is still `PROCESS_STATE_CACHED_EMPTY` throughout `Application.onCreate()` — even on a
+launcher tap, roughly 600 ms before the first Activity is `STARTED`. `LocationFeatureCoordinator`
+reconciles `LocationTrackingService`, so it is registered as a `foregroundTasks` entry in
+`AppStartup` and starts only once `ProcessLifecycleOwner` reports the foreground.
+
+The inverse also holds: work that must observe events arriving with **no screen visible** (a geofence
+broadcast waking the process) cannot be deferred behind the gate. `AttendanceAutoClockController` is
+therefore a `processCreateTasks` entry. When adding app-lifetime coordination, decide which side of
+that line it sits on. See `startup/AppStartup.kt`.
 
 > `ProximityRepository` keeps **one global proximity state**, not per-target state, even though
 > every event carries a `targetId`. This is only safe because `LocationFeatureCoordinator` registers

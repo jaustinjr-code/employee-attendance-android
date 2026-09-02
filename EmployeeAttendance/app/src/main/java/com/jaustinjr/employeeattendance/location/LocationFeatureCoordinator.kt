@@ -39,8 +39,21 @@ class LocationFeatureCoordinator(
     private val proximityUpdater: ProximityUpdater,
 ) {
 
-    /** Starts the coordination pipelines on [scope]; call once with an app-lifetime scope. */
+    private var started = false
+
+    /**
+     * Starts the coordination pipelines on [scope] with an app-lifetime scope.
+     *
+     * Repeat calls are ignored, so this is safe to hang off a lifecycle callback that can fire more
+     * than once. `@Synchronized` because the caller is not guaranteed to be the main thread.
+     */
+    @Synchronized
     fun start(scope: CoroutineScope) {
+        if (started) {
+            Log.d(TAG, "start: already started; ignoring")
+            return
+        }
+        started = true
         Log.d(TAG, "start: launching coordination pipelines")
         scope.launch {
             combine(

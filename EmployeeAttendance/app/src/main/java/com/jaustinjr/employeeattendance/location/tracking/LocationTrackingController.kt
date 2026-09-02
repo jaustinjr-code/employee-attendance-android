@@ -10,7 +10,8 @@ import com.jaustinjr.employeeattendance.location.permission.LocationPermissionSt
  * policy, so callers don't have to reason about permission tiers.
  *
  * - [LocationAccessLevel.ALWAYS] -> start the [LocationTrackingService] for full background
- *   tracking.
+ *   tracking. If the platform refuses the start (see [TrackingServiceLauncher.start]), degrade to
+ *   [TrackingStatus.FOREGROUND_ONLY] rather than reporting tracking that is not running.
  * - [LocationAccessLevel.WHEN_IN_USE] -> do not start a background service (it would be killed when
  *   the app leaves the foreground); report [TrackingStatus.FOREGROUND_ONLY] so the UI can drive
  *   foreground-only updates via [LocationTracker] and show the degraded-mode notice.
@@ -29,7 +30,14 @@ class LocationTrackingController(
         Log.d(TAG, "sync: access=${permission.accessLevel}")
         when (permission.accessLevel) {
             LocationAccessLevel.ALWAYS -> {
-                serviceLauncher.start()
+                if (!serviceLauncher.start()) {
+                    // Permission allows background tracking but the platform would not let the
+                    // service start. The foreground collector owned by the UI layer still supplies
+                    // fixes while a screen is visible, so report the degraded mode the UI already
+                    // knows how to show instead of claiming background tracking is active.
+                    Log.w(TAG, "sync: background start refused; degrading to foreground-only")
+                    locationState.updateStatus(TrackingStatus.FOREGROUND_ONLY)
+                }
             }
 
             LocationAccessLevel.WHEN_IN_USE -> {

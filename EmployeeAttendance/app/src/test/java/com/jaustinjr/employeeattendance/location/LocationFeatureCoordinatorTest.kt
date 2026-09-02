@@ -84,7 +84,7 @@ class LocationFeatureCoordinatorTest {
     private class RecordingLauncher : TrackingServiceLauncher {
         var startCount = 0
         var stopCount = 0
-        override fun start() { startCount++ }
+        override fun start(): Boolean { startCount++; return true }
         override fun stop() { stopCount++ }
     }
 
@@ -200,5 +200,31 @@ class LocationFeatureCoordinatorTest {
         runCurrent()
 
         assertTrue(geofences.clearCount >= 1)
+    }
+
+    // Regression, issue #49: start() is now hung off a foreground lifecycle callback, which can fire
+    // again on every return to the foreground. A second start must not double-register the
+    // pipelines (and so must not re-issue a foreground-service start on every app resume).
+    @Test
+    fun `start is idempotent`() = runTest {
+        val launcher = RecordingLauncher()
+        val geofences = FakeGeofenceRegistrar()
+        val coordinator = LocationFeatureCoordinator(
+            permissionRepository = FakePermissionRepository(permission(LocationAccessLevel.ALWAYS)),
+            workLocationRepository = FakeWorkLocationRepository(office),
+            trackingController = LocationTrackingController(launcher, LocationStateRepository()),
+            geofenceRegistrar = geofences,
+            locationState = LocationStateRepository(),
+            proximityUpdater = FakeProximityUpdater(),
+        )
+
+        val scope = runningScope()
+        coordinator.start(scope)
+        runCurrent()
+        coordinator.start(scope)
+        runCurrent()
+
+        assertEquals(1, launcher.startCount)
+        assertEquals(listOf(office.toGeofenceTarget()), geofences.registered)
     }
 }

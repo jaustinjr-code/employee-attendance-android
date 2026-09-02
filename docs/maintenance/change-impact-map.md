@@ -75,12 +75,15 @@ active locations require a `ProximityRepository` change in the same PR.
 | If you change… | Also update / verify | Tests to run |
 | --- | --- | --- |
 | `di/AppContainer.kt` | `DefaultAppContainer`, every consuming ViewModel `Factory`, `LocationTrackingService`/`GeofenceBroadcastReceiver` container lookups | full JVM suite |
-| `EmployeeAttendanceApplication.kt` | coordinator start; anything relying on app-scoped collection | `LocationFeatureCoordinatorTest` |
+| `EmployeeAttendanceApplication.kt` | coordinator start; anything relying on app-scoped collection | `LocationFeatureCoordinatorTest`, `AppStartupTest` |
+| `startup/AppStartup.kt` | *when* every app-lifetime pipeline starts; the app-scoped `CoroutineExceptionHandler` | `AppStartupTest` |
+| `startup/ForegroundGate.kt` | whether foreground-service starts are legal at all — see overview §8 | `ProcessLifecycleForegroundGateTest` (androidTest) |
 | `MainActivity.kt` | app bar title `LaunchedEffect` per destination; ViewModel sharing (Activity-scoped on purpose) | `LocationNavigationTest`, `AttendanceScreenTest` |
 | `location/LocationFeatureCoordinator.kt` | both pipelines' invariants: `collectLatest`, `CancellationException` rethrow, geofence gating | `LocationFeatureCoordinatorTest` |
 | `location/permission/LocationPermissionRepository.kt` | the three `refresh()` call sites (host `ON_RESUME`, launchers, service) | `SystemLocationPermissionRepositoryTest` |
 | `location/tracking/LocationTracker.kt` | `.conflate()`, `awaitClose` removal, `toSample()` accuracy fallback | `LocationTrackingServiceTest` |
-| `location/tracking/LocationTrackingService.kt` | permission pre-check, idempotent `startForeground`, `Dispatchers.Main.immediate` scope, manifest FGS type | `LocationTrackingServiceTest` |
+| `location/tracking/LocationTrackingService.kt` | permission pre-check, idempotent `startForeground`, the `startForegroundService()` obligation discharged on every stand-down path, `Dispatchers.Main.immediate` scope, manifest FGS type | `LocationTrackingServiceTest` |
+| `location/tracking/TrackingServiceLauncher.kt` | `start()` returns whether the platform accepted the start; a refusal degrades to `FOREGROUND_ONLY` rather than throwing | `LocationTrackingControllerTest` |
 | `location/tracking/LocationTrackingController.kt` | the ALWAYS/WHEN_IN_USE/NONE policy is duplicated nowhere else — keep it that way | `LocationTrackingControllerTest` |
 | `location/tracking/LocationPowerPolicy.kt` | the proximity→cadence feedback loop; battery claims in docs | `LocationPowerPolicyTest` |
 | `location/tracking/LocationRequestConfig.kt` | `init` invariants; both presets | `LocationRequestConfigTest`, `LocationPriorityTest` |
