@@ -11,6 +11,12 @@ import androidx.compose.runtime.Composable
  * settles would block the main thread on a monitor held by that worker. `ViewModelProvider.Factory`
  * cannot suspend, so the wait has to happen above it, here.
  *
+ * This gate is only half of the contract: it is sound because
+ * `EmployeeAttendanceApplication.startupJob` forces every store a factory can reach before
+ * [started] flips. A new store-backed dependency that startup does not force would be constructed
+ * on the main thread by whichever factory reaches it first, and this gate would not help — see that
+ * class's KDoc.
+ *
  * The load-bearing property is that [content] is **not composed at all** while [started] is false —
  * not merely hidden. Anything that only made it invisible would still run the factories.
  *

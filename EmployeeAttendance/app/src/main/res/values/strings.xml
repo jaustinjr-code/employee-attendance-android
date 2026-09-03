@@ -146,5 +146,5 @@
     <string name="settings_data_delete_confirm_message">This permanently removes every worksite and all attendance history from this device. This can\'t be undone.</string>
 
     <!-- Shown while startup wiring completes; see EmployeeAttendanceApplication.startupComplete. -->
-    <string name="startup_loading">Starting\u2026</string>
+    <string name="cd_startup_loading">Starting\u2026</string>
 </resources>

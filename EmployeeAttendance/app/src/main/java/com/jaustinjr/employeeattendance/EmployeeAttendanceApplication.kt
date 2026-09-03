@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
  *
  * ## Startup threading (issue #19)
  * [onCreate] runs on the main thread before any window exists, so it must not touch disk or the
- * Android Keystore. Four of the container's singletons are backed by `EncryptedSharedPreferences`
+ * Android Keystore. Five of the container's singletons are backed by `EncryptedSharedPreferences`
  * (Keystore key unwrap + file I/O + JSON decode each), so the feature wiring that pulls them in is
  * moved onto [applicationScope] (`Dispatchers.IO`) as [startupJob].
  *
@@ -56,8 +56,16 @@ import kotlinx.coroutines.launch
  *
  * A `ViewModelProvider.Factory` cannot suspend, so the fix is on the UI side: `MainActivity`
  * observes [startupComplete] and renders a loading state until the wiring settles, constructing no
- * ViewModel before then. The main thread stays free to render instead of blocking, and by the time
- * the factories run the stores are built, so their reads are cached-value returns.
+ * ViewModel before then. The main thread stays free to render instead of blocking.
+ *
+ * The guarantee only holds for stores [startupJob] actually forces, so it forces **all five**
+ * `EncryptedSharedPreferences`-backed ones. Four come in transitively via the wiring above
+ * (`attendanceRepository`, `workLocationRepository`, `proximityRepository`,
+ * `clockNotificationSettingsStore`); `privacySettingsStore` does not, and is forced explicitly —
+ * without that, `SettingsViewModel.Factory` and `WorksiteRegistrationViewModel.Factory` would still
+ * construct it on the main thread during a navigation transition, after the gate had opened. The
+ * container's remaining dependencies (`locationTracker`, `addressGeocoder`, `addressAutocomplete`)
+ * touch no disk and need no warm-up.
  */
 class EmployeeAttendanceApplication : Application() {
 
@@ -112,6 +120,15 @@ class EmployeeAttendanceApplication : Application() {
                 autoClock.awaitSubscribed()
                 // Now start the location feature's coordination for the process lifetime.
                 container.locationFeatureCoordinator.start(applicationScope)
+                // Force the one remaining EncryptedSharedPreferences-backed store that the wiring
+                // above does not pull in. Nothing here needs it, but SettingsViewModel.Factory and
+                // WorksiteRegistrationViewModel.Factory do — and they run on the main thread during
+                // a navigation transition, long after [startupComplete] has opened the gate. Left
+                // unforced, that first construction (Keystore unwrap, plus migratePlaintext's
+                // synchronous commit()s on the migration path) lands on main mid-transition, which
+                // is the exact stall this class exists to prevent and which the gate cannot help
+                // with. Constructing it here keeps the gate's guarantee true for every factory.
+                container.privacySettingsStore
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

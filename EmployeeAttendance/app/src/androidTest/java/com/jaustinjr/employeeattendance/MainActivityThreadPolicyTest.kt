@@ -3,6 +3,7 @@ package com.jaustinjr.employeeattendance
 import android.os.StrictMode
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -36,14 +37,26 @@ import org.junit.runner.RunWith
  * Not run in CI on a JVM-only job (needs a device); run with `./gradlew connectedDebugAndroidTest`.
  */
 @RunWith(AndroidJUnit4::class)
+// StrictMode.ThreadPolicy.Builder.penaltyListener(Executor, OnThreadViolationListener) and
+// StrictMode.Violation are API 28; minSdk is 24. Without this the test throws NoSuchMethodError on
+// a 24-27 device. Kotlin compilation does not enforce API levels and lint's checkTestSources is off
+// by default, so nothing else catches it.
+@SdkSuppress(minSdkVersion = 28)
 class MainActivityThreadPolicyTest {
 
     @Test
     fun launchingTheActivityDoesNoMainThreadDiskIo() {
         val violations = CopyOnWriteArrayList<String>()
-        val original = StrictMode.getThreadPolicy()
 
+        // ThreadPolicy is per-thread state, so the policy to restore has to be read on the SAME
+        // thread it will be restored to. Capturing it out here would read the instrumentation
+        // thread's policy and then install that on main in the finally block, silently replacing
+        // main's real policy for the rest of the instrumentation process -- an order-dependent
+        // failure for any later test that depends on it (StartupThreadPolicyTest is in this very
+        // source set doing StrictMode work).
+        lateinit var original: StrictMode.ThreadPolicy
         runOnMainThread {
+            original = StrictMode.getThreadPolicy()
             StrictMode.setThreadPolicy(
                 StrictMode.ThreadPolicy.Builder()
                     .detectDiskReads()
