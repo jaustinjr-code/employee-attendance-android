@@ -1,0 +1,218 @@
+name: Docs Sync
+
+# Opens a pull request that updates docs/ whenever a change lands on a long-lived
+# branch that could plausibly affect a documented feature or the architecture.
+#
+# Design notes:
+#  - Runs AFTER merge (push), not on the PR itself, so the docs PR describes code
+#    that actually shipped and never fights with review churn on the feature PR.
+#  - The `paths` filter is a cheap pre-gate. The real "is this significant?"
+#    decision is made by Claude against the criteria in the prompt below, and it
+#    exits without opening a PR when the change is cosmetic.
+#  - The `paths` filter only matches source under EmployeeAttendance/, so a
+#    docs-only push never triggers this workflow and it cannot loop. (GitHub
+#    Actions rejects `paths` and `paths-ignore` on the same event, so the
+#    exclusion has to come from `paths` being narrow rather than from an
+#    explicit ignore list.)
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'EmployeeAttendance/app/src/main/**'
+      - 'EmployeeAttendance/app/build.gradle.kts'
+      - 'EmployeeAttendance/settings.gradle.kts'
+      - 'EmployeeAttendance/gradle/libs.versions.toml'
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: 'Compare against this ref (defaults to the previous commit)'
+        required: false
+        default: ''
+
+concurrency:
+  # One docs-sync at a time per branch; a newer push supersedes an in-flight run.
+  group: docs-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync-docs:
+    # Skip merges of the workflow's own documentation PRs.
+    if: "!startsWith(github.event.head_commit.message, 'docs: sync architecture documentation')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # Need history so the diff against the previous commit is available.
+          fetch-depth: 0
+
+      - name: Resolve comparison range
+        id: range
+        run: |
+          if [ -n "${{ github.event.inputs.base_ref }}" ]; then
+            BASE="${{ github.event.inputs.base_ref }}"
+          elif [ -n "${{ github.event.before }}" ] && \
+               git cat-file -e "${{ github.event.before }}^{commit}" 2>/dev/null; then
+            BASE="${{ github.event.before }}"
+          else
+            BASE="HEAD~1"
+          fi
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Comparing $BASE...HEAD"
+          git diff --stat "$BASE"...HEAD || true
+
+      - name: Update documentation
+        uses: anthropics/claude-code-action@v1
+        with:
+          show_full_output: true
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            BRANCH: ${{ github.ref_name }}
+            DIFF RANGE: ${{ steps.range.outputs.base }}...HEAD
+
+            You are maintaining the developer documentation in `docs/` for this
+            Android app. Code has just landed on `${{ github.ref_name }}`. Your job
+            is to decide whether that code changed anything the documentation
+            asserts, and if so, open a pull request that brings the docs back in
+            sync.
+
+            ## Step 1 — Read the change
+
+            Run `git diff ${{ steps.range.outputs.base }}...HEAD -- EmployeeAttendance/`
+            and read the changed files in full. Use `git log --oneline
+            ${{ steps.range.outputs.base }}...HEAD` for intent.
+
+            ## Step 2 — Decide if it is architecturally significant
+
+            A change IS significant if it does any of the following:
+              - Adds, removes, or renames a class, interface, enum, ViewModel,
+                repository, screen, composable, Service, or BroadcastReceiver.
+              - Changes a dependency relationship: new constructor parameter, a new
+                binding in `di/AppContainer.kt`, a new collector, a consumer reading
+                a different repository.
+              - Changes the behavior of one of the four hub classes documented in
+                `docs/maintenance/change-impact-map.md`
+                (ProximityRepository, LocationStateRepository, LocationPermission,
+                WorkLocationRepository).
+              - Alters a runtime flow depicted in
+                `docs/architecture/sequence-diagrams.md` — permission ladder,
+                geofence delivery, foreground/background tracking selection,
+                clock-in, navigation.
+              - Changes a documented invariant, tuning constant, or trade-off
+                (power policy cadences, hysteresis buffer, geofence responsiveness,
+                notification behavior, single-active-target assumption).
+              - Adds or changes a navigation destination, an Android permission, a
+                manifest component, or a Gradle/SDK version.
+              - Replaces a documented stub (StubWorkLocationRepository,
+                LocationClockInRepository, the placeholder map card) with a real
+                implementation.
+              - Closes a gap listed under "Known gaps" / "Follow-ups" in any docs page.
+
+            A change is NOT significant if it is only: formatting, comment or log
+            wording, string-resource copy that no doc quotes, test-only edits that
+            change no production behavior, or a refactor with no effect on names,
+            relationships, or behavior.
+
+            If it is NOT significant, post nothing, create no branch, and stop.
+            Say explicitly in your output that no documentation update was needed
+            and why.
+
+            ## Step 3 — Update the docs
+
+            Documentation set (read `docs/README.md` first for the map):
+              - docs/README.md .......................... index and orientation
+              - docs/onboarding.md ...................... setup, conventions, symptom table
+              - docs/architecture/overview.md ........... layers, packages, DI, scopes, threading, stubs
+              - docs/architecture/class-diagrams.md ..... Mermaid UML per package + hub graph
+              - docs/architecture/sequence-diagrams.md .. Mermaid runtime flows
+              - docs/features/*.md ...................... one guide per feature
+              - docs/maintenance/change-impact-map.md ... blast radius per file, invariants, reverse index
+
+            Rules for the edit:
+              - Update EVERY page the change invalidates, not just the most obvious
+                one. A new dependency edge usually means: the feature guide, the
+                class diagram, the whole-feature dependency graph, AND the change
+                impact map's reverse index.
+              - Keep all diagrams as Mermaid fenced blocks. Preserve the existing
+                notation (`<|--` implements, `*--` composition, `o--` aggregation,
+                `-->` uses).
+              - Match the existing voice: direct, specific, aimed at a developer who
+                needs to find code and understand consequences. No marketing tone,
+                no restating what the code obviously says.
+              - Do not delete a "why" explanation unless the code it describes is
+                gone.
+              - Never invent behavior. Verify every claim against the source. If you
+                cannot determine something, say so in the PR body rather than
+                guessing.
+              - Do not modify anything outside `docs/`.
+
+            ## Step 4 — Open the pull request
+
+            Create a branch named
+            `docs/auto/sync-${{ github.run_id }}`, commit only files under `docs/`,
+            push it, and open a PR against `${{ github.ref_name }}` with:
+
+              - Title: `docs: sync architecture documentation`
+              - A body containing: which commits triggered it, which docs pages you
+                changed and why, an explicit list of anything you were unsure about
+                and want a human to confirm, and a note that this PR was generated
+                automatically by the Docs Sync workflow.
+              - Label it `documentation` if that label exists.
+
+            Commit message:
+
+            ```
+            docs: sync architecture documentation
+
+            Regenerated affected documentation for changes in
+            ${{ steps.range.outputs.base }}...HEAD.
+
+            Co-Authored-By: Claude <noreply@anthropic.com>
+            ```
+
+            Configure git with
+            `git config user.name "github-actions[bot]"` and
+            `git config user.email "41898282+github-actions[bot]@users.noreply.github.com"`
+            before committing.
+
+          # Tool patterns containing spaces must go through `settings` rather than
+          # claude_args, which splits on whitespace
+          # (see anthropics/claude-code-action#844).
+          settings: |
+            {
+              "permissions": {
+                "allow": [
+                  "Read",
+                  "Edit",
+                  "Write",
+                  "Glob",
+                  "Grep",
+                  "Bash(git diff:*)",
+                  "Bash(git log:*)",
+                  "Bash(git show:*)",
+                  "Bash(git status:*)",
+                  "Bash(git add:*)",
+                  "Bash(git commit:*)",
+                  "Bash(git checkout:*)",
+                  "Bash(git switch:*)",
+                  "Bash(git push:*)",
+                  "Bash(git config:*)",
+                  "Bash(gh pr create:*)",
+                  "Bash(gh pr list:*)",
+                  "Bash(gh pr view:*)",
+                  "Bash(gh pr edit:*)",
+                  "Bash(gh label list:*)"
+                ]
+              }
+            }
+
+          claude_args: |
+            --model sonnet
