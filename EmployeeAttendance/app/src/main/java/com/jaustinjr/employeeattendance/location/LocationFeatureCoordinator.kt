@@ -53,11 +53,20 @@ class LocationFeatureCoordinator(
                 }
         }
 
-        // Built inside scope.launch, not on the caller's thread: evaluating
-        // workLocationRepository.activeWorkLocation is a container `by lazy` read that constructs
-        // an EncryptedSharedPreferences-backed store (Keystore + disk I/O). Doing that at the call
-        // site put it on whichever thread called start() — the main thread, from
-        // Application.onCreate. See issue #19.
+        // Built inside scope.launch for symmetry with the pipeline above, so neither reads its
+        // inputs on the caller's thread.
+        //
+        // Being precise about issue #19, because an earlier version of this comment was wrong:
+        // this restructure moves no I/O. `workLocationRepository` is a constructor property, and
+        // Kotlin evaluates constructor arguments eagerly, so the container's `by lazy` read — and
+        // the SecurePreferences.create (Keystore + disk) it performs — is already forced when
+        // `container.locationFeatureCoordinator` is dereferenced, before start() is entered.
+        // `activeWorkLocation` is a plain field assigned in the repository's init, so reading it
+        // here is cheap on any thread.
+        //
+        // What actually keeps that work off the main thread is EmployeeAttendanceApplication
+        // dereferencing the coordinator inside launch(Dispatchers.IO). This class is NOT
+        // self-protecting: moving that dereference back onto main would reintroduce the stall.
         scope.launch {
             combine(
                 locationState.latestLocation,

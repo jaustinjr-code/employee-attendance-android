@@ -1,8 +1,10 @@
 package com.jaustinjr.employeeattendance
 
 import android.app.Application
+import android.util.Log
 import com.jaustinjr.employeeattendance.di.AppContainer
 import com.jaustinjr.employeeattendance.di.DefaultAppContainer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,8 +27,24 @@ import kotlinx.coroutines.launch
  *    `container` assigned before [onCreate] returns, so no component can ever observe the
  *    `lateinit` unset — which is exactly the crash a background assignment would risk.
  * 2. Kotlin's default `by lazy` is `LazyThreadSafetyMode.SYNCHRONIZED`, so a UI read racing the
- *    background wiring blocks until construction finishes and still sees a single instance. The
- *    worst case is a short wait that used to be unconditionally on the main thread.
+ *    background wiring blocks until construction finishes and still sees a single instance --
+ *    never a duplicate or a half-built object.
+ *
+ * ### Scope of this fix -- read before trusting the headline
+ * This moves the **Application's own** wiring off the main thread. It does NOT make cold start
+ * free of main-thread store construction, and the KDoc previously overstated that.
+ *
+ * `LocationViewModel.Factory` and `SettingsViewModel.Factory` dereference `container`
+ * repositories on the main thread during `MainActivity`'s composition, microseconds after
+ * `onCreate` returns -- while [startupJob] is still building the same stores on IO. Because the
+ * lazies are `SYNCHRONIZED`, main then blocks on a monitor held by an IO worker for the length of
+ * a Keystore unwrap plus `SecurePreferences.migratePlaintext`'s synchronous `commit()`s. That is a
+ * priority inversion the pre-fix code did not have: main is priority-boosted and the IO worker is
+ * not, so under cold-start contention the stall can exceed the old inline cost.
+ *
+ * [com.jaustinjr.employeeattendance.StartupThreadPolicyTest] cannot detect this -- it replays this
+ * class's wiring and never constructs a ViewModel. Removing the remaining stall needs the factories
+ * to obtain repositories through a suspending or [awaitStarted]-gated path; tracked as issue #58.
  * 3. The proximity event stream is a `MutableSharedFlow(replay = 0)`: an event emitted while no
  *    collector is attached is dropped, and a dropped `Arrived`/`Departed` is a missed clock-in.
  *    So [startupJob] attaches the consumer FIRST and waits (via
@@ -62,18 +80,33 @@ class EmployeeAttendanceApplication : Application() {
         // occupy a Default worker (those are sized for CPU work and are what the collectors below
         // run on).
         startupJob = applicationScope.launch(Dispatchers.IO) {
-            // Consumer before producers: proximity events are a replay-0 SharedFlow, so anything
-            // emitted before this collector is subscribed would be silently dropped, losing a
-            // hands-off clock in/out. Consume proximity Arrived/Departed to drive auto clock
-            // in/out (the Worksite feature); runs for the whole process so it works with no screen
-            // visible.
-            val autoClock = container.attendanceAutoClockController
-            autoClock.start(applicationScope)
-            // `start` launches a coroutine, so the collector is not attached when it returns. Wait
-            // for the subscription to be live before anything can emit into the flow.
-            autoClock.awaitSubscribed()
-            // Now start the location feature's reactive coordination for the life of the process.
-            container.locationFeatureCoordinator.start(applicationScope)
+            try {
+                // Consumer before producers: proximity events are a replay-0 SharedFlow, so
+                // anything emitted before this collector is subscribed would be silently dropped,
+                // losing a hands-off clock in/out. Consume proximity Arrived/Departed to drive
+                // auto clock in/out (the Worksite feature); runs for the whole process so it works
+                // with no screen visible.
+                val autoClock = container.attendanceAutoClockController
+                autoClock.start(applicationScope)
+                // `start` launches a coroutine, so the collector is not attached when it returns.
+                // Wait for the subscription to be live before anything can emit into the flow.
+                autoClock.awaitSubscribed()
+                // Now start the location feature's coordination for the process lifetime.
+                container.locationFeatureCoordinator.start(applicationScope)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Constructing the container's stores does disk I/O and JSON decoding, either of
+                // which can throw on a corrupt file. Uncaught, that reaches the thread's default
+                // uncaught handler and kills the process, because applicationScope is a
+                // SupervisorJob with no CoroutineExceptionHandler -- and it would do so while
+                // every awaitStarted() caller raced the crash instead of being released cleanly by
+                // the invokeOnCompletion paths the rest of this wiring is built around.
+                //
+                // Degrading to "automatic clock in/out is not running" beats taking the app down:
+                // manual clock in/out is driven from the UI layer and still works.
+                Log.e(TAG, "Startup wiring failed; automatic clock in/out is disabled", e)
+            }
         }
     }
 
@@ -90,5 +123,9 @@ class EmployeeAttendanceApplication : Application() {
         // join() rather than await(): a failed startup must not be rethrown into an unrelated
         // caller such as a broadcast receiver. Failures are already logged where they happen.
         startupJob.join()
+    }
+
+    private companion object {
+        private const val TAG = "EmployeeApp"
     }
 }
