@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.StrictMode
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import com.jaustinjr.employeeattendance.di.DefaultAppContainer
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -32,6 +33,11 @@ import org.junit.runner.RunWith
  * emulator.
  */
 @RunWith(AndroidJUnit4::class)
+// Same API-28 constraint as MainActivityThreadPolicyTest: penaltyListener(Executor,
+// OnThreadViolationListener) and StrictMode.Violation are both API 28, and minSdk is 24. CI pins
+// API 36 so this still runs there; the suppression only skips it on a 24-27 device, where it would
+// otherwise throw NoSuchMethodError.
+@SdkSuppress(minSdkVersion = 28)
 class StartupThreadPolicyTest {
 
     @Test

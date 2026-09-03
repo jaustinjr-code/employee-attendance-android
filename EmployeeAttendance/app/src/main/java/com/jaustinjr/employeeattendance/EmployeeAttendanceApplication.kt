@@ -9,6 +9,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -17,7 +20,7 @@ import kotlinx.coroutines.launch
  *
  * ## Startup threading (issue #19)
  * [onCreate] runs on the main thread before any window exists, so it must not touch disk or the
- * Android Keystore. Four of the container's singletons are backed by `EncryptedSharedPreferences`
+ * Android Keystore. Five of the container's singletons are backed by `EncryptedSharedPreferences`
  * (Keystore key unwrap + file I/O + JSON decode each), so the feature wiring that pulls them in is
  * moved onto [applicationScope] (`Dispatchers.IO`) as [startupJob].
  *
@@ -30,21 +33,6 @@ import kotlinx.coroutines.launch
  *    background wiring blocks until construction finishes and still sees a single instance --
  *    never a duplicate or a half-built object.
  *
- * ### Scope of this fix -- read before trusting the headline
- * This moves the **Application's own** wiring off the main thread. It does NOT make cold start
- * free of main-thread store construction, and the KDoc previously overstated that.
- *
- * `LocationViewModel.Factory` and `SettingsViewModel.Factory` dereference `container`
- * repositories on the main thread during `MainActivity`'s composition, microseconds after
- * `onCreate` returns -- while [startupJob] is still building the same stores on IO. Because the
- * lazies are `SYNCHRONIZED`, main then blocks on a monitor held by an IO worker for the length of
- * a Keystore unwrap plus `SecurePreferences.migratePlaintext`'s synchronous `commit()`s. That is a
- * priority inversion the pre-fix code did not have: main is priority-boosted and the IO worker is
- * not, so under cold-start contention the stall can exceed the old inline cost.
- *
- * [com.jaustinjr.employeeattendance.StartupThreadPolicyTest] cannot detect this -- it replays this
- * class's wiring and never constructs a ViewModel. Removing the remaining stall needs the factories
- * to obtain repositories through a suspending or [awaitStarted]-gated path; tracked as issue #58.
  * 3. The proximity event stream is a `MutableSharedFlow(replay = 0)`: an event emitted while no
  *    collector is attached is dropped, and a dropped `Arrived`/`Departed` is a missed clock-in.
  *    So [startupJob] attaches the consumer FIRST and waits (via
@@ -56,6 +44,28 @@ import kotlinx.coroutines.launch
  *    is driven by the OS and can fire at any moment, including on a cold start whose only purpose
  *    is delivering that broadcast. It cannot be ordered by us, so it orders itself: it calls
  *    [awaitStarted] before forwarding the transition. See that class for details.
+ *
+ * ## The UI is gated too (issue #58)
+ * Moving the Application's wiring off the main thread was not sufficient on its own. The ViewModel
+ * factories dereference `container` repositories during `MainActivity`'s composition, microseconds
+ * after [onCreate] returns and while [startupJob] is still constructing those same stores on IO.
+ * Because the lazies are `SYNCHRONIZED`, main would block on a monitor held by an IO worker for the
+ * length of a Keystore unwrap plus `SecurePreferences.migratePlaintext`'s synchronous `commit()`s —
+ * a priority inversion, since main is priority-boosted and the IO worker is not, so the stall could
+ * exceed the cost of just doing the work inline.
+ *
+ * A `ViewModelProvider.Factory` cannot suspend, so the fix is on the UI side: `MainActivity`
+ * observes [startupComplete] and renders a loading state until the wiring settles, constructing no
+ * ViewModel before then. The main thread stays free to render instead of blocking.
+ *
+ * The guarantee only holds for stores [startupJob] actually forces, so it forces **all five**
+ * `EncryptedSharedPreferences`-backed ones. Four come in transitively via the wiring above
+ * (`attendanceRepository`, `workLocationRepository`, `proximityRepository`,
+ * `clockNotificationSettingsStore`); `privacySettingsStore` does not, and is forced explicitly —
+ * without that, `SettingsViewModel.Factory` and `WorksiteRegistrationViewModel.Factory` would still
+ * construct it on the main thread during a navigation transition, after the gate had opened. The
+ * container's remaining dependencies (`locationTracker`, `addressGeocoder`, `addressAutocomplete`)
+ * touch no disk and need no warm-up.
  */
 class EmployeeAttendanceApplication : Application() {
 
@@ -71,6 +81,23 @@ class EmployeeAttendanceApplication : Application() {
      * emitting; see [awaitStarted].
      */
     private lateinit var startupJob: Job
+
+    private val _startupComplete = MutableStateFlow(false)
+
+    /**
+     * Whether [startupJob] has reached a terminal state, for UI that must not construct
+     * container-backed dependencies before then (issue #58).
+     *
+     * Distinct from [awaitStarted] because a `ViewModelProvider.Factory` cannot suspend: the UI
+     * observes this instead and holds a loading state, so the main thread stays free to render
+     * rather than blocking on a `by lazy` monitor held by the startup IO worker.
+     *
+     * Becomes `true` on **any** terminal state — success, failure, or cancellation — so a failed
+     * startup degrades to "automatic clock in/out is off" rather than pinning the UI on a loading
+     * screen forever. The stores are constructed by then either way, so the factories' reads are
+     * cached-value returns rather than contended construction.
+     */
+    val startupComplete: StateFlow<Boolean> = _startupComplete.asStateFlow()
 
     override fun onCreate() {
         super.onCreate()
@@ -93,6 +120,15 @@ class EmployeeAttendanceApplication : Application() {
                 autoClock.awaitSubscribed()
                 // Now start the location feature's coordination for the process lifetime.
                 container.locationFeatureCoordinator.start(applicationScope)
+                // Force the one remaining EncryptedSharedPreferences-backed store that the wiring
+                // above does not pull in. Nothing here needs it, but SettingsViewModel.Factory and
+                // WorksiteRegistrationViewModel.Factory do — and they run on the main thread during
+                // a navigation transition, long after [startupComplete] has opened the gate. Left
+                // unforced, that first construction (Keystore unwrap, plus migratePlaintext's
+                // synchronous commit()s on the migration path) lands on main mid-transition, which
+                // is the exact stall this class exists to prevent and which the gate cannot help
+                // with. Constructing it here keeps the gate's guarantee true for every factory.
+                container.privacySettingsStore
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -108,6 +144,9 @@ class EmployeeAttendanceApplication : Application() {
                 Log.e(TAG, "Startup wiring failed; automatic clock in/out is disabled", e)
             }
         }
+        // Release the UI gate on ANY terminal state, mirroring how awaitSubscribed's waiters are
+        // released: a cancelled or failed startup must not leave the app on a loading screen.
+        startupJob.invokeOnCompletion { _startupComplete.value = true }
     }
 
     /**
