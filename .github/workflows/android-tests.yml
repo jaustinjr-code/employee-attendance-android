@@ -60,13 +60,11 @@ jobs:
           if-no-files-found: ignore
 
   lint:
-    name: Lint (advisory)
-    # Advisory, not blocking: `main` currently has 6 pre-existing NewApi errors in
-    # location/registration/AddressGeocoder.kt (the Geocoder.GeocodeListener overloads require API
-    # 33, but minSdk is 24). Making this job blocking today would fail every PR for a reason
-    # unrelated to the PR. Flip continue-on-error off once those are fixed — the report is uploaded
-    # either way, so regressions stay visible in the meantime.
-    continue-on-error: true
+    name: Lint
+    # Blocking as of #56. The 6 pre-existing NewApi errors in
+    # location/registration/AddressGeocoder.kt that forced this job to be advisory are fixed, so a
+    # lint error is now a real regression and should fail the run. Keep it that way: if a new error
+    # appears, fix it rather than reinstating continue-on-error.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

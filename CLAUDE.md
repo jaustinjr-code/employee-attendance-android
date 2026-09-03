@@ -39,10 +39,14 @@ Before proposing a PR, run from `EmployeeAttendance/`:
 ./gradlew :app:lintDebug
 ```
 
-`lintDebug` currently fails on `main` with 6 pre-existing `NewApi` errors in
-`location/registration/AddressGeocoder.kt` (the `Geocoder.GeocodeListener` overloads need API 33;
-`minSdk` is 24). Treat lint as advisory until those are fixed, but **check that your change did not
-add new findings** — compare the count rather than ignoring the task.
+`lintDebug` is clean of errors on `main` and the CI lint job is **blocking** as of #56 — a lint
+error fails the run. Warnings do not fail the build; still check that your change did not add new
+ones rather than ignoring the task.
+
+If you hit a `NewApi` error on a call that *is* version-guarded, the guard is probably in a
+different method than the call. Lint does not propagate an `SDK_INT` check across a method
+boundary — annotate the callee `@RequiresApi(...)` so the contract is explicit and lint can verify
+the callers, as `PlatformAddressGeocoder`'s async helpers do. Do not reach for a lint baseline.
 
 ```bash
 ./gradlew :app:connectedDebugAndroidTest
