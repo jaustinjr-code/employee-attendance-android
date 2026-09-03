@@ -3,9 +3,9 @@ package com.jaustinjr.employeeattendance
 import android.app.Application
 import com.jaustinjr.employeeattendance.di.AppContainer
 import com.jaustinjr.employeeattendance.di.DefaultAppContainer
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import com.jaustinjr.employeeattendance.startup.AppStartup
+import com.jaustinjr.employeeattendance.startup.StartupTask
+import com.jaustinjr.employeeattendance.startup.appLifetimeScope
 
 /**
  * Application entry point that owns the app-scoped [AppContainer]. Screens and ViewModels reach
@@ -16,16 +16,25 @@ class EmployeeAttendanceApplication : Application() {
     lateinit var container: AppContainer
         private set
 
-    /** App-lifetime scope for coordination that must run regardless of any screen being visible. */
-    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /**
+     * App-lifetime scope for coordination that must run regardless of any screen being visible.
+     * Carries a `CoroutineExceptionHandler`; see [appLifetimeScope].
+     */
+    private val applicationScope = appLifetimeScope()
 
     override fun onCreate() {
         super.onCreate()
         container = DefaultAppContainer(this)
-        // Start the location feature's reactive coordination for the life of the process.
-        container.locationFeatureCoordinator.start(applicationScope)
-        // Consume proximity Arrived/Departed events to drive hands-off clock in/out (the Worksite
-        // feature). Runs for the whole process so auto-clock works while no screen is visible.
-        container.attendanceAutoClockController.start(applicationScope)
+        AppStartup(
+            foregroundGate = container.foregroundGate,
+            // Consuming proximity Arrived/Departed events to drive hands-off clock in/out starts no
+            // service, and has to be listening when a geofence broadcast wakes the process with no
+            // screen visible — so it runs at process creation.
+            processCreateTasks = listOf(StartupTask(container.attendanceAutoClockController::start)),
+            // Location coordination reconciles the LocationTrackingService, i.e. it calls
+            // startForegroundService(). That is refused while the process is in the background, so
+            // it waits until an Activity is STARTED. See issue #49.
+            foregroundTasks = listOf(StartupTask(container.locationFeatureCoordinator::start)),
+        ).run(applicationScope)
     }
 }

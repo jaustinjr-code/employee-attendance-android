@@ -26,6 +26,8 @@ import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationTrackingController
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
+import com.jaustinjr.employeeattendance.startup.ForegroundGate
+import com.jaustinjr.employeeattendance.startup.ProcessLifecycleForegroundGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -52,6 +54,7 @@ interface AppContainer {
     val privacySettingsStore: PrivacySettingsStore
     val locationFeatureCoordinator: LocationFeatureCoordinator
     val attendanceAutoClockController: AttendanceAutoClockController
+    val foregroundGate: ForegroundGate
 }
 
 /** Default [AppContainer] wiring the real, platform-backed implementations. */
@@ -146,5 +149,9 @@ class DefaultAppContainer(context: Context) : AppContainer {
             notifier = clockNotifier,
             preference = clockNotificationSettingsStore.preference,
         )
+    }
+
+    override val foregroundGate: ForegroundGate by lazy {
+        ProcessLifecycleForegroundGate()
     }
 }

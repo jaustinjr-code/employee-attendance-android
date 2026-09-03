@@ -115,7 +115,7 @@ class LocationPipelineIntegrationTest {
     private class RecordingServiceLauncher : TrackingServiceLauncher {
         var started = 0
         var stopped = 0
-        override fun start() { started++ }
+        override fun start(): Boolean { started++; return true }
         override fun stop() { stopped++ }
     }
 

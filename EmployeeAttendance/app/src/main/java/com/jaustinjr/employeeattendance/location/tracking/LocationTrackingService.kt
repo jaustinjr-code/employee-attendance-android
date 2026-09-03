@@ -73,6 +73,13 @@ class LocationTrackingService : Service() {
         // permission can throw SecurityException under Android 14+ FGS-type enforcement. In the
         // redelivery case there is no startForegroundService() obligation to satisfy, so stopping
         // without ever promoting is safe.
+        //
+        // TODO(#50): when the start *did* come from startForegroundService() and the permission has
+        // since been revoked, standing down here leaves that obligation undischarged and the system
+        // kills the process with ForegroundServiceDidNotStartInTimeException. Discharging it needs a
+        // permission-free FGS type: FOREGROUND_SERVICE_TYPE_NONE is rejected outright at targetSdk
+        // 36 ("Starting FGS with type none ... has been prohibited"), so the fix is a manifest
+        // change adding shortService.
         if (!permissionRepository.refresh().supportsBackgroundTracking) {
             Log.d(TAG, "startTracking: no background permission; stopping")
             stopTracking()
@@ -114,15 +121,17 @@ class LocationTrackingService : Service() {
         stopSelf()
     }
 
+    private fun buildNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        .setContentTitle(getString(R.string.location_tracking_notification_title))
+        .setContentText(getString(R.string.location_tracking_notification_body))
+        .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+        .setOngoing(true)
+        .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        .build()
+
     private fun promoteToForeground() {
         ensureChannel(this)
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.location_tracking_notification_title))
-            .setContentText(getString(R.string.location_tracking_notification_body))
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setOngoing(true)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .build()
+        val notification: Notification = buildNotification()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
@@ -152,13 +161,34 @@ class LocationTrackingService : Service() {
         private const val NOTIFICATION_ID = 42
         private const val ACTION_STOP = "com.jaustinjr.employeeattendance.action.STOP_TRACKING"
 
-        /** Starts background tracking. Caller must hold background location permission. */
-        fun start(context: Context) {
+        /**
+         * Starts background tracking. Caller must hold background location permission.
+         *
+         * Never throws: since Android 12 the system refuses a foreground-service start from a
+         * background process, and that refusal must degrade tracking rather than kill the app.
+         *
+         * @return `true` if the platform accepted the start request.
+         */
+        fun start(context: Context): Boolean {
             Log.d(TAG, "start() requested")
             val intent = Intent(context, LocationTrackingService::class.java)
-            // ContextCompat routes to startForegroundService on API 26+ and startService below it,
-            // where startForegroundService does not exist (minSdk is 24).
-            ContextCompat.startForegroundService(context, intent)
+            return try {
+                // ContextCompat routes to startForegroundService on API 26+ and startService below
+                // it, where startForegroundService does not exist (minSdk is 24).
+                ContextCompat.startForegroundService(context, intent)
+                true
+            } catch (e: IllegalStateException) {
+                // ForegroundServiceStartNotAllowedException (API 31+) extends IllegalStateException;
+                // catching the supertype keeps this compiling and correct at minSdk 24. Reached
+                // whenever the process is not in a foreground state at the instant of the call.
+                Log.w(TAG, "Foreground service start refused; tracking stays degraded", e)
+                false
+            } catch (e: SecurityException) {
+                // Location permission revoked between the permission check and this call, or an
+                // FGS-type enforcement failure on Android 14+.
+                Log.e(TAG, "Foreground service start denied; check permissions", e)
+                false
+            }
         }
 
         /** Stops background tracking and dismisses the notification. */

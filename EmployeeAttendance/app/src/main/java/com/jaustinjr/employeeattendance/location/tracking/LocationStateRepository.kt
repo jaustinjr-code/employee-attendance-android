@@ -10,7 +10,10 @@ enum class TrackingStatus {
     /** Not tracking (no permission, or tracking has not been started). */
     STOPPED,
 
-    /** Tracking only while the app is in the foreground, due to When-In-Use permission. Degraded. */
+    /**
+     * Tracking only while the app is in the foreground. Degraded. Either the permission is
+     * When-In-Use, or the platform refused to start the background service.
+     */
     FOREGROUND_ONLY,
 
     /** Full background tracking is active via the foreground service. */
