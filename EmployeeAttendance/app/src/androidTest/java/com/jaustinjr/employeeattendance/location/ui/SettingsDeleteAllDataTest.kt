@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
 import com.jaustinjr.employeeattendance.attendance.ClockSource
+import com.jaustinjr.employeeattendance.attendance.ClockType
 import com.jaustinjr.employeeattendance.attendance.LocationAttendance
 import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
 import com.jaustinjr.employeeattendance.location.proximity.ProximityState
@@ -60,7 +61,7 @@ class SettingsDeleteAllDataTest {
             _attendance.value = mapOf(locationId to LocationAttendance(lastClockInMillis = epochMillis))
         }
         override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) = Unit
-        override fun undoLast(locationId: String) = Unit
+        override fun undoEvent(locationId: String, type: ClockType, epochMillis: Long) = false
         override fun clearAll() {
             _attendance.value = emptyMap()
         }

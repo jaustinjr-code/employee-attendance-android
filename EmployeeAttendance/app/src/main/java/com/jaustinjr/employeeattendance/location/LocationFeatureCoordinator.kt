@@ -14,8 +14,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 /**
@@ -55,18 +53,33 @@ class LocationFeatureCoordinator(
                 }
         }
 
-        combine(
-            locationState.latestLocation,
-            workLocationRepository.activeWorkLocation,
-        ) { fix, activeLocation -> fix to activeLocation }
-            .onEach { (fix, activeLocation) ->
-                if (fix != null && activeLocation != null) {
-                    proximityUpdater.onLocation(fix, activeLocation.toGeofenceTarget())
-                } else if (activeLocation == null) {
-                    proximityUpdater.reset()
+        // Built inside scope.launch for symmetry with the pipeline above, so neither reads its
+        // inputs on the caller's thread.
+        //
+        // Being precise about issue #19, because an earlier version of this comment was wrong:
+        // this restructure moves no I/O. `workLocationRepository` is a constructor property, and
+        // Kotlin evaluates constructor arguments eagerly, so the container's `by lazy` read — and
+        // the SecurePreferences.create (Keystore + disk) it performs — is already forced when
+        // `container.locationFeatureCoordinator` is dereferenced, before start() is entered.
+        // `activeWorkLocation` is a plain field assigned in the repository's init, so reading it
+        // here is cheap on any thread.
+        //
+        // What actually keeps that work off the main thread is EmployeeAttendanceApplication
+        // dereferencing the coordinator inside launch(Dispatchers.IO). This class is NOT
+        // self-protecting: moving that dereference back onto main would reintroduce the stall.
+        scope.launch {
+            combine(
+                locationState.latestLocation,
+                workLocationRepository.activeWorkLocation,
+            ) { fix, activeLocation -> fix to activeLocation }
+                .collect { (fix, activeLocation) ->
+                    if (fix != null && activeLocation != null) {
+                        proximityUpdater.onLocation(fix, activeLocation.toGeofenceTarget())
+                    } else if (activeLocation == null) {
+                        proximityUpdater.reset()
+                    }
                 }
-            }
-            .launchIn(scope)
+        }
     }
 
     private suspend fun reconcileTracking(
