@@ -94,6 +94,7 @@ class LocationFeatureCoordinatorThreadingTest {
     private class NoopProximityUpdater : ProximityUpdater {
         override fun onLocation(sample: LocationSample, target: GeofenceTarget) = Unit
         override fun reset() = Unit
+        override fun clear(deletedTargetIds: Set<String>) = Unit
     }
 
     private class NoopServiceLauncher : TrackingServiceLauncher {
