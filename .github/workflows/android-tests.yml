@@ -151,13 +151,11 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           working-directory: EmployeeAttendance
-          script: |
-            if [ "${{ github.event.inputs.record_screenshots }}" = "true" ]; then
-              ./gradlew :app:connectedDebugAndroidTest --stacktrace \
-                -Pandroid.testInstrumentationRunnerArguments.screenshot_record=true
-            else
-              ./gradlew :app:connectedDebugAndroidTest --stacktrace
-            fi
+          # MUST stay a single line. android-emulator-runner splits `script` on newlines and runs
+          # each line through its own `sh -c`, so multi-line shell control flow is torn apart — an
+          # `if ...; then` block failed here with "Syntax error: end of file unexpected" before
+          # Gradle was ever invoked (#54). Let the GitHub expression, not the shell, pick the flag.
+          script: ./gradlew :app:connectedDebugAndroidTest --stacktrace ${{ github.event.inputs.record_screenshots == 'true' && '-Pandroid.testInstrumentationRunnerArguments.screenshot_record=true' || '' }}
 
       - name: Upload instrumentation test report
         if: ${{ !cancelled() }}
