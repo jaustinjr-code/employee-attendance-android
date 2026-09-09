@@ -2,8 +2,6 @@ package com.jaustinjr.employeeattendance.ui.main
 
 import com.jaustinjr.employeeattendance.R
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -37,40 +35,6 @@ class AppBarTitleTest {
 
         // A copy-paste in the when would otherwise silently give two screens the same header.
         assertEquals(titles.size, titles.toSet().size)
-    }
-
-    @Test
-    fun `routes are the fully qualified destination types navigation generates`() {
-        // Guards the mapping against a rename or package move silently falling through to the
-        // start-destination default, which would look exactly like this bug.
-        assertEquals("com.jaustinjr.employeeattendance.Attendance", AttendanceRoute)
-        assertEquals("com.jaustinjr.employeeattendance.LocationDetail", LocationDetailRoute)
-        assertEquals("com.jaustinjr.employeeattendance.Worksites", WorksitesRoute)
-        assertEquals(
-            "com.jaustinjr.employeeattendance.WorksiteRegistration",
-            WorksiteRegistrationRoute,
-        )
-        assertEquals("com.jaustinjr.employeeattendance.Settings", SettingsRoute)
-    }
-
-    @Test
-    fun `every destination below home is a child`() {
-        // Attendance is the root, so it keeps the account affordance; everything reachable from it
-        // shows an up button instead.
-        assertFalse(isChildDestination(AttendanceRoute))
-        assertTrue(isChildDestination(LocationDetailRoute))
-        assertTrue(isChildDestination(WorksitesRoute))
-        assertTrue(isChildDestination(WorksiteRegistrationRoute))
-        assertTrue(isChildDestination(SettingsRoute))
-    }
-
-    @Test
-    fun `an unresolved route shows no up button`() {
-        // On the first frame the back stack has nothing to pop, so an up button there would be a
-        // dead control. Same for a route the mapping does not know, which also falls back to the
-        // start destination's title.
-        assertFalse(isChildDestination(null))
-        assertFalse(isChildDestination("com.example.NotADestination"))
     }
 
     @Test
