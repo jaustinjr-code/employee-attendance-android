@@ -26,6 +26,7 @@ import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
 import com.jaustinjr.employeeattendance.ui.main.MainAppBar
 import com.jaustinjr.employeeattendance.ui.main.StartupGate
 import com.jaustinjr.employeeattendance.ui.main.appBarTitleResFor
+import com.jaustinjr.employeeattendance.ui.main.isChildDestination
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 import kotlinx.serialization.Serializable
 
@@ -74,8 +75,13 @@ class MainActivity : ComponentActivity() {
                     // ordering of two screens' side effects and can end up showing the screen the
                     // user just left.
                     val currentEntry by navController.currentBackStackEntryAsState()
-                    val appBarTitle =
-                        stringResource(appBarTitleResFor(currentEntry?.destination?.route))
+                    val currentRoute = currentEntry?.destination?.route
+                    val appBarTitle = stringResource(appBarTitleResFor(currentRoute))
+
+                    // Attendance is the root; every other destination is a child of it. The app bar
+                    // shows an up button on children and the account affordance on the root, from
+                    // the same single source of truth as the title.
+                    val showUpButton = isChildDestination(currentRoute)
 
                     // Scoped to the Activity so the attendance and detail destinations share one
                     // instance each — a single foreground collector and consistent permission
@@ -89,8 +95,19 @@ class MainActivity : ComponentActivity() {
                         topBar = {
                             MainAppBar(
                                 title = appBarTitle,
-                                onOpenWorksites = { navController.navigate(Worksites) },
-                                onOpenSettings = { navController.navigate(Settings) },
+                                showUpButton = showUpButton,
+                                // A plain pop, so up goes to the destination the user came from
+                                // rather than jumping to the root.
+                                onNavigateUp = { navController.popBackStack() },
+                                // launchSingleTop: the overflow menu is on every destination, so
+                                // picking the one already on screen would otherwise push a
+                                // duplicate that up has to be pressed twice to get past.
+                                onOpenWorksites = {
+                                    navController.navigate(Worksites) { launchSingleTop = true }
+                                },
+                                onOpenSettings = {
+                                    navController.navigate(Settings) { launchSingleTop = true }
+                                },
                             )
                         }
                     ) { padding ->

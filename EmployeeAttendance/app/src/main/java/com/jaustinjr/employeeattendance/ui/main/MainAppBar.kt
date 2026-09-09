@@ -17,10 +17,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.jaustinjr.employeeattendance.R
 
+/**
+ * The app bar shared by every destination.
+ *
+ * The navigation slot carries one of two affordances, never both: on a child destination it is an
+ * up button that pops a single entry off the back stack — landing on the destination the user
+ * came from, not on home — and on the root destination it reverts to the account affordance.
+ * [showUpButton] is derived from the current back stack entry by the caller (see
+ * `isChildDestination`), so it can never disagree with what the NavHost is rendering.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppBar(
     title: String,
+    showUpButton: Boolean = false,
+    onNavigateUp: () -> Unit = {},
     onOpenWorksites: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
 ) {
@@ -28,11 +39,20 @@ fun MainAppBar(
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
     },
         navigationIcon = {
-            IconButton(onClick = {}) {
-                Icon(
-                    painter = painterResource(R.drawable.account_circle_24px),
-                    contentDescription = null,
-                )
+            if (showUpButton) {
+                IconButton(onClick = onNavigateUp) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back_24px),
+                        contentDescription = stringResource(R.string.cd_navigate_back),
+                    )
+                }
+            } else {
+                IconButton(onClick = {}) {
+                    Icon(
+                        painter = painterResource(R.drawable.account_circle_24px),
+                        contentDescription = stringResource(R.string.cd_account),
+                    )
+                }
             }
         },
         actions = {

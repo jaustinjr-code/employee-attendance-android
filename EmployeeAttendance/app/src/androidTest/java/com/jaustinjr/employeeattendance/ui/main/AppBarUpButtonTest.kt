@@ -9,9 +9,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.navigation.compose.ComposeNavigator
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -26,16 +30,13 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * The app bar title must always agree with the destination the NavHost is rendering.
+ * The app bar's navigation slot holds exactly one affordance, chosen by where the user is:
+ * an up button on any child of home, and the account affordance once home is reached.
  *
- * NOTE ON COVERAGE: these tests drive navigation programmatically. They cannot reproduce the
- * original report's *dragged* predictive-back gesture — `BackEventCompat` progress can't be
- * injected through `createComposeRule`, and there is no device in CI to perform a real edge drag.
- * What they do pin down is the property whose absence caused the bug: the title is a function of
- * the current back stack entry, with no per-screen side effect that could win a race. The dragged
- * gesture itself is covered manually — see the PR's testing strategy.
+ * Attendance is the root, so up is a single pop — it lands on the destination the user came from,
+ * which from a deep stack is another child rather than home.
  */
-class AppBarTitleNavigationTest {
+class AppBarUpButtonTest {
 
     @get:Rule
     val composeRule = createComposeRule()
@@ -54,12 +55,20 @@ class AppBarTitleNavigationTest {
                 }
             }
 
-            // Mirrors MainActivity: the app bar is outside the NavHost and derives its title from
-            // the back stack rather than from state the destinations push into it.
+            // Mirrors MainActivity: both the title and the navigation icon are derived from the
+            // back stack, so neither can disagree with the destination being rendered.
             val currentEntry by navController.currentBackStackEntryAsState()
-            val title = stringResource(appBarTitleResFor(currentEntry?.destination?.route))
+            val currentRoute = currentEntry?.destination?.route
 
-            Scaffold(topBar = { MainAppBar(title = title) }) { padding ->
+            Scaffold(
+                topBar = {
+                    MainAppBar(
+                        title = stringResource(appBarTitleResFor(currentRoute)),
+                        showUpButton = isChildDestination(currentRoute),
+                        onNavigateUp = { navController.popBackStack() },
+                    )
+                }
+            ) { padding ->
                 NavHost(
                     navController,
                     startDestination = Attendance,
@@ -74,65 +83,68 @@ class AppBarTitleNavigationTest {
     }
 
     @Test
-    fun startDestination_showsItsOwnTitle() {
+    fun home_showsTheAccountAffordanceAndNoUpButton() {
         setUpNavigation()
 
-        composeRule.onNodeWithText(text(R.string.attendance_title)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(text(R.string.cd_account)).assertIsDisplayed()
+        composeRule.onAllNodesWithContentDescription(text(R.string.cd_navigate_back))
+            .assertCountEquals(0)
     }
 
     @Test
-    fun navigatingForward_updatesTheTitle() {
+    fun aChildDestination_swapsTheAccountAffordanceForAnUpButton() {
         setUpNavigation()
 
         composeRule.runOnUiThread { navController.navigate(Worksites) }
 
-        composeRule.onNodeWithText(text(R.string.worksites_title)).assertIsDisplayed()
-        composeRule.onNodeWithText("worksites-content").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(text(R.string.cd_navigate_back))
+            .assertIsDisplayed()
+        composeRule.onAllNodesWithContentDescription(text(R.string.cd_account))
+            .assertCountEquals(0)
     }
 
     @Test
-    fun poppingBack_restoresThePreviousTitle() {
-        // The reported bug: after the back completes the content is Attendance but the header still
-        // reads "Worksites".
+    fun up_returnsToTheDestinationTheUserCameFrom() {
         setUpNavigation()
         composeRule.runOnUiThread { navController.navigate(Worksites) }
-        composeRule.onNodeWithText(text(R.string.worksites_title)).assertIsDisplayed()
 
-        composeRule.runOnUiThread { navController.popBackStack() }
+        composeRule.onNodeWithContentDescription(text(R.string.cd_navigate_back)).performClick()
 
         composeRule.onNodeWithText("attendance-content").assertIsDisplayed()
         composeRule.onNodeWithText(text(R.string.attendance_title)).assertIsDisplayed()
     }
 
     @Test
-    fun poppingBackFromADeeperStack_showsTheDestinationActuallyRendered() {
+    fun up_fromADeepStackGoesOneLevel_notHome() {
+        // The requirement that makes this more than a popBackStack alias: from Settings reached via
+        // Worksites, up must land on Worksites, and only the next press reaches home.
         setUpNavigation()
         composeRule.runOnUiThread { navController.navigate(Worksites) }
         composeRule.runOnUiThread { navController.navigate(Settings) }
-        composeRule.onNodeWithText(text(R.string.settings_title)).assertIsDisplayed()
 
-        composeRule.runOnUiThread { navController.popBackStack() }
+        composeRule.onNodeWithContentDescription(text(R.string.cd_navigate_back)).performClick()
 
         composeRule.onNodeWithText("worksites-content").assertIsDisplayed()
-        composeRule.onNodeWithText(text(R.string.worksites_title)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(text(R.string.cd_navigate_back))
+            .assertIsDisplayed()
     }
 
     @Test
-    fun titleSurvivesRepeatedRoundTrips() {
-        // A push-based title only has to lose one race to go stale, and it stays stale afterwards.
-        // Cycling repeatedly makes any leftover state visible.
+    fun reachingHome_bringsTheAccountAffordanceBack() {
         setUpNavigation()
+        composeRule.runOnUiThread { navController.navigate(Worksites) }
+        composeRule.runOnUiThread { navController.navigate(Settings) }
 
-        repeat(3) {
-            composeRule.runOnUiThread { navController.navigate(Worksites) }
-            composeRule.onNodeWithText(text(R.string.worksites_title)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(text(R.string.cd_navigate_back)).performClick()
+        composeRule.onNodeWithContentDescription(text(R.string.cd_navigate_back)).performClick()
 
-            composeRule.runOnUiThread { navController.popBackStack() }
-            composeRule.onNodeWithText(text(R.string.attendance_title)).assertIsDisplayed()
-        }
+        composeRule.onNodeWithText("attendance-content").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(text(R.string.cd_account)).assertIsDisplayed()
+        composeRule.onAllNodesWithContentDescription(text(R.string.cd_navigate_back))
+            .assertCountEquals(0)
     }
 
-    /** Resolves a title string the same way the app bar does, so the assertions read as UI text. */
+    /** Resolves a string the same way the app bar does, so assertions read as UI text. */
     private fun text(@StringRes id: Int): String =
         InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
 }

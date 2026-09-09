@@ -33,6 +33,23 @@ fun appBarTitleResFor(route: String?): Int = when (route) {
     else -> R.string.attendance_title
 }
 
+/**
+ * Whether the destination at [route] is a child of the home screen, and so shows an up button in
+ * place of the account affordance.
+ *
+ * Like [appBarTitleResFor] this is a pure function of the current destination, for the same reason:
+ * during a predictive-back gesture two destinations are composed at once, and anything the app bar
+ * derives from per-screen state can be written last by the screen the user is leaving.
+ *
+ * Attendance is the root. An unrecognised or not-yet-resolved route (null on the very first frame)
+ * is treated as the root too, so the up button never appears on a frame where the back stack has
+ * nothing to pop.
+ */
+fun isChildDestination(route: String?): Boolean = when (route) {
+    LocationDetailRoute, WorksitesRoute, WorksiteRegistrationRoute, SettingsRoute -> true
+    else -> false
+}
+
 // Route strings as Navigation generates them from the @Serializable destination types, so the
 // mapping above can't drift from the actual routes the way hand-written string literals would.
 internal val AttendanceRoute: String = routeOf<Attendance>()
