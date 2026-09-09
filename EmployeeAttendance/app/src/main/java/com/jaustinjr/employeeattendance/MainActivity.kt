@@ -1,6 +1,7 @@
 package com.jaustinjr.employeeattendance
 
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -16,6 +18,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.jaustinjr.employeeattendance.devtools.DevUnlockTapCounter
+import com.jaustinjr.employeeattendance.devtools.ui.DeveloperSettingsScreen
 import com.jaustinjr.employeeattendance.location.ui.LocationDetailScreen
 import com.jaustinjr.employeeattendance.location.ui.LocationPermissionViewModel
 import com.jaustinjr.employeeattendance.location.ui.LocationViewModel
@@ -44,6 +48,13 @@ object WorksiteRegistration
 
 @Serializable
 object Settings
+
+/**
+ * Developer settings. Registered as a destination only in debug builds, and reachable only through
+ * the hidden five-tap gesture on the attendance app bar title.
+ */
+@Serializable
+object DeveloperSettings
 
 class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -83,6 +94,25 @@ class MainActivity : ComponentActivity() {
                     // the same single source of truth as the title.
                     val showUpButton = isChildDestination(currentRoute)
 
+                    // The developer-settings unlock. Offered only on the attendance destination —
+                    // which is exactly the root, so it reuses the same derivation as the up button
+                    // rather than testing the route a second way — and only in a debug build. In
+                    // release `onTitleClick` stays null and the title is an ordinary,
+                    // non-interactive label.
+                    val devTapCounter = remember { DevUnlockTapCounter() }
+                    val onTitleClick: (() -> Unit)? =
+                        if (BuildConfig.DEBUG && !showUpButton) {
+                            {
+                                // elapsedRealtime, not wall clock: the run must not be broken (or
+                                // spuriously extended) by a clock change mid-gesture.
+                                if (devTapCounter.onTap(SystemClock.elapsedRealtime())) {
+                                    navController.navigate(DeveloperSettings)
+                                }
+                            }
+                        } else {
+                            null
+                        }
+
                     // Scoped to the Activity so the attendance and detail destinations share one
                     // instance each — a single foreground collector and consistent permission
                     // state.
@@ -108,6 +138,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenSettings = {
                                     navController.navigate(Settings) { launchSingleTop = true }
                                 },
+                                onTitleClick = onTitleClick,
                             )
                         }
                     ) { padding ->
@@ -142,6 +173,11 @@ class MainActivity : ComponentActivity() {
                             }
                             composable<Settings> {
                                 SettingsScreen()
+                            }
+                            if (BuildConfig.DEBUG) {
+                                composable<DeveloperSettings> {
+                                    DeveloperSettingsScreen()
+                                }
                             }
                         }
                     }

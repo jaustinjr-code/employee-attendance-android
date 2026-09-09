@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Exposes only cacheDir/devlogs, the single directory EmailDeveloperLogExporter writes exported
+    log files into. Nothing else in the app's storage is shareable through this provider.
+-->
+<paths>
+    <cache-path
+        name="devlogs"
+        path="devlogs/" />
+</paths>

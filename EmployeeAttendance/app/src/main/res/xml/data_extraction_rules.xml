@@ -39,6 +39,9 @@
         <!-- user_profile: the display name the user entered -->
         <exclude domain="sharedpref" path="user_profile.xml"/>
         <exclude domain="sharedpref" path="user_profile_secure.xml"/>
+        <!-- developer_settings: debug-only developer overrides -->
+        <exclude domain="sharedpref" path="developer_settings.xml"/>
+        <exclude domain="sharedpref" path="developer_settings_secure.xml"/>
     </cloud-backup>
     <device-transfer>
         <!-- attendance_events: clock-in/out history -->
@@ -59,5 +62,8 @@
         <!-- user_profile: the display name the user entered -->
         <exclude domain="sharedpref" path="user_profile.xml"/>
         <exclude domain="sharedpref" path="user_profile_secure.xml"/>
+        <!-- developer_settings: debug-only developer overrides -->
+        <exclude domain="sharedpref" path="developer_settings.xml"/>
+        <exclude domain="sharedpref" path="developer_settings_secure.xml"/>
     </device-transfer>
 </data-extraction-rules>
