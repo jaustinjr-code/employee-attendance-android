@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.ui.attendance
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,14 +49,15 @@ import java.util.Locale
 fun AttendanceScreen(
     onOpenLocationDetail: () -> Unit = {},
     onAddWorksite: () -> Unit = {},
-    attendanceViewModel: AttendanceViewModel = viewModel(),
+    attendanceViewModel: AttendanceViewModel = viewModel(factory = AttendanceViewModel.Factory),
     locationViewModel: LocationViewModel = viewModel(factory = LocationViewModel.Factory),
     locationPermissionViewModel: LocationPermissionViewModel =
         viewModel(factory = LocationPermissionViewModel.Factory),
 ) {
     val locationState by locationViewModel.uiState.collectAsStateWithLifecycle()
+    val greeting by attendanceViewModel.uiState.collectAsStateWithLifecycle()
     AttendanceScreen(
-        todayDate = attendanceViewModel.getTodayDateName(),
+        greeting = greeting,
         locationState = locationState,
         onLocationSetupClick = locationPermissionViewModel::onSetupRequested,
         onLocationPillClick = onOpenLocationDetail,
@@ -70,7 +72,7 @@ fun AttendanceScreen(
 
 @Composable
 fun AttendanceScreen(
-    todayDate: String,
+    greeting: GreetingUiState,
     locationState: LocationUiState,
     modifier: Modifier = Modifier,
     onLocationSetupClick: () -> Unit = {},
@@ -80,7 +82,7 @@ fun AttendanceScreen(
     onClockOut: () -> Unit = {},
 ) {
     Column(modifier = modifier) {
-        Greeting(todayDate = todayDate, modifier = Modifier.padding(20.dp))
+        Greeting(state = greeting, modifier = Modifier.padding(20.dp))
         TimeCheck(
             isClockedIn = locationState.isClockedIn,
             clockInMillis = locationState.attendanceClockInMillis,
@@ -125,14 +127,31 @@ fun AttendanceScreen(
     }
 }
 
+/**
+ * The date line plus the time-of-day greeting. The name comes from the account settings; until the
+ * user sets one they are greeted by a friendly stand-in rather than by a blank.
+ */
 @Composable
-fun Greeting(todayDate: String, modifier: Modifier = Modifier) {
+fun Greeting(state: GreetingUiState, modifier: Modifier = Modifier) {
+    val name = state.displayName.trim().ifEmpty { stringResource(R.string.greeting_default_name) }
     Column(
         modifier = modifier
     ) {
-        Text(text = todayDate)
-        Text(text = "Good morning, Superstar", fontWeight = FontWeight.Bold, fontSize = 40.sp, lineHeight = 1.em)
+        Text(text = state.todayDate)
+        Text(
+            text = stringResource(greetingResFor(state.timeOfDay), name),
+            fontWeight = FontWeight.Bold,
+            fontSize = 40.sp,
+            lineHeight = 1.em,
+        )
     }
+}
+
+@StringRes
+private fun greetingResFor(timeOfDay: TimeOfDay): Int = when (timeOfDay) {
+    TimeOfDay.MORNING -> R.string.greeting_morning
+    TimeOfDay.AFTERNOON -> R.string.greeting_afternoon
+    TimeOfDay.EVENING -> R.string.greeting_evening
 }
 
 @Preview(showBackground = true)
@@ -140,7 +159,11 @@ fun Greeting(todayDate: String, modifier: Modifier = Modifier) {
 fun GreetingPreview() {
     EmployeeAttendanceTheme {
         Greeting(
-            todayDate = "Sunday, May 24",
+            state = GreetingUiState(
+                todayDate = "Sunday, May 24",
+                timeOfDay = TimeOfDay.AFTERNOON,
+                displayName = "Jordan",
+            ),
             modifier = Modifier.padding(20.dp)
         )
     }
@@ -221,7 +244,10 @@ fun LiveClock(modifier: Modifier = Modifier) {
 fun AttendanceScreenPreview() {
     EmployeeAttendanceTheme {
         AttendanceScreen(
-            todayDate = "Sunday, May 24",
+            greeting = GreetingUiState(
+                todayDate = "Sunday, May 24",
+                timeOfDay = TimeOfDay.MORNING,
+            ),
             locationState = LocationUiState(
                 activeWorkLocation = WorkLocation(
                     id = "downtown-office",

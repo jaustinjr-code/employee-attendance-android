@@ -26,6 +26,7 @@ import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationTrackingController
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
+import com.jaustinjr.employeeattendance.settings.UserProfileStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -50,6 +51,7 @@ interface AppContainer {
     val clockNotifier: ClockNotifier
     val clockNotificationSettingsStore: ClockNotificationSettingsStore
     val privacySettingsStore: PrivacySettingsStore
+    val userProfileStore: UserProfileStore
     val locationFeatureCoordinator: LocationFeatureCoordinator
     val attendanceAutoClockController: AttendanceAutoClockController
 }
@@ -125,6 +127,10 @@ class DefaultAppContainer(context: Context) : AppContainer {
 
     override val privacySettingsStore: PrivacySettingsStore by lazy {
         PrivacySettingsStore(appContext)
+    }
+
+    override val userProfileStore: UserProfileStore by lazy {
+        UserProfileStore(appContext)
     }
 
     override val locationFeatureCoordinator: LocationFeatureCoordinator by lazy {

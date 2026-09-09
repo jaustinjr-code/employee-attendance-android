@@ -120,15 +120,17 @@ class EmployeeAttendanceApplication : Application() {
                 autoClock.awaitSubscribed()
                 // Now start the location feature's coordination for the process lifetime.
                 container.locationFeatureCoordinator.start(applicationScope)
-                // Force the one remaining EncryptedSharedPreferences-backed store that the wiring
-                // above does not pull in. Nothing here needs it, but SettingsViewModel.Factory and
-                // WorksiteRegistrationViewModel.Factory do — and they run on the main thread during
-                // a navigation transition, long after [startupComplete] has opened the gate. Left
+                // Force the remaining EncryptedSharedPreferences-backed stores that the wiring
+                // above does not pull in. Nothing here needs them, but SettingsViewModel.Factory,
+                // WorksiteRegistrationViewModel.Factory and AttendanceViewModel.Factory do — and
+                // they run on the main thread during a navigation transition (or, for attendance,
+                // the moment the gate opens), long after [startupComplete] has opened it. Left
                 // unforced, that first construction (Keystore unwrap, plus migratePlaintext's
                 // synchronous commit()s on the migration path) lands on main mid-transition, which
                 // is the exact stall this class exists to prevent and which the gate cannot help
                 // with. Constructing it here keeps the gate's guarantee true for every factory.
                 container.privacySettingsStore
+                container.userProfileStore
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
