@@ -118,6 +118,12 @@
     <string name="worksite_error_address_required">Enter an address.</string>
     <string name="worksite_error_location_required">Capture the current location or find an address first.</string>
 
+    <!-- Attendance greeting; %1$s is the name from account settings. -->
+    <string name="greeting_morning">Good morning, %1$s</string>
+    <string name="greeting_afternoon">Good afternoon, %1$s</string>
+    <string name="greeting_evening">Good evening, %1$s</string>
+    <string name="greeting_default_name">Superstar</string>
+
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
     <string name="settings_clock_behavior_title">Auto clock-in behavior</string>
@@ -128,6 +134,12 @@
     <string name="settings_behavior_notify_undo_desc">Records automatically and shows a notification you can undo.</string>
     <string name="settings_behavior_confirm">Ask me to confirm</string>
     <string name="settings_behavior_confirm_desc">Sends a notification and records only after you confirm.</string>
+
+    <!-- Settings: account. Temporary home for the account settings until the app bar's account
+         entry point exists; see MainAppBar. -->
+    <string name="settings_account_title">Account</string>
+    <string name="settings_account_name_label">Display name</string>
+    <string name="settings_account_name_desc">Used to greet you on the attendance screen. Leave blank to be greeted as \"%1$s\".</string>
 
     <!-- Settings: privacy -->
     <string name="settings_privacy_title">Privacy</string>

@@ -36,6 +36,9 @@
         <!-- work_locations: registered worksite coordinates -->
         <exclude domain="sharedpref" path="work_locations.xml"/>
         <exclude domain="sharedpref" path="work_locations_secure.xml"/>
+        <!-- user_profile: the display name the user entered -->
+        <exclude domain="sharedpref" path="user_profile.xml"/>
+        <exclude domain="sharedpref" path="user_profile_secure.xml"/>
     </cloud-backup>
     <device-transfer>
         <!-- attendance_events: clock-in/out history -->
@@ -53,5 +56,8 @@
         <!-- work_locations: registered worksite coordinates -->
         <exclude domain="sharedpref" path="work_locations.xml"/>
         <exclude domain="sharedpref" path="work_locations_secure.xml"/>
+        <!-- user_profile: the display name the user entered -->
+        <exclude domain="sharedpref" path="user_profile.xml"/>
+        <exclude domain="sharedpref" path="user_profile_secure.xml"/>
     </device-transfer>
 </data-extraction-rules>

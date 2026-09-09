@@ -11,6 +11,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+private fun testGreeting() = GreetingUiState(
+    todayDate = "Sunday, May 24",
+    timeOfDay = TimeOfDay.MORNING,
+    displayName = "Jordan",
+)
+
 class AttendanceScreenTest {
 
     @get:Rule
@@ -28,7 +34,7 @@ class AttendanceScreenTest {
     fun showsSetupChip_whenNotGranted() {
         composeRule.setContent {
             AttendanceScreen(
-                todayDate = "Sunday, May 24",
+                greeting = testGreeting(),
                 locationState = LocationUiState(accessLevel = LocationAccessLevel.NONE),
             )
         }
@@ -40,7 +46,7 @@ class AttendanceScreenTest {
     fun showsPill_whenSetUp() {
         composeRule.setContent {
             AttendanceScreen(
-                todayDate = "Sunday, May 24",
+                greeting = testGreeting(),
                 locationState = LocationUiState(
                     activeWorkLocation = office,
                     accessLevel = LocationAccessLevel.ALWAYS,
@@ -57,7 +63,7 @@ class AttendanceScreenTest {
         var clicked = false
         composeRule.setContent {
             AttendanceScreen(
-                todayDate = "Sunday, May 24",
+                greeting = testGreeting(),
                 locationState = LocationUiState(accessLevel = LocationAccessLevel.NONE),
                 onLocationSetupClick = { clicked = true },
             )
@@ -73,7 +79,7 @@ class AttendanceScreenTest {
         var opened = false
         composeRule.setContent {
             AttendanceScreen(
-                todayDate = "Sunday, May 24",
+                greeting = testGreeting(),
                 locationState = LocationUiState(
                     activeWorkLocation = office,
                     accessLevel = LocationAccessLevel.ALWAYS,
@@ -92,7 +98,7 @@ class AttendanceScreenTest {
         var clockedIn = false
         composeRule.setContent {
             AttendanceScreen(
-                todayDate = "Sunday, May 24",
+                greeting = testGreeting(),
                 locationState = LocationUiState(
                     activeWorkLocation = office,
                     accessLevel = LocationAccessLevel.ALWAYS,

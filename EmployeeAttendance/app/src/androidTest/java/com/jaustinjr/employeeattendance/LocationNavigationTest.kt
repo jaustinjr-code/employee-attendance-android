@@ -13,9 +13,18 @@ import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.ui.LocationUiState
 import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
+import com.jaustinjr.employeeattendance.ui.attendance.GreetingUiState
+import com.jaustinjr.employeeattendance.ui.attendance.TimeOfDay
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+
+
+private fun testGreeting() = GreetingUiState(
+    todayDate = "Sunday, May 24",
+    timeOfDay = TimeOfDay.MORNING,
+    displayName = "Jordan",
+)
 
 class LocationNavigationTest {
 
@@ -40,7 +49,7 @@ class LocationNavigationTest {
             NavHost(navController, startDestination = Attendance) {
                 composable<Attendance> {
                     AttendanceScreen(
-                        todayDate = "Sunday, May 24",
+                        greeting = testGreeting(),
                         locationState = LocationUiState(
                             activeWorkLocation = office,
                             accessLevel = LocationAccessLevel.ALWAYS,
