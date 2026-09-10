@@ -94,6 +94,7 @@ fun DeveloperSettingsScreen(
                 onForceClockIn = viewModel::onForceClockIn,
                 onForceClockOut = viewModel::onForceClockOut,
                 onClearAttendance = viewModel::onClearAttendance,
+                onClearSimulatedData = viewModel::onClearSimulatedData,
                 onPostNotification = viewModel::onPostNotification,
                 onLogRecipientChanged = viewModel::onLogRecipientChanged,
                 onExportLog = viewModel::onExportLog,
@@ -122,6 +123,7 @@ data class DeveloperSettingsActions(
     val onForceClockIn: () -> Unit = {},
     val onForceClockOut: () -> Unit = {},
     val onClearAttendance: () -> Unit = {},
+    val onClearSimulatedData: () -> Unit = {},
     val onPostNotification: (ClockType, Boolean, Boolean) -> Unit = { _, _, _ -> },
     val onLogRecipientChanged: (String) -> Unit = {},
     val onExportLog: () -> Unit = {},
@@ -213,9 +215,11 @@ fun DeveloperSettingsContent(
         }
 
         DevSection(R.string.dev_section_attendance)
+        DevSectionHint(R.string.dev_attendance_hint)
         DevActionRow {
             DevButton(R.string.dev_force_clock_in, onClick = actions.onForceClockIn)
             DevButton(R.string.dev_force_clock_out, onClick = actions.onForceClockOut)
+            DevButton(R.string.dev_clear_simulated_data, onClick = actions.onClearSimulatedData)
             DevButton(R.string.dev_clear_attendance, destructive = true, onClick = actions.onClearAttendance)
         }
 

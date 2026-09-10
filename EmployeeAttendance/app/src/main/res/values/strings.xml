@@ -209,6 +209,8 @@
     <string name="dev_force_clock_in">Force clock in</string>
     <string name="dev_force_clock_out">Force clock out</string>
     <string name="dev_clear_attendance">Clear attendance history</string>
+    <string name="dev_attendance_hint">Forced clock events are tagged as simulated, so Clear simulated data can remove them (and the sample worksite) on their own. Events recorded by a simulated arrival travel the real pipeline and are indistinguishable from genuine ones, so they stay.</string>
+    <string name="dev_clear_simulated_data">Clear simulated data</string>
 
     <string name="dev_section_notifications">Clock notifications</string>
     <string name="dev_notifications_hint">Posts the auto clock-in notifications directly, without recording anything. Their Undo and Confirm actions still work.</string>

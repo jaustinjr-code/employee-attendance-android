@@ -15,6 +15,9 @@ destination is not registered at all in a release build.
 | `devtools/DeveloperSettingsStore.kt` | interface + `SharedPrefsDeveloperSettingsStore` for the sticky overrides |
 | `devtools/DebugLocationPermissionRepository.kt` | decorator that applies the permission override app-wide |
 | `devtools/DeveloperToolsController.kt` | every developer action; also `DevGeo`, the offset math for simulated fixes |
+| `devtools/facade/DevAttendanceFacade.kt` | interface + `RepositoryDevAttendanceFacade`; the only attendance capability the dev tools get |
+| `devtools/facade/DevWorksiteFacade.kt` | interface + `RepositoryDevWorksiteFacade`; owns the dev sample worksite's id and name |
+| `devtools/facade/DevNotificationPreview.kt` | interface + `SandboxedDevNotificationPreview`; posts previews whose action buttons are defused |
 | `devtools/ApplicationLogSource.kt` | interface + `LogcatApplicationLogSource` reading this app's own log back |
 | `devtools/DeveloperLogExporter.kt` | interface + `EmailDeveloperLogExporter`; writes the attachment and opens a chooser |
 | `devtools/ui/DeveloperSettingsViewModel.kt` | `DeveloperSettingsUiState`, `DevMessage`, the `Factory` |
@@ -43,7 +46,7 @@ What the gate buys instead:
 The residue is unreachable code and a handful of `dev_*` strings in the release APK. `buildConfig =
 true` in `app/build.gradle.kts` exists for this gate.
 
-## Why the actions write to the real repositories
+## Why the actions write through facades to the real repositories
 
 Every simulation is applied through the app's own app-scoped sources of truth. Simulating an arrival
 calls `ProximityRepository.onGeofenceTransition` — the *same* call `GeofenceBroadcastReceiver`
@@ -64,6 +67,68 @@ DeveloperToolsController.simulateArrival()
 
 A simulation that took a shortcut around those would prove nothing. **The consequence to keep in
 mind: these are real mutations.** The screen says so at the top.
+
+Acting on real data is the point. Acting on it *indistinguishably from the user* is not — and it
+used to be, at both ends: the controller took the real `AttendanceRepository`,
+`WorkLocationRepository` and `ClockNotifications` and called `recordClockIn(id)` / `clearAll()` on
+them, spelled exactly as a user action and persisted exactly like one. So wherever a developer
+action can destroy or forge the user's data, it now goes through a narrow seam in
+`devtools/facade/`. Each method there names the developer intent, so no call site reads like a user
+action:
+
+| Facade | Wraps | What it narrows |
+| --- | --- | --- |
+| `DevAttendanceFacade` | `AttendanceRepository` | tags every write `ClockSource.SIMULATED`; exposes record + clear only, and deliberately **no `undoLast`** — the one operation that silently deletes a genuine event. Reads narrow to a single `isClockedIn(id)` boolean |
+| `DevWorksiteFacade` | `WorkLocationRepository` | owns the sample worksite's id and name, so the caller never names one: it can seed/remove **only** `dev-sample-worksite`. The wide `removeAllWorksites()` survives solely to back the explicitly destructive "Remove all worksites" button |
+| `DevNotificationPreview` | `ClockNotifications` | posts previews against a sandbox worksite id, so their Undo/Confirm buttons cannot touch real history (below) |
+
+`ProximityRepository` and `LocationStateRepository` are used **directly, on purpose**. Their
+developer operations are transient state pokes — proximity back to `UNKNOWN`, a forced
+`TrackingStatus`, a simulated fix the next real one overwrites — with nothing persisted that a user
+would miss. A facade there would be ceremony with no risk to answer to.
+
+### Provenance, and the limit of it
+
+`ClockSource` gained a third value, `SIMULATED`, and `DevAttendanceFacade` tags its writes with it.
+That is what makes **Clear simulated data** possible: it removes only `SIMULATED` events and the dev
+sample worksite, leaving the user's `AUTO`/`MANUAL` history and their own worksites alone. Before
+this, the only cleanup was "delete everything".
+
+`SIMULATED` changes no behaviour. The only production branch on `ClockSource` is
+`lastClockOutManual = lastOut?.source == ClockSource.MANUAL` in
+`DefaultAttendanceRepository.attendanceByLocation`, and `SIMULATED` falls in the same "not manual"
+bucket as `AUTO`, so a simulated clock-out is displayed exactly like an automatic one. There is a
+test asserting precisely that.
+
+**The limitation, which is deliberate:** provenance can only be tagged on the controller's *direct*
+writes — `forceClockIn` / `forceClockOut`. `simulateArrival()` flows through the real
+`ProximityRepository` -> `AttendanceAutoClockController` -> `ClockNotificationStrategy` pipeline,
+which calls `recordClockIn` itself with the production source. Threading a "this is a developer
+simulation" flag through that path would make production code aware of the developer tools and cost
+exactly the realism the feature exists for. So **pipeline-driven events stay indistinguishable by
+design**, and `Clear simulated data` will not remove them; `Clear attendance history` still will,
+knowing it takes everything.
+
+### The notification preview sandbox
+
+Posting a card records nothing. Its *buttons* were the hazard. `ClockNotifier` wires them to
+`ClockActionReceiver`, which resolves the worksite id carried in the notification against the real
+attendance repository:
+
+- **Undo** calls `attendanceRepository.undoLast(locationId)` — deleting the most recent **genuine**
+  attendance event for that worksite. A developer checking how the card looks could silently destroy
+  real data.
+- **Confirm** calls `recordClockIn`/`recordClockOut` — creating a real event, the mirror hazard.
+
+`SandboxedDevNotificationPreview` posts against `worksite.copy(id = DEV_PREVIEW_WORKSITE_ID)`. The
+worksite **name** is what the notification text renders, so it is still the genuine card being
+previewed; only the id travelling in the action `PendingIntent` changes. `undoLast` on that id finds
+nothing to remove, and a `Confirm` writes into a bucket no screen reads. `ClockNotifier`'s
+notification id derives from `locationId.hashCode()`, so a preview also gets its own notification id
+and cannot replace (or be replaced by) a real card for the same worksite.
+
+The fix lives entirely on the developer-tools side of the seam: no production type learns that
+previews exist, and `ClockNotifications` gains no `preview` flag.
 
 Two of the actions have effects worth spelling out:
 
@@ -135,7 +200,8 @@ they produced: permission override off, log recipient forgotten, proximity `UNKN
 
 It deliberately leaves **worksites and attendance history** alone. Those are the user's data, not
 developer configuration, and destroying them is a different decision — so they have their own
-explicit `Remove all worksites` / `Clear attendance history` actions.
+explicit actions: `Clear simulated data` (surgical: `SIMULATED` events and the dev sample worksite
+only), and the destructive `Remove all worksites` / `Clear attendance history`.
 
 ## Tests
 
@@ -144,7 +210,11 @@ explicit `Remove all worksites` / `Clear attendance history` actions.
 | `test/.../devtools/DevUnlockTapCounterTest` | the tap window, restart-on-gap, unlock-once semantics |
 | `test/.../devtools/PermissionOverrideTest` | the state mapping, persisted-name round-trip, and that every `LocationAccessLevel` stays reachable |
 | `test/.../devtools/DebugLocationPermissionRepositoryTest` | override precedence, pass-through, eager seeding, `refresh()` still re-reading the delegate |
-| `test/.../devtools/DeveloperToolsControllerTest` | every action, including that a simulated arrival really emits `Arrived` and that reset spares user data |
+| `test/.../devtools/DeveloperToolsControllerTest` | every action, including that a simulated arrival really emits `Arrived`, that forced clocks are tagged `SIMULATED`, that `clearSimulatedData` spares genuine history, and that reset spares user data |
+| `test/.../devtools/facade/DevAttendanceFacadeTest` | the `SIMULATED` tag, selective clearing, that a simulated clock-out is not "manual", and that no undo is exposed |
+| `test/.../devtools/facade/DevWorksiteFacadeTest` | that seeding/removal can reach only the dev sample, never a user's worksite |
+| `test/.../devtools/facade/DevNotificationPreviewTest` | the sandbox: a preview's Undo/Confirm leaves a pre-existing real record untouched, and the card still renders the genuine name |
+| `test/.../attendance/DefaultAttendanceRepositoryTest` | `clearBySource` deleting only that source, and `SIMULATED` not flagging as manual |
 | `test/.../devtools/DevGeoTest` | the offset math, which `ProximityCalculator` cannot verify on the JVM |
 | `test/.../devtools/ui/DeveloperSettingsViewModelTest` | ui-state composition, gating, and the message mapping |
 | `androidTest/.../devtools/SharedPrefsDeveloperSettingsStoreTest` | persistence across instances (process death) |

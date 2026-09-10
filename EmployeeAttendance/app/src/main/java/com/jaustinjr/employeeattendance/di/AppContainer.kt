@@ -15,6 +15,12 @@ import com.jaustinjr.employeeattendance.devtools.DeveloperToolsController
 import com.jaustinjr.employeeattendance.devtools.EmailDeveloperLogExporter
 import com.jaustinjr.employeeattendance.devtools.SharedPrefsDeveloperSettingsStore
 import com.jaustinjr.employeeattendance.devtools.LogcatApplicationLogSource
+import com.jaustinjr.employeeattendance.devtools.facade.DevAttendanceFacade
+import com.jaustinjr.employeeattendance.devtools.facade.DevNotificationPreview
+import com.jaustinjr.employeeattendance.devtools.facade.DevWorksiteFacade
+import com.jaustinjr.employeeattendance.devtools.facade.RepositoryDevAttendanceFacade
+import com.jaustinjr.employeeattendance.devtools.facade.RepositoryDevWorksiteFacade
+import com.jaustinjr.employeeattendance.devtools.facade.SandboxedDevNotificationPreview
 import com.jaustinjr.employeeattendance.location.LocationFeatureCoordinator
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.SystemLocationPermissionRepository
@@ -73,6 +79,15 @@ interface AppContainer {
 
     /** Actions behind the developer settings screen. Debug-only, as above. */
     val developerToolsController: DeveloperToolsController
+
+    /**
+     * The narrowed seams the developer tools reach user data through. They exist so a developer
+     * action is spelled — and persisted — differently from a user action; see
+     * [com.jaustinjr.employeeattendance.devtools.facade.DevAttendanceFacade]. Debug-only, as above.
+     */
+    val devAttendanceFacade: DevAttendanceFacade
+    val devWorksiteFacade: DevWorksiteFacade
+    val devNotificationPreview: DevNotificationPreview
 }
 
 /** Default [AppContainer] wiring the real, platform-backed implementations. */
@@ -197,18 +212,34 @@ class DefaultAppContainer(context: Context) : AppContainer {
         EmailDeveloperLogExporter(appContext, LogcatApplicationLogSource())
     }
 
+    override val devAttendanceFacade: DevAttendanceFacade by lazy {
+        RepositoryDevAttendanceFacade(attendanceRepository)
+    }
+
+    override val devWorksiteFacade: DevWorksiteFacade by lazy {
+        RepositoryDevWorksiteFacade(
+            repository = workLocationRepository,
+            // Resolved here so the facade itself needs no Context.
+            sampleWorksiteName = appContext.getString(R.string.dev_sample_worksite_name),
+        )
+    }
+
+    override val devNotificationPreview: DevNotificationPreview by lazy {
+        SandboxedDevNotificationPreview(clockNotifier)
+    }
+
     override val developerToolsController: DeveloperToolsController by lazy {
         DeveloperToolsController(
             settingsStore = developerSettingsStore,
             permissionRepository = locationPermissionRepository,
             proximityRepository = proximityRepository,
             locationStateRepository = locationStateRepository,
-            workLocationRepository = workLocationRepository,
-            attendanceRepository = attendanceRepository,
-            notifier = clockNotifier,
+            // The three facades replace direct access to the worksite/attendance/notification
+            // collaborators: the controller can no longer reach those repositories at all.
+            worksites = devWorksiteFacade,
+            attendance = devAttendanceFacade,
+            notificationPreview = devNotificationPreview,
             logExporter = developerLogExporter,
-            // Resolved here so the controller itself needs no Context.
-            sampleWorksiteName = appContext.getString(R.string.dev_sample_worksite_name),
             buildDescription = "${BuildConfig.BUILD_TYPE} ${BuildConfig.VERSION_NAME} " +
                 "(${BuildConfig.VERSION_CODE})",
         )

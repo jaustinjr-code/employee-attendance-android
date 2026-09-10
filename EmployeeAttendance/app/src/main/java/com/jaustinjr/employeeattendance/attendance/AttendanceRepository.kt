@@ -106,6 +106,17 @@ interface AttendanceRepository {
     /** Deletes all recorded attendance. Backs "delete all data". */
     fun clearAll() {}
 
+    /**
+     * Deletes every recorded event whose [AttendanceEvent.source] is [source], leaving the rest of the
+     * log intact.
+     *
+     * Exists so the debug-only developer tools can remove the attendance *they* created
+     * ([ClockSource.SIMULATED]) without touching the user's genuine history — the one thing a
+     * source-blind [clearAll] cannot do. Defaulted to a no-op so implementations that keep no log
+     * (test doubles, future remote-only sources) need not care.
+     */
+    fun clearBySource(source: ClockSource) {}
+
     companion object {
         /**
          * Location id used for manual clock in/out when no worksite is active, so the app works as a
@@ -196,6 +207,17 @@ class DefaultAttendanceRepository(
     override fun clearAll() {
         Log.d(TAG, "clearAll: deleting all attendance events")
         publish(emptyList())
+    }
+
+    @Synchronized
+    override fun clearBySource(source: ClockSource) {
+        val remaining = events.filterNot { it.source == source }
+        if (remaining.size == events.size) {
+            Log.d(TAG, "clearBySource: no $source events to delete")
+            return
+        }
+        Log.d(TAG, "clearBySource: deleting ${events.size - remaining.size} $source events")
+        publish(remaining)
     }
 
     /** Commits [updated] as the new log: persist it, then republish the derived state in step. */

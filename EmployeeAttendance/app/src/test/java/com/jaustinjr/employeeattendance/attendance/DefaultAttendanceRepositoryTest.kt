@@ -45,6 +45,45 @@ class DefaultAttendanceRepositoryTest {
     }
 
     @Test
+    fun `a simulated clock-out is not flagged as manual either`() {
+        val repo = repo()
+        repo.recordClockOut("site-a", 9_000L, ClockSource.SIMULATED)
+
+        // The only production branch on ClockSource is `lastClockOutManual`. SIMULATED must fall in
+        // the same bucket as AUTO, so adding it changed no display behaviour.
+        assertFalse(repo.attendance.value["site-a"]?.lastClockOutManual == true)
+    }
+
+    @Test
+    fun `clearBySource deletes only that source and persists the remainder`() {
+        val local = FakeAttendanceLocalDataSource()
+        val repo = repo(local)
+        repo.recordClockIn("site-a", 1_000L, ClockSource.MANUAL)
+        repo.recordClockIn("site-a", 2_000L, ClockSource.AUTO)
+        repo.recordClockIn("site-a", 3_000L, ClockSource.SIMULATED)
+
+        repo.clearBySource(ClockSource.SIMULATED)
+
+        assertEquals(
+            listOf(ClockSource.MANUAL, ClockSource.AUTO),
+            local.stored.map { it.source },
+        )
+        assertEquals(2_000L, repo.attendance.value["site-a"]?.lastClockInMillis)
+    }
+
+    @Test
+    fun `clearBySource with nothing to delete does not rewrite the store`() {
+        val local = FakeAttendanceLocalDataSource()
+        val repo = repo(local)
+        repo.recordClockIn("site-a", 1_000L, ClockSource.MANUAL)
+        val savesAfterRecord = local.saveCount
+
+        repo.clearBySource(ClockSource.SIMULATED)
+
+        assertEquals(savesAfterRecord, local.saveCount)
+    }
+
+    @Test
     fun `automatic clock-out is not flagged as manual`() {
         val repo = repo()
         repo.recordClockOut("site-a", 9_000L, ClockSource.AUTO)

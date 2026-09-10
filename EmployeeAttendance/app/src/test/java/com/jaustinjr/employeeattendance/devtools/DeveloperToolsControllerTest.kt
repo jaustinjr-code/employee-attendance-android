@@ -3,6 +3,7 @@ package com.jaustinjr.employeeattendance.devtools
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
 import com.jaustinjr.employeeattendance.attendance.ClockSource
 import com.jaustinjr.employeeattendance.attendance.ClockType
+import com.jaustinjr.employeeattendance.devtools.facade.DevNotificationPreview
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
 import com.jaustinjr.employeeattendance.location.proximity.ProximityEvent
@@ -42,9 +43,12 @@ class DeveloperToolsControllerTest {
         FakePermissionRepository(LocationPermissionState(LocationAccessLevel.WHEN_IN_USE, true))
     private val proximityRepository = ProximityRepository(FakeProximityStateStore())
     private val locationState = LocationStateRepository()
-    private val workLocations = FakeWorkLocationRepository()
-    private val attendance = FakeAttendanceRepository()
-    private val notifier = RecordingClockNotifications()
+    private val worksiteFacade = FakeDevWorksiteFacade()
+    private val workLocations = worksiteFacade.repository
+    private val attendanceFacade = FakeDevAttendanceFacade()
+    private val attendance = attendanceFacade.repository
+    private val notificationPreview = RecordingDevNotificationPreview()
+    private val notifier = notificationPreview.notifications
     private val logExporter = FakeDeveloperLogExporter()
 
     private val now = 1_716_552_000_000L
@@ -54,11 +58,10 @@ class DeveloperToolsControllerTest {
         permissionRepository = permissionRepository,
         proximityRepository = proximityRepository,
         locationStateRepository = locationState,
-        workLocationRepository = workLocations,
-        attendanceRepository = attendance,
-        notifier = notifier,
+        worksites = worksiteFacade,
+        attendance = attendanceFacade,
+        notificationPreview = notificationPreview,
         logExporter = logExporter,
-        sampleWorksiteName = "Dev Sample Worksite",
         buildDescription = "debug 1.0 (1)",
         clock = { now },
     )
@@ -224,7 +227,7 @@ class DeveloperToolsControllerTest {
     // ------------------------------------------------------------------ attendance
 
     @Test
-    fun `forced clock events are recorded against the active worksite as automatic`() {
+    fun `forced clock events are recorded against the active worksite as simulated`() {
         withActiveWorksite()
 
         controller.forceClockIn()
@@ -233,7 +236,9 @@ class DeveloperToolsControllerTest {
         assertEquals(2, attendance.events.size)
         attendance.events.forEach {
             assertEquals(office.id, it.locationId)
-            assertEquals(ClockSource.AUTO, it.source)
+            // Provenance: a developer's direct write is spelled differently in the data than a real
+            // one, which is what makes `clearSimulatedData` possible at all.
+            assertEquals(ClockSource.SIMULATED, it.source)
             assertEquals(now, it.epochMillis)
         }
         assertEquals(ClockType.CLOCK_IN, attendance.events[0].type)
@@ -260,6 +265,58 @@ class DeveloperToolsControllerTest {
         assertTrue(attendance.events.isEmpty())
     }
 
+    @Test
+    fun `a simulated clock-out does not surface as a manual one`() {
+        withActiveWorksite()
+
+        controller.forceClockOut()
+
+        // The only production branch on ClockSource is `lastClockOutManual`; SIMULATED must fall in
+        // the same bucket as AUTO or the attendance screen would start showing developer events.
+        assertFalse(attendance.attendance.value.getValue(office.id).lastClockOutManual)
+    }
+
+    @Test
+    fun `an event recorded by the real pipeline stays AUTO and is not treated as simulated`() {
+        withActiveWorksite()
+        // Stands in for AttendanceAutoClockController writing during simulateArrival().
+        attendance.recordClockIn(office.id, now, ClockSource.AUTO)
+
+        controller.clearSimulatedData()
+
+        assertEquals(1, attendance.events.size)
+        assertEquals(ClockSource.AUTO, attendance.events.single().source)
+    }
+
+    // ------------------------------------------------------------------ clearing simulated data
+
+    @Test
+    fun `clearing simulated data removes developer events and the sample worksite only`() {
+        workLocations.registerWorkLocation(office)
+        controller.seedSampleWorksite()
+        controller.forceClockIn()
+        attendance.recordClockIn("office", 1_000L, ClockSource.MANUAL)
+        attendance.recordClockOut("office", 2_000L, ClockSource.AUTO)
+
+        assertEquals(DevActionOutcome.Done, controller.clearSimulatedData())
+
+        assertEquals(
+            listOf(ClockSource.MANUAL, ClockSource.AUTO),
+            attendance.events.map { it.source },
+        )
+        assertEquals(listOf(office.id), workLocations.workLocations.value.map { it.id })
+    }
+
+    @Test
+    fun `clearing simulated data leaves an untouched app alone`() {
+        withActiveWorksite()
+
+        assertEquals(DevActionOutcome.Done, controller.clearSimulatedData())
+
+        assertEquals(1, workLocations.workLocations.value.size)
+        assertTrue(attendance.events.isEmpty())
+    }
+
     // ------------------------------------------------------------------ notifications
 
     @Test
@@ -270,17 +327,25 @@ class DeveloperToolsControllerTest {
         controller.postClockNotification(ClockType.CLOCK_OUT, withUndo = false, confirm = true)
 
         val posted = notifier.recorded.single()
-        assertEquals(office, posted.worksite)
+        assertEquals(DevNotificationPreview.DEV_PREVIEW_WORKSITE_ID, posted.worksite.id)
         assertEquals(ClockType.CLOCK_IN, posted.event.type)
         assertTrue(posted.withUndo)
-        assertEquals(
-            listOf(RecordingClockNotifications.Confirm(office, ClockType.CLOCK_OUT)),
-            notifier.confirms,
-        )
+        val confirmed = notifier.confirms.single()
+        assertEquals(DevNotificationPreview.DEV_PREVIEW_WORKSITE_ID, confirmed.worksite.id)
+        assertEquals(ClockType.CLOCK_OUT, confirmed.clockType)
         // Posting a card is a UI check, not an attendance event.
         assertTrue(attendance.events.isEmpty())
     }
 
+
+    @Test
+    fun `a preview keeps the real worksite name so the genuine card is what renders`() {
+        withActiveWorksite()
+
+        controller.postClockNotification(ClockType.CLOCK_IN, withUndo = true, confirm = false)
+
+        assertEquals(office.name, notifier.recorded.single().worksite.name)
+    }
 
     @Test
     fun `the undo on a posted preview names no real event, so it cannot delete one`() {

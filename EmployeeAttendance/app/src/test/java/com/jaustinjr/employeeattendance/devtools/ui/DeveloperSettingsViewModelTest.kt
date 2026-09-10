@@ -1,17 +1,18 @@
 package com.jaustinjr.employeeattendance.devtools.ui
 
 import com.jaustinjr.employeeattendance.R
+import com.jaustinjr.employeeattendance.attendance.ClockSource
 import com.jaustinjr.employeeattendance.attendance.ClockType
 import com.jaustinjr.employeeattendance.devtools.DeveloperToolsController
-import com.jaustinjr.employeeattendance.devtools.FakeAttendanceRepository
+import com.jaustinjr.employeeattendance.devtools.FakeDevAttendanceFacade
+import com.jaustinjr.employeeattendance.devtools.FakeDevWorksiteFacade
 import com.jaustinjr.employeeattendance.devtools.FakeDeveloperLogExporter
 import com.jaustinjr.employeeattendance.devtools.FakeDeveloperSettingsStore
 import com.jaustinjr.employeeattendance.devtools.FakePermissionRepository
 import com.jaustinjr.employeeattendance.devtools.FakeProximityStateStore
-import com.jaustinjr.employeeattendance.devtools.FakeWorkLocationRepository
 import com.jaustinjr.employeeattendance.devtools.LogExportResult
 import com.jaustinjr.employeeattendance.devtools.PermissionOverride
-import com.jaustinjr.employeeattendance.devtools.RecordingClockNotifications
+import com.jaustinjr.employeeattendance.devtools.RecordingDevNotificationPreview
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
 import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
@@ -50,8 +51,10 @@ class DeveloperSettingsViewModelTest {
         FakePermissionRepository(LocationPermissionState(LocationAccessLevel.ALWAYS, true))
     private val proximityRepository = ProximityRepository(FakeProximityStateStore())
     private val locationState = LocationStateRepository()
-    private val workLocations = FakeWorkLocationRepository()
-    private val attendance = FakeAttendanceRepository()
+    private val worksiteFacade = FakeDevWorksiteFacade()
+    private val workLocations = worksiteFacade.repository
+    private val attendanceFacade = FakeDevAttendanceFacade()
+    private val attendance = attendanceFacade.repository
     private val logExporter = FakeDeveloperLogExporter()
 
     private val controller = DeveloperToolsController(
@@ -59,11 +62,10 @@ class DeveloperSettingsViewModelTest {
         permissionRepository = permissionRepository,
         proximityRepository = proximityRepository,
         locationStateRepository = locationState,
-        workLocationRepository = workLocations,
-        attendanceRepository = attendance,
-        notifier = RecordingClockNotifications(),
+        worksites = worksiteFacade,
+        attendance = attendanceFacade,
+        notificationPreview = RecordingDevNotificationPreview(),
         logExporter = logExporter,
-        sampleWorksiteName = "Dev Sample Worksite",
         buildDescription = "debug 1.0 (1)",
         clock = { 1_716_552_000_000L },
     )
@@ -213,6 +215,19 @@ class DeveloperSettingsViewModelTest {
         viewModel.onPostNotification(ClockType.CLOCK_IN, withUndo = true, confirm = false)
 
         assertEquals(R.string.dev_action_done, viewModel.message.value?.textRes)
+    }
+
+    @Test
+    fun `clearing simulated data spares the user's own attendance`() = runTest {
+        workLocations.registerWorkLocation(office)
+        attendance.recordClockIn(office.id, 1_000L, ClockSource.MANUAL)
+        val viewModel = viewModel()
+
+        viewModel.onForceClockIn()
+        viewModel.onClearSimulatedData()
+
+        assertEquals(R.string.dev_action_done, viewModel.message.value?.textRes)
+        assertEquals(listOf(ClockSource.MANUAL), attendance.events.map { it.source })
     }
 
     @Test

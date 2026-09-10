@@ -151,6 +151,8 @@ class DeveloperSettingsViewModel(
 
     fun onClearAttendance() = report(controller.clearAttendance())
 
+    fun onClearSimulatedData() = report(controller.clearSimulatedData())
+
     fun onPostNotification(clockType: ClockType, withUndo: Boolean, confirm: Boolean) =
         report(controller.postClockNotification(clockType, withUndo, confirm))
 

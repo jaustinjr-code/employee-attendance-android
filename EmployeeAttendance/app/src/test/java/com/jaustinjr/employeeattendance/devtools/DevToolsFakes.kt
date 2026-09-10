@@ -6,6 +6,11 @@ import com.jaustinjr.employeeattendance.attendance.ClockNotifications
 import com.jaustinjr.employeeattendance.attendance.ClockSource
 import com.jaustinjr.employeeattendance.attendance.ClockType
 import com.jaustinjr.employeeattendance.attendance.LocationAttendance
+import com.jaustinjr.employeeattendance.devtools.facade.DevAttendanceFacade
+import com.jaustinjr.employeeattendance.devtools.facade.DevNotificationPreview
+import com.jaustinjr.employeeattendance.devtools.facade.DevWorksiteFacade
+import com.jaustinjr.employeeattendance.devtools.facade.RepositoryDevWorksiteFacade
+import com.jaustinjr.employeeattendance.devtools.facade.SandboxedDevNotificationPreview
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionState
 import com.jaustinjr.employeeattendance.location.proximity.ProximityState
@@ -121,6 +126,11 @@ class FakeAttendanceRepository : AttendanceRepository {
         recompute()
     }
 
+    override fun clearBySource(source: ClockSource) {
+        events.removeAll { it.source == source }
+        recompute()
+    }
+
     private fun recompute() {
         _attendance.value = events.groupBy { it.locationId }.mapValues { (_, forLocation) ->
             LocationAttendance(
@@ -190,4 +200,86 @@ class FakeDeveloperLogExporter(
         lastHeader = header
         return result
     }
+}
+
+/**
+ * Records what the developer tools asked the attendance seam to do. Backed by a
+ * [FakeAttendanceRepository] so the facade's own narrowing (provenance tag, no undo) is what is
+ * under test rather than a hand-written stub of it.
+ */
+class FakeDevAttendanceFacade(
+    val repository: FakeAttendanceRepository = FakeAttendanceRepository(),
+) : DevAttendanceFacade {
+    val events get() = repository.events
+    var clearSimulatedCount = 0
+        private set
+    var clearAllCount = 0
+        private set
+
+    override fun recordSimulatedClockIn(locationId: String, epochMillis: Long) =
+        repository.recordClockIn(locationId, epochMillis, ClockSource.SIMULATED)
+
+    override fun recordSimulatedClockOut(locationId: String, epochMillis: Long) =
+        repository.recordClockOut(locationId, epochMillis, ClockSource.SIMULATED)
+
+    override fun clearSimulatedAttendance() {
+        clearSimulatedCount++
+        repository.clearBySource(ClockSource.SIMULATED)
+    }
+
+    override fun clearAllAttendance() {
+        clearAllCount++
+        repository.clearAll()
+    }
+
+    override fun isClockedIn(locationId: String): Boolean =
+        repository.attendance.value[locationId]?.isClockedIn == true
+}
+
+/** [DevWorksiteFacade] over a [FakeWorkLocationRepository], so seeding/removal is really applied. */
+class FakeDevWorksiteFacade(
+    val repository: FakeWorkLocationRepository = FakeWorkLocationRepository(),
+    private val sampleWorksiteName: String = "Dev Sample Worksite",
+) : DevWorksiteFacade {
+    private val delegate = RepositoryDevWorksiteFacade(repository, sampleWorksiteName)
+
+    var removeAllCount = 0
+        private set
+    var removeSampleCount = 0
+        private set
+
+    override val activeWorksite: StateFlow<WorkLocation?> get() = delegate.activeWorksite
+    override val registeredCount: Int get() = delegate.registeredCount
+
+    override fun seedSampleWorksite(latitudeDegrees: Double, longitudeDegrees: Double) =
+        delegate.seedSampleWorksite(latitudeDegrees, longitudeDegrees)
+
+    override fun removeSampleWorksite() {
+        removeSampleCount++
+        delegate.removeSampleWorksite()
+    }
+
+    override fun removeAllWorksites() {
+        removeAllCount++
+        delegate.removeAllWorksites()
+    }
+}
+
+/** Records the previews the controller asked for, *after* the sandbox id swap has been applied. */
+class RecordingDevNotificationPreview(
+    val notifications: RecordingClockNotifications = RecordingClockNotifications(),
+) : DevNotificationPreview {
+    private val delegate = SandboxedDevNotificationPreview(notifications)
+
+    val recorded get() = notifications.recorded
+    val confirms get() = notifications.confirms
+
+    override fun previewRecordedNotification(
+        worksite: WorkLocation,
+        clockType: ClockType,
+        withUndo: Boolean,
+    ) = delegate.previewRecordedNotification(worksite, clockType, withUndo)
+
+    override fun previewConfirmNotification(worksite: WorkLocation, clockType: ClockType) =
+        delegate.previewConfirmNotification(worksite, clockType)
 }
