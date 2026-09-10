@@ -33,4 +33,7 @@
     <!-- user_profile: the display name the user entered -->
     <exclude domain="sharedpref" path="user_profile.xml"/>
     <exclude domain="sharedpref" path="user_profile_secure.xml"/>
+    <!-- developer_settings: debug-only developer overrides -->
+    <exclude domain="sharedpref" path="developer_settings.xml"/>
+    <exclude domain="sharedpref" path="developer_settings_secure.xml"/>
 </full-backup-content>

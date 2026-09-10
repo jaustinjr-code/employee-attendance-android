@@ -2,6 +2,8 @@ package com.jaustinjr.employeeattendance.ui.main
 
 import androidx.annotation.StringRes
 import com.jaustinjr.employeeattendance.Attendance
+import com.jaustinjr.employeeattendance.BuildConfig
+import com.jaustinjr.employeeattendance.DeveloperSettings
 import com.jaustinjr.employeeattendance.LocationDetail
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.Settings
@@ -86,17 +88,29 @@ object AppNavGraph {
         parent = Attendance,
     )
 
+    /**
+     * Developer settings. Present in the graph only in a debug build, matching the `NavHost`, which
+     * registers its `composable` under the same gate — so in release an unrecognised route resolves
+     * to the root rather than naming a screen that cannot be reached.
+     */
+    val DeveloperSettings = AppDestination(
+        route = DeveloperSettingsRoute,
+        titleRes = R.string.dev_settings_title,
+        parent = Attendance,
+    )
+
     /** Where the `NavHost` starts, and what an unrecognised route falls back to. */
     val root: AppDestination = Attendance
 
     /** Every destination in the graph, in declaration order. */
-    val all: List<AppDestination> = listOf(
-        Attendance,
-        LocationDetail,
-        Worksites,
-        WorksiteRegistration,
-        Settings,
-    )
+    val all: List<AppDestination> = buildList {
+        add(Attendance)
+        add(LocationDetail)
+        add(Worksites)
+        add(WorksiteRegistration)
+        add(Settings)
+        if (BuildConfig.DEBUG) add(DeveloperSettings)
+    }
 
     private val byRoute: Map<String, AppDestination> = all.associateBy { it.route }
 
@@ -136,5 +150,6 @@ internal val LocationDetailRoute: String = routeOf<LocationDetail>()
 internal val WorksitesRoute: String = routeOf<Worksites>()
 internal val WorksiteRegistrationRoute: String = routeOf<WorksiteRegistration>()
 internal val SettingsRoute: String = routeOf<Settings>()
+internal val DeveloperSettingsRoute: String = routeOf<DeveloperSettings>()
 
 private inline fun <reified T : Any> routeOf(): String = serializer<T>().descriptor.serialName

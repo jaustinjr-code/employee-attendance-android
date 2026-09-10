@@ -161,4 +161,89 @@
 
     <!-- Shown while startup wiring completes; see EmployeeAttendanceApplication.startupComplete. -->
     <string name="cd_startup_loading">Starting\u2026</string>
+    <!--
+        Developer settings (debug builds only). Reached by tapping the attendance app bar title five
+        times; the destination is gated on BuildConfig.DEBUG in both MainActivity and AppNavGraph.
+        Kept in the main strings file because the feature lives in the main source set.
+    -->
+    <string name="dev_settings_title">Developer Settings</string>
+    <plurals name="dev_unlock_progress">
+        <item quantity="one">%1$d more tap to open Developer Settings</item>
+        <item quantity="other">%1$d more taps to open Developer Settings</item>
+    </plurals>
+    <string name="dev_unlock_opened">Developer Settings unlocked</string>
+    <string name="dev_settings_warning">Debug build only. These controls write to the app\'s real state — simulated events record real attendance and destructive actions really delete data.</string>
+
+    <string name="dev_section_state">Current state</string>
+    <string name="dev_state_line">%1$s: %2$s</string>
+    <string name="dev_state_permission">Permission</string>
+    <string name="dev_state_tracking">Tracking</string>
+    <string name="dev_state_proximity">Proximity</string>
+    <string name="dev_state_worksite">Active worksite</string>
+    <string name="dev_state_clocked_in">Clocked in</string>
+    <string name="dev_state_none">none</string>
+    <string name="dev_state_overridden">A developer override is in force — this is not the device\'s real state.</string>
+
+    <string name="dev_section_permission">Location permission override</string>
+    <string name="dev_permission_hint">Pins what the whole app sees, including tracking and geofence reconciliation. Forcing a level you were not actually granted will make the platform refuse background tracking — which is itself a state worth testing.</string>
+    <string name="dev_permission_off">Use the real grant</string>
+    <string name="dev_permission_denied">Denied</string>
+    <string name="dev_permission_when_in_use_approximate">While in use · approximate</string>
+    <string name="dev_permission_when_in_use_precise">While in use · precise</string>
+    <string name="dev_permission_always_approximate">All the time · approximate</string>
+    <string name="dev_permission_always_precise">All the time · precise</string>
+
+    <string name="dev_section_proximity">Proximity and location</string>
+    <string name="dev_proximity_hint">Simulated transitions take the same path as a real geofence broadcast, so auto clock-in, notifications and persistence all run. Simulated fixes go through the real distance math instead, and are overwritten by the next genuine fix.</string>
+    <string name="dev_simulate_arrival">Simulate arrival</string>
+    <string name="dev_simulate_departure">Simulate departure</string>
+    <string name="dev_clear_proximity">Clear proximity</string>
+    <string name="dev_fix_at_worksite">Fix at worksite</string>
+    <string name="dev_fix_away">Fix far away</string>
+
+    <string name="dev_section_tracking">Tracking status</string>
+    <string name="dev_tracking_stopped">Stopped</string>
+    <string name="dev_tracking_foreground">Foreground only</string>
+    <string name="dev_tracking_background">Background active</string>
+
+    <string name="dev_section_worksites">Worksites</string>
+    <string name="dev_seed_worksite">Seed sample worksite</string>
+    <string name="dev_clear_worksites">Remove all worksites</string>
+
+    <string name="dev_section_attendance">Attendance</string>
+    <string name="dev_force_clock_in">Force clock in</string>
+    <string name="dev_force_clock_out">Force clock out</string>
+    <string name="dev_clear_attendance">Clear attendance history</string>
+    <string name="dev_attendance_hint">Forced clock events are tagged as simulated, so Clear simulated data can remove them (and the sample worksite) on their own. Events recorded by a simulated arrival travel the real pipeline and are indistinguishable from genuine ones, so they stay.</string>
+    <string name="dev_clear_simulated_data">Clear simulated data</string>
+
+    <string name="dev_section_notifications">Clock notifications</string>
+    <string name="dev_notifications_hint">Posts the auto clock-in notifications directly, without recording anything. Their Undo and Confirm actions still work.</string>
+    <string name="dev_notify_clocked_in">Clocked in (undo)</string>
+    <string name="dev_notify_clocked_out">Clocked out (undo)</string>
+    <string name="dev_notify_confirm_in">Confirm clock in</string>
+    <string name="dev_notify_confirm_out">Confirm clock out</string>
+
+    <string name="dev_section_log">Application log</string>
+    <string name="dev_log_hint">Writes this app\'s recent log to a file, prefixed with a build and state summary, and opens an email app with it attached. Nothing is sent until you tap send.</string>
+    <string name="dev_log_recipient_label">Send to (email)</string>
+    <string name="dev_log_export_action">Export log</string>
+    <string name="dev_log_export_subject">Employee Attendance log (%1$s)</string>
+    <string name="dev_log_export_chooser">Email the application log</string>
+    <string name="dev_log_export_launched">Attached %1$s log lines</string>
+    <string name="dev_log_export_empty">The log is empty — nothing to export.</string>
+    <string name="dev_log_export_failed">Log export failed: %1$s</string>
+
+    <string name="dev_section_reset">Developer reset</string>
+    <string name="dev_reset_hint">Clears every developer override and the simulated state they produced. Your worksites and attendance history are left alone; remove those with the buttons above.</string>
+    <string name="dev_reset_action">Reset developer configuration</string>
+    <string name="dev_reset_confirm_action">Reset</string>
+    <string name="dev_reset_cancel">Cancel</string>
+    <string name="dev_reset_confirm_title">Reset developer configuration?</string>
+    <string name="dev_reset_confirm_message">Turns off the permission override, clears the simulated proximity and tracking status, and forgets the log recipient. Worksites and attendance history are not affected.</string>
+    <string name="dev_reset_done">Developer configuration reset</string>
+
+    <string name="dev_sample_worksite_name">Dev Sample Worksite</string>
+    <string name="dev_action_done">Done</string>
+    <string name="dev_action_needs_worksite">Register or seed a worksite first.</string>
 </resources>

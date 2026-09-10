@@ -1,5 +1,7 @@
 package com.jaustinjr.employeeattendance.ui.main
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -12,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -25,6 +28,12 @@ import com.jaustinjr.employeeattendance.R
  * came from, not on home — and on the root destination it reverts to the account affordance.
  * [showUpButton] is derived from the current back stack entry by the caller (see
  * `isChildDestination`), so it can never disagree with what the NavHost is rendering.
+ *
+ * @param onTitleClick optional hidden gesture on the title. Debug builds pass a handler that counts
+ *   taps to reveal developer settings (see
+ *   [com.jaustinjr.employeeattendance.devtools.DevUnlockTapCounter]); release builds pass null and
+ *   the title is not clickable at all. The click carries no ripple or semantics role on purpose —
+ *   it is meant to be invisible to anyone not looking for it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,9 +43,20 @@ fun MainAppBar(
     onNavigateUp: () -> Unit = {},
     onOpenWorksites: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    onTitleClick: (() -> Unit)? = null,
 ) {
     TopAppBar(title = {
-        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val interactionSource = remember { MutableInteractionSource() }
+        val titleModifier = if (onTitleClick != null) {
+            Modifier.clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onTitleClick,
+            )
+        } else {
+            Modifier
+        }
+        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = titleModifier)
     },
         navigationIcon = {
             if (showUpButton) {

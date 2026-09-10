@@ -1,11 +1,26 @@
 package com.jaustinjr.employeeattendance.di
 
 import android.content.Context
+import com.jaustinjr.employeeattendance.BuildConfig
+import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.attendance.AttendanceAutoClockController
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
 import com.jaustinjr.employeeattendance.attendance.ClockNotifier
 import com.jaustinjr.employeeattendance.attendance.DefaultAttendanceRepository
 import com.jaustinjr.employeeattendance.attendance.SharedPrefsAttendanceLocalDataSource
+import com.jaustinjr.employeeattendance.devtools.DebugLocationPermissionRepository
+import com.jaustinjr.employeeattendance.devtools.DeveloperLogExporter
+import com.jaustinjr.employeeattendance.devtools.DeveloperSettingsStore
+import com.jaustinjr.employeeattendance.devtools.DeveloperToolsController
+import com.jaustinjr.employeeattendance.devtools.EmailDeveloperLogExporter
+import com.jaustinjr.employeeattendance.devtools.SharedPrefsDeveloperSettingsStore
+import com.jaustinjr.employeeattendance.devtools.LogcatApplicationLogSource
+import com.jaustinjr.employeeattendance.devtools.facade.DevAttendanceFacade
+import com.jaustinjr.employeeattendance.devtools.facade.DevNotificationPreview
+import com.jaustinjr.employeeattendance.devtools.facade.DevWorksiteFacade
+import com.jaustinjr.employeeattendance.devtools.facade.RepositoryDevAttendanceFacade
+import com.jaustinjr.employeeattendance.devtools.facade.RepositoryDevWorksiteFacade
+import com.jaustinjr.employeeattendance.devtools.facade.SandboxedDevNotificationPreview
 import com.jaustinjr.employeeattendance.location.LocationFeatureCoordinator
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.SystemLocationPermissionRepository
@@ -54,6 +69,25 @@ interface AppContainer {
     val userProfileStore: UserProfileStore
     val locationFeatureCoordinator: LocationFeatureCoordinator
     val attendanceAutoClockController: AttendanceAutoClockController
+
+    /**
+     * Persisted developer overrides. Only ever read from the debug-gated developer settings screen
+     * and from the permission decorator below; in a release build nothing touches it, so the lazy
+     * binding never runs.
+     */
+    val developerSettingsStore: DeveloperSettingsStore
+
+    /** Actions behind the developer settings screen. Debug-only, as above. */
+    val developerToolsController: DeveloperToolsController
+
+    /**
+     * The narrowed seams the developer tools reach user data through. They exist so a developer
+     * action is spelled — and persisted — differently from a user action; see
+     * [com.jaustinjr.employeeattendance.devtools.facade.DevAttendanceFacade]. Debug-only, as above.
+     */
+    val devAttendanceFacade: DevAttendanceFacade
+    val devWorksiteFacade: DevWorksiteFacade
+    val devNotificationPreview: DevNotificationPreview
 }
 
 /** Default [AppContainer] wiring the real, platform-backed implementations. */
@@ -65,8 +99,24 @@ class DefaultAppContainer(context: Context) : AppContainer {
     // remote mirroring). Default dispatcher: the work is light and non-blocking.
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /**
+     * In debug builds the system repository is wrapped so developer settings can pin the permission
+     * state the *entire* app observes — the coordinator, the tracking service pre-check and both
+     * ViewModels all read permission from this one binding, so an override exercises the real
+     * reactions rather than only repainting the UI. Release builds bind the system repository
+     * directly, so no override path exists at all.
+     */
     override val locationPermissionRepository: LocationPermissionRepository by lazy {
-        SystemLocationPermissionRepository(appContext)
+        val system = SystemLocationPermissionRepository(appContext)
+        if (BuildConfig.DEBUG) {
+            DebugLocationPermissionRepository(
+                delegate = system,
+                override = developerSettingsStore.permissionOverride,
+                scope = appScope,
+            )
+        } else {
+            system
+        }
     }
 
     override val locationTracker: LocationTracker by lazy {
@@ -151,6 +201,47 @@ class DefaultAppContainer(context: Context) : AppContainer {
             attendanceRepository = attendanceRepository,
             notifier = clockNotifier,
             preference = clockNotificationSettingsStore.preference,
+        )
+    }
+
+    override val developerSettingsStore: DeveloperSettingsStore by lazy {
+        SharedPrefsDeveloperSettingsStore(appContext)
+    }
+
+    private val developerLogExporter: DeveloperLogExporter by lazy {
+        EmailDeveloperLogExporter(appContext, LogcatApplicationLogSource())
+    }
+
+    override val devAttendanceFacade: DevAttendanceFacade by lazy {
+        RepositoryDevAttendanceFacade(attendanceRepository)
+    }
+
+    override val devWorksiteFacade: DevWorksiteFacade by lazy {
+        RepositoryDevWorksiteFacade(
+            repository = workLocationRepository,
+            // Resolved here so the facade itself needs no Context.
+            sampleWorksiteName = appContext.getString(R.string.dev_sample_worksite_name),
+        )
+    }
+
+    override val devNotificationPreview: DevNotificationPreview by lazy {
+        SandboxedDevNotificationPreview(clockNotifier)
+    }
+
+    override val developerToolsController: DeveloperToolsController by lazy {
+        DeveloperToolsController(
+            settingsStore = developerSettingsStore,
+            permissionRepository = locationPermissionRepository,
+            proximityRepository = proximityRepository,
+            locationStateRepository = locationStateRepository,
+            // The three facades replace direct access to the worksite/attendance/notification
+            // collaborators: the controller can no longer reach those repositories at all.
+            worksites = devWorksiteFacade,
+            attendance = devAttendanceFacade,
+            notificationPreview = devNotificationPreview,
+            logExporter = developerLogExporter,
+            buildDescription = "${BuildConfig.BUILD_TYPE} ${BuildConfig.VERSION_NAME} " +
+                "(${BuildConfig.VERSION_CODE})",
         )
     }
 }

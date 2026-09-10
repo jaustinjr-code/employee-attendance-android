@@ -37,6 +37,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // BuildConfig.DEBUG gates the developer-settings entry point; see devtools/README in
+        // docs/features/developer-settings.md.
+        buildConfig = true
     }
     testOptions {
         unitTests {

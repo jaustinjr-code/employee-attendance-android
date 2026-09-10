@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug-only additions. The developer settings screen exports the application log as a file
+    attachment, which needs a FileProvider to hand a readable content:// URI to the mail app.
+
+    It lives here rather than in the main manifest so a release build ships no content provider for
+    app logs at all. The exporter code itself sits in the main source set (the developer UI is
+    gated on BuildConfig.DEBUG, not split by source set — see docs/features/developer-settings.md),
+    so its authority string must stay in sync with EmailDeveloperLogExporter.PROVIDER_SUFFIX.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.devlogs"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/dev_log_paths" />
+        </provider>
+    </application>
+
+</manifest>
