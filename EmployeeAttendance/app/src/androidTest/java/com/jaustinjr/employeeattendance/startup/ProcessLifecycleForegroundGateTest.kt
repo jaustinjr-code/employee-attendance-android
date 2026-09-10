@@ -1,9 +1,11 @@
 package com.jaustinjr.employeeattendance.startup
 
 import android.os.Looper
+import androidx.activity.ComponentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -97,19 +99,26 @@ class ProcessLifecycleForegroundGateTest {
         val fired = CountDownLatch(1)
         var deliveredOnMain = false
 
-        // No lifecycleProvider override: this is the production wiring. The instrumentation process
-        // is foreground, so ProcessLifecycleOwner is already STARTED and must release immediately.
-        onMain {
-            ProcessLifecycleForegroundGate().onFirstForeground {
-                deliveredOnMain = Looper.myLooper() == Looper.getMainLooper()
-                fired.countDown()
+        // No lifecycleProvider override: this is the production wiring. ProcessLifecycleOwner only
+        // reaches STARTED once some Activity in this process has actually been created — it is not
+        // guaranteed STARTED just because an instrumentation test is running. When this class runs
+        // alone (or first), no earlier test has launched an Activity, so without the scenario below
+        // the gate never releases and the test hangs until the latch times out. Launching one here
+        // makes the real-lifecycle assertion deterministic regardless of run order, instead of
+        // depending on some other test class happening to run first and launch an Activity.
+        ActivityScenario.launch(ComponentActivity::class.java).use {
+            onMain {
+                ProcessLifecycleForegroundGate().onFirstForeground {
+                    deliveredOnMain = Looper.myLooper() == Looper.getMainLooper()
+                    fired.countDown()
+                }
             }
-        }
 
-        assertTrue(
-            "the real process gate never released; startup work would silently never run",
-            fired.await(5, TimeUnit.SECONDS),
-        )
-        assertTrue("gated work was not delivered on the main thread", deliveredOnMain)
+            assertTrue(
+                "the real process gate never released; startup work would silently never run",
+                fired.await(5, TimeUnit.SECONDS),
+            )
+            assertTrue("gated work was not delivered on the main thread", deliveredOnMain)
+        }
     }
 }
