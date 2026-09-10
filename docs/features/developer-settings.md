@@ -3,8 +3,16 @@
 A hidden screen that drives the app into states a developer would otherwise have to travel, wait,
 or re-grant system permissions to reach — plus an application-log export.
 
-Reached by tapping the **Attendance** app bar title **five times** within three seconds. The
-destination is not registered at all in a release build.
+Reached by tapping the **Attendance** app bar title **five times**, each within ten seconds of the
+last. A toast counts down the final few taps. The destination is not registered at all in a release
+build.
+
+> The window was originally three seconds with no feedback, and the gesture was unusable in the
+> field: tapping deliberately — pausing to check whether anything had happened, because nothing was
+> shown — exceeded three seconds between taps and silently restarted the run every time. Measured on
+> device: taps 3.5 s apart never unlocked however long you kept going, while the same taps 0.6 s
+> apart unlocked on the fifth. Both halves of the fix matter — the longer window makes a deliberate
+> run possible, and the countdown makes it evident, so the run's existence is no longer invisible.
 
 ## Code map
 

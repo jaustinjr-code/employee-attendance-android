@@ -167,6 +167,11 @@
         Kept in the main strings file because the feature lives in the main source set.
     -->
     <string name="dev_settings_title">Developer Settings</string>
+    <plurals name="dev_unlock_progress">
+        <item quantity="one">%1$d more tap to open Developer Settings</item>
+        <item quantity="other">%1$d more taps to open Developer Settings</item>
+    </plurals>
+    <string name="dev_unlock_opened">Developer Settings unlocked</string>
     <string name="dev_settings_warning">Debug build only. These controls write to the app\'s real state — simulated events record real attendance and destructive actions really delete data.</string>
 
     <string name="dev_section_state">Current state</string>
