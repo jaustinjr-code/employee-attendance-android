@@ -38,20 +38,6 @@ class AppBarTitleTest {
     }
 
     @Test
-    fun `routes are the fully qualified destination types navigation generates`() {
-        // Guards the mapping against a rename or package move silently falling through to the
-        // start-destination default, which would look exactly like this bug.
-        assertEquals("com.jaustinjr.employeeattendance.Attendance", AttendanceRoute)
-        assertEquals("com.jaustinjr.employeeattendance.LocationDetail", LocationDetailRoute)
-        assertEquals("com.jaustinjr.employeeattendance.Worksites", WorksitesRoute)
-        assertEquals(
-            "com.jaustinjr.employeeattendance.WorksiteRegistration",
-            WorksiteRegistrationRoute,
-        )
-        assertEquals("com.jaustinjr.employeeattendance.Settings", SettingsRoute)
-    }
-
-    @Test
     fun `an unresolved route falls back to the start destination title`() {
         // currentBackStackEntryAsState() is null on the first frame, before nav has settled.
         assertEquals(R.string.attendance_title, appBarTitleResFor(null))

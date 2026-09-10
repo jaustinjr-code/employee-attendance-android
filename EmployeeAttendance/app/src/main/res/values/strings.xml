@@ -68,6 +68,8 @@
     <string name="menu_worksites">Manage Worksites</string>
     <string name="menu_settings">Settings</string>
     <string name="cd_more_options">More options</string>
+    <string name="cd_navigate_back">Navigate back</string>
+    <string name="cd_account">Account</string>
 
     <!-- Worksites list screen -->
     <string name="worksites_title">Worksites</string>
