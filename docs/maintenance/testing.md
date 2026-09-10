@@ -33,6 +33,14 @@ the pure `evaluate` hysteresis logic, and the distance math is covered on-device
 > Rule of thumb: if the assertion would still pass when the framework call does nothing, it belongs
 > on the JVM. If the framework call *is* the thing under test, it belongs in `androidTest`.
 
+That rule is also *why* some policy is extracted rather than inlined. `DevGeo.offsetNorth` exists as
+a pure function because the developer tools need to place a simulated fix a known distance from a
+worksite, and the obvious implementation — ask `Location` — cannot be verified on the JVM at all.
+`DevUnlockTapCounter` takes its timestamp as a parameter for the same reason, and that mattered: the
+gesture's real defect was its inter-tap window, and the original test drove the counter with a
+constant timestamp, so the window was never exercised and the bug shipped. If a new policy depends
+on distance, time, or prefs, extract it or accept that it is untestable off-device.
+
 ## 3. Screenshot tests
 
 ### What they cover

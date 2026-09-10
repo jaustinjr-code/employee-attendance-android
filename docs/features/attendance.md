@@ -9,8 +9,9 @@ and hosts the single location control.
 | --- | --- |
 | `ui/attendance/AttendanceScreen.kt` | stateful wrapper + stateless content + `Greeting`, `TimeCheck`, `LiveClock`, previews |
 | `ui/attendance/AttendanceViewModel.kt` | one method: `getTodayDateName()` |
-| `ui/main/MainAppBar.kt` | top app bar with profile/settings icon buttons |
-| `MainActivity.kt` | NavHost, app bar title state, shared ViewModel creation |
+| `ui/main/MainAppBar.kt` | top app bar with profile/settings icon buttons, and the optional hidden title tap |
+| `MainActivity.kt` | NavHost, shared ViewModel creation, the debug-only title-tap unlock |
+| `ui/main/AppNavGraph.kt` | the destination hierarchy the app bar title and up button derive from |
 | `ui/theme/` | `EmployeeAttendanceTheme`, `Color.kt`, `Type.kt` |
 | `androidTest/.../ui/attendance/AttendanceScreenTest.kt` | Compose UI tests |
 
@@ -30,6 +31,19 @@ AttendanceScreen(onOpenLocationDetail, attendanceViewModel, locationViewModel, l
 
 The stateful/stateless pair is the convention — keep the stateless overload free of ViewModels so
 `@Preview` keeps working.
+
+## The hidden developer gesture
+
+In a **debug** build only, `MainActivity` passes `MainAppBar` an `onTitleClick` that counts taps on
+the Attendance title and opens developer settings on the fifth. It is offered when `!showUpButton` —
+the root destination is Attendance by definition — so it reuses the same back-stack derivation as
+the up button rather than testing the route separately. The handler is null on every other
+destination and in every release build, so the title is otherwise an ordinary label: the click
+carries no ripple and no semantics role by design.
+
+A toast counts down the last few taps. That is load-bearing, not decoration — the gesture was
+unusable in the field precisely because it was silent, so a deliberate tapper paused between taps
+and silently restarted the run. See [developer-settings.md](developer-settings.md).
 
 ## The single-control rule
 

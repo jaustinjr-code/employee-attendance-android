@@ -30,6 +30,7 @@ build.
 | `devtools/DeveloperLogExporter.kt` | interface + `EmailDeveloperLogExporter`; writes the attachment and opens a chooser |
 | `devtools/ui/DeveloperSettingsViewModel.kt` | `DeveloperSettingsUiState`, `DevMessage`, the `Factory` |
 | `devtools/ui/DeveloperSettingsScreen.kt` | stateful wrapper + stateless content + preview |
+| `ui/main/AppNavGraph.kt` | the `DeveloperSettings` destination, gated on `BuildConfig.DEBUG` |
 | `src/debug/AndroidManifest.xml` | the `devlogs` `FileProvider`, debug-only |
 | `src/debug/res/xml/dev_log_paths.xml` | the one cache directory that provider exposes |
 
@@ -86,7 +87,7 @@ action:
 
 | Facade | Wraps | What it narrows |
 | --- | --- | --- |
-| `DevAttendanceFacade` | `AttendanceRepository` | tags every write `ClockSource.SIMULATED`; exposes record + clear only, and deliberately **no `undoLast`** — the one operation that silently deletes a genuine event. Reads narrow to a single `isClockedIn(id)` boolean |
+| `DevAttendanceFacade` | `AttendanceRepository` | tags every write `ClockSource.SIMULATED`; exposes record + clear only, and deliberately **no undo** — reversing an event is a user action, never a developer one. Reads narrow to a single `isClockedIn(id)` boolean |
 | `DevWorksiteFacade` | `WorkLocationRepository` | owns the sample worksite's id and name, so the caller never names one: it can seed/remove **only** `dev-sample-worksite`. The wide `removeAllWorksites()` survives solely to back the explicitly destructive "Remove all worksites" button |
 | `DevNotificationPreview` | `ClockNotifications` | posts previews against a sandbox worksite id, so their Undo/Confirm buttons cannot touch real history (below) |
 
@@ -119,21 +120,28 @@ knowing it takes everything.
 
 ### The notification preview sandbox
 
-Posting a card records nothing. Its *buttons* were the hazard. `ClockNotifier` wires them to
-`ClockActionReceiver`, which resolves the worksite id carried in the notification against the real
-attendance repository:
+Posting a card records nothing. Its *buttons* are the hazard: `ClockNotifier` wires them to
+`ClockActionReceiver`, which resolves the ids the notification carries against the real attendance
+repository.
 
-- **Undo** calls `attendanceRepository.undoLast(locationId)` — deleting the most recent **genuine**
-  attendance event for that worksite. A developer checking how the card looks could silently destroy
-  real data.
-- **Confirm** calls `recordClockIn`/`recordClockOut` — creating a real event, the mirror hazard.
+**Undo is already well defended**, and it is worth being precise about why, because the same
+question on the `main` line had a different answer. `undoEvent(locationId, type, epochMillis)`
+reverses only a location's *latest* event, and only when the type and timestamp both match the ones
+the card names (that narrowing was issue #23's fix, replacing a type-agnostic `undoLast(locationId)`).
+A preview names a synthetic event that was never recorded, so the undo finds nothing.
 
-`SandboxedDevNotificationPreview` posts against `worksite.copy(id = DEV_PREVIEW_WORKSITE_ID)`. The
-worksite **name** is what the notification text renders, so it is still the genuine card being
-previewed; only the id travelling in the action `PendingIntent` changes. `undoLast` on that id finds
-nothing to remove, and a `Confirm` writes into a bucket no screen reads. `ClockNotifier`'s
-notification id derives from `locationId.hashCode()`, so a preview also gets its own notification id
-and cannot replace (or be replaced by) a real card for the same worksite.
+**Confirm is not defended by that**, and is the reason this facade exists. It calls
+`recordClockIn` / `recordClockOut` for the worksite id on the card, so confirming a prompt posted
+purely to look at would write a genuine attendance event against a real worksite.
+
+`SandboxedDevNotificationPreview` therefore posts against
+`worksite.copy(id = DEV_PREVIEW_WORKSITE_ID)`. The worksite **name** is what the notification text
+renders, so it is still the genuine card being previewed; only the id travelling in the action
+`PendingIntent` changes. A `Confirm` lands in a bucket no screen reads, and the undo path ends up
+defended twice over — by the named-event check and by the sandbox id. Both are asserted by test
+rather than assumed. `ClockNotifier`'s notification id derives from `locationId.hashCode()`, so a
+preview also gets its own notification id and cannot replace (or be replaced by) a real card for the
+same worksite.
 
 The fix lives entirely on the developer-tools side of the seam: no production type learns that
 previews exist, and `ClockNotifications` gains no `preview` flag.
@@ -148,6 +156,25 @@ Two of the actions have effects worth spelling out:
   goes through the *real* distance math and hysteresis rather than setting proximity directly. It is
   the way to exercise `ProximityCalculator` end to end — and the next genuine fix from the tracker
   overwrites it, so the simulated position only holds where the device is not producing fixes.
+
+### Where the gesture is wired
+
+`MainActivity` derives the app bar title and up button from `AppNavGraph` rather than from
+per-screen state, so the unlock reuses that same derivation: it is offered when
+`!showUpButton` — the root destination is Attendance by definition — instead of testing the route a
+second way and risking the two disagreeing. `DeveloperSettings` is a real `AppDestination` with
+`parent = Attendance`, so it gets a title and an up button for free; its entry in `AppNavGraph.all`
+is gated on `BuildConfig.DEBUG` to match the `NavHost`, so in release an unrecognised route resolves
+to the root rather than naming a screen that cannot be reached.
+
+### The store must be excluded from backup
+
+`BackupRulesTest` discovers every `const val PREFS_NAME` in main sources and fails the build if the
+matching files are not excluded from Google auto-backup and device transfer. `developer_settings`
+is one of them, so it is listed in `backup_rules.xml` and in **both** sections of
+`data_extraction_rules.xml`. Two file names per store — `developer_settings.xml` and
+`developer_settings_secure.xml` — because `SecurePreferences` writes the latter and migrates the
+former back in on next launch. Adding another developer store means adding both.
 
 ## The permission override
 

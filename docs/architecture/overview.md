@@ -114,6 +114,8 @@ graph TB
 | `location.geofence` | OS geofence registration + delivery | `GeofenceManager`, `GeofenceBroadcastReceiver`, `GeofenceRegistrar` |
 | `location.registration` | the work-location domain model and its store | `WorkLocation`, `WorkLocationRepository`, `LocationClockInRepository` |
 | `location.ui` | location screens, chips, dialogs, ViewModels | `LocationViewModel`, `LocationPermissionViewModel`, `LocationDetailScreen`, `LocationPermissionHost` |
+| `devtools` | **debug builds only** — state simulation, the permission override, log export | `DeveloperToolsController`, `DeveloperSettingsStore`, `DebugLocationPermissionRepository`, `DeveloperLogExporter`, `DevUnlockTapCounter` |
+| `devtools.facade` | the seam developer actions reach user data through, so a dev write is never spelled like a user write | `DevAttendanceFacade`, `DevWorksiteFacade`, `DevNotificationPreview` |
 
 ## 4. Dependency injection
 
@@ -134,6 +136,14 @@ Three consumption patterns exist, and you should follow the matching one:
 
 **Adding a dependency means editing three places:** the `AppContainer` interface, the
 `DefaultAppContainer` implementation, and the consuming ViewModel factory.
+
+One binding is **build-type conditional**: `locationPermissionRepository` is wrapped in
+`DebugLocationPermissionRepository` when `BuildConfig.DEBUG`, so developer settings can pin the
+permission state the whole app observes — the coordinator, the tracking service's pre-check and both
+ViewModels all read permission from that one binding. Release builds get the undecorated
+`SystemLocationPermissionRepository`, so no override path exists at all. It is the only such
+binding; see [../features/developer-settings.md](../features/developer-settings.md) before adding
+another.
 
 ## 5. Lifetimes and scopes
 
