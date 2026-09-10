@@ -13,9 +13,11 @@ touch.
 > | Documented | Actually on `develop` |
 > | --- | --- |
 > | `startup/AppStartup` + `ForegroundGate` gate app-lifetime work (overview §2, §8, package map; change-impact map) | replaced by `EmployeeAttendanceApplication.startupComplete` and the `StartupGate` composable; there is no `startup/` package |
-> | The app bar title is pushed per destination via `LaunchedEffect` (attendance guide, change-impact map) | derived from the back stack through `AppNavGraph` / `appBarTitleResFor`, with an up button on child destinations |
-> | No developer tooling | a debug-only developer settings screen exists — see [features/developer-settings.md](features/developer-settings.md) |
 > | Screenshot tests and their goldens (testing guide §3) | not present on `develop`; the goldens were recorded against a since-changed UI and would need re-recording before they could be ported |
+>
+> The app bar title mechanism and the developer tooling **have** been brought up to date — the title
+> derives from `AppNavGraph`, and the developer settings screen is documented in
+> [features/developer-settings.md](features/developer-settings.md).
 >
 > Correct a section as you touch the code it describes, rather than trusting it wholesale.
 

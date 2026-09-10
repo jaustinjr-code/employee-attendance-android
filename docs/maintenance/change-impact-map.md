@@ -96,7 +96,17 @@ active locations require a `ProximityRepository` change in the same PR.
 | `location/ui/LocationPermissionViewModel.kt` | `computePrompt`, `SavedStateHandle` keys (changing them drops persisted dismissals) | `LocationPermissionViewModelTest` |
 | `location/ui/LocationPermissionHost.kt` | `ON_RESUME` `DisposableEffect`, dismiss-before-launch ordering, both launchers | `LocationPermissionDialogTest` |
 | `ui/attendance/AttendanceScreen.kt` | the single-control rule (pill XOR chip); `LocationPermissionHost` placement | `AttendanceScreenTest` |
-| `res/values/strings.xml` | referencing composables; keep `location_*` naming | Compose UI tests match on text |
+| `res/values/strings.xml` | referencing composables; keep `location_*` / `dev_*` naming. Compose UI tests match on exact text, so two strings sharing a value make `onNodeWithText` ambiguous | Compose UI tests match on text |
+| `devtools/DeveloperToolsController.kt` | it mutates the *real* repositories on purpose — a simulated arrival records real attendance, and `clearProximity`/reset emit a real `Departed`. Do not reroute it through mock state. It reaches attendance, worksites and notifications **only** through `devtools/facade/`; do not give it those repositories back | `DeveloperToolsControllerTest`, `DevGeoTest` |
+| `devtools/facade/DevAttendanceFacade.kt` | it must keep tagging writes `ClockSource.SIMULATED` (`clearSimulatedData` depends on it) and must keep exposing no undo — reversing an event is a user action | `DevAttendanceFacadeTest` |
+| `devtools/facade/DevNotificationPreview.kt` | previews must keep posting under `DEV_PREVIEW_WORKSITE_ID`. Drop the id swap and a preview's **Confirm** writes a real attendance event for a real worksite. Do not 'fix' this with a `preview` flag on the production `ClockNotifications` | `DevNotificationPreviewTest` |
+| `devtools/DebugLocationPermissionRepository.kt` | `permissionState` must stay `SharingStarted.Eagerly` (the coordinator reads `.value` at startup), and `refresh()` must still call the delegate | `DebugLocationPermissionRepositoryTest` |
+| `devtools/DevUnlockTapCounter.kt` | the window is 10 s deliberately — at 3 s a deliberate tapper never completes a run. Test it with realistic timestamps, not a constant | `DevUnlockTapCounterTest` |
+| `devtools/DeveloperSettingsStore.kt` | prefs file/key names — changing them silently drops a developer's overrides. A **new** store also needs backup-exclusion rules | `SharedPrefsDeveloperSettingsStoreTest`, `BackupRulesTest` |
+| `devtools/DeveloperLogExporter.kt` | `PROVIDER_SUFFIX` must match `android:authorities` in `src/debug/AndroidManifest.xml`; the chooser needs the read grant repeated on it | `EmailDeveloperLogExporterTest` |
+| `attendance/AttendanceEvent.kt` `ClockSource` | adding a value means auditing every branch on the enum. Only one exists in production — `lastClockOutManual` — so a new value silently joins the 'not manual' bucket with `AUTO`. Decide whether that is right, and assert it. Values persist by name: never rename or reorder | `DefaultAttendanceRepositoryTest`, `DevAttendanceFacadeTest` |
+| `res/xml/backup_rules.xml`, `res/xml/data_extraction_rules.xml` | every `PREFS_NAME` needs both `<name>.xml` and `<name>_secure.xml` excluded, in **all** sections | `BackupRulesTest` |
+| `ui/main/AppNavGraph.kt` | a destination missing here still renders, but falls back to the root's title and loses its up button. `DeveloperSettings` is `BuildConfig.DEBUG`-gated to match the `NavHost` | `AppBarTitleNavigationTest`, `AppBarUpButtonTest` |
 | `AndroidManifest.xml` | matching runtime request in `LocationPermissions`; FGS type; `<service>`/`<receiver>` entries | instrumented suite |
 | `gradle/libs.versions.toml` | never inline versions in `build.gradle.kts` | full build |
 
@@ -126,7 +136,7 @@ where one is possible.
 
 | State | Producers | Consumers |
 | --- | --- | --- |
-| `LocationPermissionRepository.permissionState` | `refresh()` (3 call sites) | coordinator, both ViewModels, service |
+| `LocationPermissionRepository.permissionState` | `refresh()` (3 call sites); in debug also `DeveloperSettingsStore.permissionOverride` via the decorator | coordinator, both ViewModels, service, `DeveloperSettingsViewModel` |
 | `WorkLocationRepository.activeWorkLocation` | stub mutators (future registration flow) | coordinator ×2, `LocationViewModel` |
 | `LocationStateRepository.latestLocation` | service, `LocationViewModel` collector | coordinator pipeline 2 |
 | `LocationStateRepository.trackingStatus` | controller, service | `LocationViewModel.uiState` |
