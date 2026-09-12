@@ -185,7 +185,7 @@
     <string name="dev_state_overridden">A developer override is in force — this is not the device\'s real state.</string>
 
     <string name="dev_section_permission">Location permission override</string>
-    <string name="dev_permission_hint">Pins what the whole app sees, including tracking and geofence reconciliation. Forcing a level you were not actually granted will make the platform refuse background tracking — which is itself a state worth testing.</string>
+    <string name="dev_permission_hint">Pins what the whole app sees, including tracking and geofence reconciliation. Forcing a level you were not actually granted will make the platform refuse background tracking.</string>
     <string name="dev_permission_off">Use the real grant</string>
     <string name="dev_permission_denied">Denied</string>
     <string name="dev_permission_when_in_use_approximate">While in use · approximate</string>
