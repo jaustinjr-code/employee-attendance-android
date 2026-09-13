@@ -34,6 +34,10 @@ employee-attendance-android/          <- git root
 | minSdk | 24 | `app/build.gradle.kts` |
 | Java source/target | 11 | `app/build.gradle.kts` |
 | Compose BOM | 2026.02.01 | `gradle/libs.versions.toml` |
+| Core library desugaring | on (`desugar_jdk_libs` 2.1.5) | `app/build.gradle.kts` — `java.time` on minSdk 24 |
+
+Reporting adds Vico 3.1.0 (charts) and WorkManager 2.11.2. Vico is pinned below its latest release
+on purpose; see [features/reporting.md](features/reporting.md#dependencies) before bumping it.
 
 Google Play Services (`play-services-location` 21.3.0) is a hard dependency — the Fused Location
 Provider and geofencing both come from it. Use an emulator image **with** Google Play / Google APIs,

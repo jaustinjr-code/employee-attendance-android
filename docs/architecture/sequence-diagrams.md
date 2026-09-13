@@ -346,3 +346,35 @@ top of `MainActivity.kt`, using Navigation-Compose's Kotlin-serialization routes
 is Activity-level state driven by `LaunchedEffect` in each destination — add a destination and you
 must set the title there too. Note the Attendance title is a hardcoded string while the detail
 title comes from `strings.xml`.
+
+---
+
+## 9. Switching to the Reports tab
+
+**Files:** `MainActivity.kt`, `ui/main/MainBottomBar.kt`, `ui/reports/ReportsViewModel.kt`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant Bar as MainBottomBar
+    participant Nav as NavHostController
+    participant RS as ReportsScreen
+    participant RVM as ReportsViewModel
+    participant RG as ReportGenerator
+
+    U->>Bar: tap Reports
+    Bar->>Nav: navigateToTab(Reports)<br/>popUpTo(start){saveState}, restoreState
+    Nav->>RS: composable<Reports>
+    RS->>RVM: viewModel() — created on first visit, restored after
+    RS->>RVM: collectAsStateWithLifecycle(selection, report, biweekly)
+    RVM->>RG: report(period, eventLog, workLocations) on Dispatchers.Default
+    RG-->>RVM: cached if the same period and list instances
+    RVM-->>RS: ReportSection.Ready
+    U->>Bar: tap Attendance
+    Bar->>Nav: navigateToTab(Attendance) — Reports entry saved, not destroyed
+```
+
+The biweekly notification flow is drawn in
+[../features/reporting.md](../features/reporting.md#biweekly-notification).
+

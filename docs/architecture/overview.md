@@ -24,7 +24,9 @@ one of them is a source of coupling you need to know about:
 ```mermaid
 graph TB
     subgraph Presentation["Presentation — Compose + ViewModels"]
-        MA["MainActivity<br/>NavHost: Attendance ⇄ LocationDetail"]
+        MA["MainActivity<br/>NavHost + bottom bar: Attendance | Reports"]
+        RS["ReportsScreen"]
+        RVM["ReportsViewModel"]
         AS["AttendanceScreen"]
         LDS["LocationDetailScreen"]
         LPH["LocationPermissionHost<br/>(owns system launchers)"]
@@ -47,6 +49,8 @@ graph TB
         PR["ProximityRepository"]
         LCIR["LocationClockInRepository"]
         LTC["LocationTrackingController"]
+        ATR["AttendanceRepository<br/>(eventLog)"]
+        RG["ReportGenerator<br/>(cached)"]
     end
 
     subgraph Platform["Platform edges — Android / Play Services"]
@@ -56,9 +60,14 @@ graph TB
         GBR["GeofenceBroadcastReceiver"]
         SPS["SharedPrefsProximityStateStore"]
         SLPR["SystemLocationPermissionRepository"]
+        BRW["BiweeklyReportWorker<br/>(WorkManager, daily)"]
+        FRS["FileReportSharer<br/>+ ReportFileProvider"]
     end
 
-    MA --> AS & LDS
+    MA --> AS & LDS & RS
+    RS --> RVM
+    RVM --> ATR & WLR & RG & FRS
+    BRW --> RG & ATR
     AS --> LPH
     AS --> AVM & LVM
     LPH --> LPVM
@@ -95,7 +104,9 @@ graph TB
 | Platform edges | Android SDK, Play Services | ViewModels, composables |
 
 `LocationPermissionHost` is the deliberate exception: it is a composable that touches `Activity`,
-`Intent`, and `ActivityResultContracts`, because permission launchers can only be owned there.
+`Intent`, and `ActivityResultContracts`, because permission launchers can only be owned there. The
+stateful `SettingsScreen` wrapper follows the same rule for one launcher — the notification
+permission behind the biweekly report opt-in — while `SettingsContent` stays stateless.
 
 ## 3. Package map
 
@@ -105,7 +116,9 @@ graph TB
 | `di` | hand-wired object graph | `AppContainer`, `DefaultAppContainer` |
 | `startup` | when each piece of app-lifetime coordination is allowed to begin | `AppStartup`, `StartupTask`, `ForegroundGate`, `appLifetimeScope` |
 | `ui.attendance` | home screen, clock in/out, live clock | `AttendanceScreen`, `AttendanceViewModel` |
-| `ui.main` | top app bar | `MainAppBar` |
+| `ui.main` | top app bar, bottom navigation bar, destination tree | `MainAppBar`, `MainBottomBar`, `AppNavGraph` |
+| `ui.reports` | the Reports tab and its charts | `ReportsScreen`, `ReportsViewModel`, `ReportCharts` |
+| `reporting` | report periods, shift pairing, calculation, sharing, the biweekly notification | `ReportGenerator`, `ReportPeriod`, `FileReportSharer`, `BiweeklyReportController`, `BiweeklyReportWorker` |
 | `ui.theme` | Material 3 theme, colors, typography | `EmployeeAttendanceTheme` |
 | `location` | cross-cutting orchestration for the location feature | `LocationFeatureCoordinator` |
 | `location.permission` | permission model + reading grants | `LocationAccessLevel`, `LocationPermissions`, `LocationPermissionRepository` |
@@ -153,6 +166,7 @@ another.
 | `serviceScope` (`SupervisorJob + Dispatchers.Main.immediate`) | `LocationTrackingService` | the service | the background location collection job |
 | `viewModelScope` | each ViewModel | its Activity (both location ViewModels are Activity-scoped from `MainActivity`) | `uiState` sharing, foreground fix collection |
 | repository singletons | `DefaultAppContainer` | the process | hold `StateFlow` state |
+| unique periodic work `biweekly_report_check` | `WorkManagerReportScheduler` | until the user opts out (survives process death and reboot) | `BiweeklyReportWorker`, once a day |
 
 `LocationViewModel` and `LocationPermissionViewModel` are created in `MainActivity` and passed down,
 so the Attendance and LocationDetail destinations **share one instance each**. That is deliberate:
@@ -166,6 +180,11 @@ foreground-service start became a fatal crash (issue #49). Do not drop it.
 
 `SharingStarted.WhileSubscribed(5_000)` is used for both ViewModels' `uiState`, so upstream flows
 stay warm across configuration changes but shut down 5 s after the last subscriber leaves.
+
+`ReportsViewModel` is the one ViewModel scoped to its **back-stack entry** rather than the Activity:
+it does no work until the Reports tab is first opened. Tab switches go through
+`NavController.navigateToTab`, which saves and restores each tab's back stack, so the entry — and its
+ViewModel — survive switching to Attendance and back.
 
 ## 6. Threading
 

@@ -8,6 +8,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import com.jaustinjr.employeeattendance.R
 import java.io.File
 import java.time.ZoneId
@@ -111,13 +112,14 @@ class FileReportSharer(
                 putExtra(Intent.EXTRA_TITLE, subject)
                 putExtra(Intent.EXTRA_TEXT, text)
                 putExtra(Intent.EXTRA_STREAM, uri)
-                // ClipData is what actually carries the grant to the target on API 29+.
-                clipData = ClipData.newUri(null, subject, uri)
+                // ClipData is what actually carries the grant to the target on API 29+. Built
+                // directly: ClipData.newUri would need a ContentResolver to look up the type.
+                clipData = ClipData(subject, arrayOf(MIME_TYPE), ClipData.Item(uri))
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 if (target == ShareTarget.EMAIL) {
                     // ACTION_SEND keeps the attachment; the mailto: selector limits the
                     // resolvers to email apps.
-                    selector = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
+                    selector = Intent(Intent.ACTION_SENDTO, "mailto:".toUri())
                 }
             }
     }

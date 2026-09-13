@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.settings
 
 import android.content.Context
 import android.util.Log
+import androidx.core.content.edit
 import com.jaustinjr.employeeattendance.storage.SecurePreferences
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,14 +35,14 @@ class ReportSettingsStore(context: Context) : ReportSettings {
     override fun setBiweeklyNotificationEnabled(enabled: Boolean) {
         Log.d(TAG, "setBiweeklyNotificationEnabled: $enabled")
         _enabled.value = enabled
-        prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
+        prefs.edit { putBoolean(KEY_ENABLED, enabled) }
     }
 
     override var lastNotifiedPeriodStart: LocalDate?
         get() = prefs.getString(KEY_LAST_NOTIFIED, null)
             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         set(value) {
-            prefs.edit().putString(KEY_LAST_NOTIFIED, value?.toString()).apply()
+            prefs.edit { putString(KEY_LAST_NOTIFIED, value?.toString()) }
         }
 
     private companion object {

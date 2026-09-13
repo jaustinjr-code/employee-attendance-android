@@ -39,8 +39,10 @@ data class ReportStrings(
     val noShifts: String,
     /** %1$s period label, %2$s date range. */
     val subject: String,
-    /** %1$s total, %2$d shift count. */
+    /** %1$s total, %2$s the [shiftCount] phrase. */
     val biweeklyHeadline: String,
+    /** "1 shift" / "3 shifts", pluralized for the locale. */
+    val shiftCount: (Int) -> String,
     /** %1$s duration. */
     val changeUp: String,
     /** %1$s duration. */
@@ -70,6 +72,7 @@ data class ReportStrings(
                 noShifts = getString(R.string.reports_empty),
                 subject = getString(R.string.report_share_subject),
                 biweeklyHeadline = getString(R.string.reports_biweekly_headline),
+                shiftCount = { count -> getQuantityString(R.plurals.reports_shift_count, count, count) },
                 changeUp = getString(R.string.reports_change_up),
                 changeDown = getString(R.string.reports_change_down),
                 changeNone = getString(R.string.reports_change_none),
@@ -112,11 +115,17 @@ class ReportTextFormatter(
         WorksiteLabel.Removed -> strings.removedWorksite
     }
 
-    fun activeShiftNote(notice: ActiveShiftNotice): String = strings.activeShiftNote.format(
-        locale,
-        worksite(notice.label),
-        timeFormat.format(notice.startedAt.atZone(zone)),
-    )
+    /** The start carries its weekday: a shift open since last night must not read as this evening. */
+    fun activeShiftNote(notice: ActiveShiftNotice): String {
+        val start = notice.startedAt.atZone(zone)
+        return strings.activeShiftNote.format(
+            locale,
+            worksite(notice.label),
+            "${dayFormat.format(start)} ${timeFormat.format(start)}",
+        )
+    }
+
+    fun shiftCount(count: Int): String = strings.shiftCount(count)
 
     fun subject(period: ReportPeriod): String =
         strings.subject.format(locale, periodLabel(period.type), dateRange(period))
@@ -130,7 +139,7 @@ class ReportTextFormatter(
     fun biweeklyHeadline(summary: BiweeklySummary): String = strings.biweeklyHeadline.format(
         locale,
         duration(summary.report.totalMillis),
-        summary.report.shiftCount,
+        strings.shiftCount(summary.report.shiftCount),
     )
 
     fun fullReport(report: AttendanceReport, activeShift: ActiveShiftNotice?): String = buildString {

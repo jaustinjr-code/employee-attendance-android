@@ -88,6 +88,9 @@ fun DailyHoursChart(
         CartesianValueFormatter { _, x, _ -> labels.getOrElse(x.toInt()) { "" } }
     }
     val startFormatter = remember { CartesianValueFormatter.decimal(decimalCount = 0, suffix = "h") }
+    // Whole-hour gridlines; the default step can land on fractions that round to repeated labels.
+    val maxHours = remember(days) { days.maxOfOrNull { it.workedMillis / MILLIS_PER_HOUR } ?: 0.0 }
+    val hourStep = if (maxHours > 10) 2.0 else 1.0
     // A month has ~31 columns; thinner bars and every-7th label keep it readable at phone width.
     val isWeek = periodType == ReportPeriodType.WEEK
     val column = rememberLineComponent(
@@ -101,9 +104,13 @@ fun DailyHoursChart(
                 rememberColumnCartesianLayer(
                     columnProvider = ColumnCartesianLayer.ColumnProvider.series(column),
                 ),
-                startAxis = VerticalAxis.rememberStart(valueFormatter = startFormatter),
+                startAxis = VerticalAxis.rememberStart(
+                    valueFormatter = startFormatter,
+                    itemPlacer = remember(hourStep) { VerticalAxis.ItemPlacer.step({ hourStep }) },
+                ),
                 bottomAxis = HorizontalAxis.rememberBottom(
                     valueFormatter = bottomFormatter,
+                    guideline = null,
                     itemPlacer = remember(isWeek) {
                         HorizontalAxis.ItemPlacer.aligned(spacing = { if (isWeek) 1 else 7 })
                     },
@@ -123,8 +130,10 @@ fun DailyHoursChart(
 
 /** Colors for worksite slices, from the theme so they follow dark mode and dynamic color. */
 @Composable
-fun worksiteColors(): List<Color> = MaterialTheme.colorScheme.run {
-    listOf(primary, tertiary, secondary, error, outline)
+fun worksiteColors(): List<Color> {
+    val scheme = MaterialTheme.colorScheme
+    // Keyed on the scheme so the list, and the pie chart built from it, survive recomposition.
+    return remember(scheme) { scheme.run { listOf(primary, tertiary, secondary, error, outline) } }
 }
 
 /**

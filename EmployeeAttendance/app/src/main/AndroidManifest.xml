@@ -79,7 +79,11 @@
             android:name=".reporting.ReportFileProvider"
             android:authorities="${applicationId}.reports"
             android:exported="false"
-            android:grantUriPermissions="true" />
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/report_paths" />
+        </provider>
 
         <!-- WorkManager is initialized on demand from the startup job (see
              EmployeeAttendanceApplication), not by its content provider on the main thread. -->

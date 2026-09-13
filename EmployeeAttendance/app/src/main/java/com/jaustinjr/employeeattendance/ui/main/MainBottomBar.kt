@@ -13,6 +13,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import com.jaustinjr.employeeattendance.R
 
 /**
@@ -38,6 +40,19 @@ fun MainBottomBar(
                 label = { Text(stringResource(labelFor(destination))) },
             )
         }
+    }
+}
+
+/**
+ * Switches to a top-level tab. The tab being left is saved and the one being entered restored, so
+ * each tab keeps its own back stack and ViewModels: returning to Reports shows the report already
+ * computed rather than loading it again.
+ */
+fun NavController.navigateToTab(route: Any) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }
 

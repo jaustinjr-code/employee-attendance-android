@@ -276,7 +276,11 @@
     <string name="reports_worksite_value">%1$s · %2$d%%</string>
     <string name="reports_worksite_share">%1$s, %2$s (%3$d%%)</string>
     <string name="reports_biweekly_title">Last two weeks</string>
-    <string name="reports_biweekly_headline">%1$s across %2$d shifts</string>
+    <string name="reports_biweekly_headline">%1$s across %2$s</string>
+    <plurals name="reports_shift_count">
+        <item quantity="one">%d shift</item>
+        <item quantity="other">%d shifts</item>
+    </plurals>
     <string name="reports_biweekly_top_worksite">Most time at %1$s</string>
     <string name="reports_change_up">Up %1$s from the two weeks before</string>
     <string name="reports_change_down">Down %1$s from the two weeks before</string>

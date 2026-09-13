@@ -10,7 +10,8 @@ and hosts the single location control.
 | `ui/attendance/AttendanceScreen.kt` | stateful wrapper + stateless content + `Greeting`, `TimeCheck`, `LiveClock`, previews |
 | `ui/attendance/AttendanceViewModel.kt` | one method: `getTodayDateName()` |
 | `ui/main/MainAppBar.kt` | top app bar with profile/settings icon buttons, and the optional hidden title tap |
-| `MainActivity.kt` | NavHost, shared ViewModel creation, the debug-only title-tap unlock |
+| `MainActivity.kt` | NavHost, bottom bar, shared ViewModel creation, the debug-only title-tap unlock |
+| `ui/main/MainBottomBar.kt` | the Attendance/Reports navigation bar; see [reporting.md](reporting.md) |
 | `ui/main/AppNavGraph.kt` | the destination hierarchy the app bar title and up button derive from |
 | `ui/theme/` | `EmployeeAttendanceTheme`, `Color.kt`, `Type.kt` |
 | `androidTest/.../ui/attendance/AttendanceScreenTest.kt` | Compose UI tests |
@@ -35,9 +36,9 @@ The stateful/stateless pair is the convention — keep the stateless overload fr
 ## The hidden developer gesture
 
 In a **debug** build only, `MainActivity` passes `MainAppBar` an `onTitleClick` that counts taps on
-the Attendance title and opens developer settings on the fifth. It is offered when `!showUpButton` —
-the root destination is Attendance by definition — so it reuses the same back-stack derivation as
-the up button rather than testing the route separately. The handler is null on every other
+the Attendance title and opens developer settings on the fifth. It is offered only when the current
+destination is `AppNavGraph.root`. It used to key off `!showUpButton`, but Reports is now a second
+top-level tab without an up button, so that test would have enabled the gesture there too. The handler is null on every other
 destination and in every release build, so the title is otherwise an ordinary label: the click
 carries no ripple and no semantics role by design.
 

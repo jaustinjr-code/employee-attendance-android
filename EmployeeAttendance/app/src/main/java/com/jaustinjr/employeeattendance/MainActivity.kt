@@ -13,14 +13,16 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -38,6 +40,7 @@ import com.jaustinjr.employeeattendance.ui.main.AppNavGraph
 import com.jaustinjr.employeeattendance.ui.main.MainAppBar
 import com.jaustinjr.employeeattendance.ui.main.MainBottomBar
 import com.jaustinjr.employeeattendance.ui.main.destinationOrRoot
+import com.jaustinjr.employeeattendance.ui.main.navigateToTab
 import com.jaustinjr.employeeattendance.ui.reports.ReportsScreen
 import com.jaustinjr.employeeattendance.ui.main.StartupGate
 import com.jaustinjr.employeeattendance.ui.main.appBarTitleResFor
@@ -160,22 +163,8 @@ class MainActivity : ComponentActivity() {
                         if (!onAttendance) devTapCounter.reset()
                     }
 
-                    // Tab switches save the tab being left and restore the one being entered, so
-                    // each tab keeps its own back stack and its ViewModels: returning to Reports
-                    // shows the report already computed rather than loading it again.
-                    val navigateToTab: (Any) -> Unit = { route ->
-                        navController.navigate(route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-
-                    LaunchedEffect(Unit) {
-                        if (openReportsOnStart) navigateToTab(Reports)
-                    }
+                    // Consumed once, and saved so a rotation before it runs does not lose it.
+                    var pendingOpenReports by rememberSaveable { mutableStateOf(openReportsOnStart) }
 
                     // Scoped to the Activity so the attendance and detail destinations share one
                     // instance each — a single foreground collector and consistent permission
@@ -212,7 +201,7 @@ class MainActivity : ComponentActivity() {
                                 MainBottomBar(
                                     currentRoute = currentRoute,
                                     onSelect = { destination ->
-                                        navigateToTab(
+                                        navController.navigateToTab(
                                             if (destination == AppNavGraph.Reports) Reports else Attendance,
                                         )
                                     },
@@ -226,6 +215,17 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(padding),
                         ) {
                             composable<Attendance> {
+                                // Navigating from here rather than from an effect beside the
+                                // Scaffold: the NavHost is subcomposed after that effect runs, so
+                                // its graph would not be set yet. Attendance is the start
+                                // destination, so this is the first place navigation is legal,
+                                // and it leaves Attendance beneath Reports for back.
+                                if (pendingOpenReports) {
+                                    LaunchedEffect(Unit) {
+                                        pendingOpenReports = false
+                                        navController.navigateToTab(Reports)
+                                    }
+                                }
                                 AttendanceScreen(
                                     onOpenLocationDetail = { navController.navigate(LocationDetail) },
                                     onAddWorksite = { navController.navigate(WorksiteRegistration) },

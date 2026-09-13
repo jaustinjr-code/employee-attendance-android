@@ -231,7 +231,7 @@ private fun BiweeklySummaryBody(summary: BiweeklySummary, formatter: ReportTextF
         style = MaterialTheme.typography.displaySmall,
     )
     Text(
-        text = formatter.biweeklyHeadline(summary),
+        text = formatter.shiftCount(summary.report.shiftCount),
         style = MaterialTheme.typography.bodyLarge,
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -299,15 +299,17 @@ private fun PeriodSelector(
 
 @Composable
 private fun ActiveShiftCard(notice: ActiveShiftNotice, formatter: ReportTextFormatter) {
+    // A neutral container with an accent icon: dynamic tertiaryContainer can stay bright in dark
+    // themes, which made an informational note louder than the report it annotates.
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ),
         modifier = Modifier.fillMaxWidth().testTag(ACTIVE_SHIFT_TAG),
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Info, contentDescription = null)
+            Icon(Icons.Outlined.Info, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
             Spacer(Modifier.width(12.dp))
             Text(formatter.activeShiftNote(notice), style = MaterialTheme.typography.bodyMedium)
         }
@@ -389,9 +391,17 @@ private fun DailyChartCard(report: AttendanceReport, formatter: ReportTextFormat
 
 @Composable
 private fun WorksiteChartCard(report: AttendanceReport, formatter: ReportTextFormatter) {
-    val spoken = report.worksites.joinToString("; ") {
-        val percent = if (report.totalMillis == 0L) 0 else it.workedMillis * 100 / report.totalMillis
-        "${formatter.worksite(it.label)}: ${formatter.duration(it.workedMillis)}, $percent%"
+    val resources = LocalResources.current
+    val spoken = remember(report.worksites, formatter, resources) {
+        report.worksites.joinToString("; ") {
+            val percent = if (report.totalMillis == 0L) 0 else (it.workedMillis * 100 / report.totalMillis).toInt()
+            resources.getString(
+                R.string.reports_worksite_share,
+                formatter.worksite(it.label),
+                formatter.duration(it.workedMillis),
+                percent,
+            )
+        }
     }
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -62,7 +62,7 @@ class ReportTextFormatterTest {
 
         assertTrue(
             text,
-            "You're clocked in at Office since 8:15 AM. That shift isn't included until you clock out." in text,
+            "You're clocked in at Office since Thu 8:15 AM. That shift isn't included until you clock out." in text,
         )
         assertTrue(text, "Total worked: 1h 00m" in text)
     }
