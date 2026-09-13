@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance
 
 import android.app.Application
 import android.util.Log
+import androidx.work.Configuration
 import com.jaustinjr.employeeattendance.di.AppContainer
 import com.jaustinjr.employeeattendance.di.DefaultAppContainer
 import kotlinx.coroutines.CancellationException
@@ -67,7 +68,7 @@ import kotlinx.coroutines.launch
  * container's remaining dependencies (`locationTracker`, `addressGeocoder`, `addressAutocomplete`)
  * touch no disk and need no warm-up.
  */
-class EmployeeAttendanceApplication : Application() {
+class EmployeeAttendanceApplication : Application(), Configuration.Provider {
 
     lateinit var container: AppContainer
         private set
@@ -131,6 +132,10 @@ class EmployeeAttendanceApplication : Application() {
                 // with. Constructing it here keeps the gate's guarantee true for every factory.
                 container.privacySettingsStore
                 container.userProfileStore
+                // Also the first WorkManager call in the process: on-demand initialization (its
+                // startup provider is removed in the manifest) opens its database here on IO
+                // instead of on the main thread before the first frame.
+                container.biweeklyReportController.reconcile()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -150,6 +155,9 @@ class EmployeeAttendanceApplication : Application() {
         // released: a cancelled or failed startup must not leave the app on a loading screen.
         startupJob.invokeOnCompletion { _startupComplete.value = true }
     }
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().build()
 
     /**
      * Suspends until app startup wiring has completed. Callers that can be invoked by the platform

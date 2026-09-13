@@ -9,9 +9,11 @@ import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
 import com.jaustinjr.employeeattendance.location.proximity.ProximityUpdater
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
+import com.jaustinjr.employeeattendance.reporting.BiweeklyReportController
 import com.jaustinjr.employeeattendance.settings.ClockNotificationPreference
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
+import com.jaustinjr.employeeattendance.settings.ReportSettings
 import com.jaustinjr.employeeattendance.settings.UserProfileStore
 import kotlinx.coroutines.flow.StateFlow
 
@@ -27,6 +29,8 @@ class SettingsViewModel(
     private val workLocationRepository: WorkLocationRepository,
     private val attendanceRepository: AttendanceRepository,
     private val proximityUpdater: ProximityUpdater,
+    reportSettings: ReportSettings,
+    private val biweeklyReportController: BiweeklyReportController,
 ) : ViewModel() {
 
     val preference: StateFlow<ClockNotificationPreference> = settingsStore.preference
@@ -41,6 +45,17 @@ class SettingsViewModel(
 
     /** Whether captured locations are reverse-geocoded to an address (a network lookup). */
     val reverseGeocodeEnabled: StateFlow<Boolean> = privacySettingsStore.reverseGeocodeEnabled
+
+    /** Whether the biweekly report notification is scheduled. */
+    val biweeklyReportEnabled: StateFlow<Boolean> = reportSettings.biweeklyNotificationEnabled
+
+    /**
+     * Callers turning this on must already hold the notification permission on Android 13+; the
+     * screen requests it first, because only a composable can own the permission launcher.
+     */
+    fun onBiweeklyReportEnabledChanged(enabled: Boolean) {
+        biweeklyReportController.setEnabled(enabled)
+    }
 
     fun onPreferenceSelected(preference: ClockNotificationPreference) {
         settingsStore.setPreference(preference)
@@ -83,6 +98,8 @@ class SettingsViewModel(
                     workLocationRepository = container.workLocationRepository,
                     attendanceRepository = container.attendanceRepository,
                     proximityUpdater = container.proximityRepository,
+                    reportSettings = container.reportSettings,
+                    biweeklyReportController = container.biweeklyReportController,
                 )
             }
         }

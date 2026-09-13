@@ -1,5 +1,7 @@
 package com.jaustinjr.employeeattendance
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
 import android.widget.Toast
@@ -18,6 +20,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -31,7 +34,11 @@ import com.jaustinjr.employeeattendance.location.ui.SettingsScreen
 import com.jaustinjr.employeeattendance.location.ui.WorksiteRegistrationScreen
 import com.jaustinjr.employeeattendance.location.ui.WorksitesScreen
 import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
+import com.jaustinjr.employeeattendance.ui.main.AppNavGraph
 import com.jaustinjr.employeeattendance.ui.main.MainAppBar
+import com.jaustinjr.employeeattendance.ui.main.MainBottomBar
+import com.jaustinjr.employeeattendance.ui.main.destinationOrRoot
+import com.jaustinjr.employeeattendance.ui.reports.ReportsScreen
 import com.jaustinjr.employeeattendance.ui.main.StartupGate
 import com.jaustinjr.employeeattendance.ui.main.appBarTitleResFor
 import com.jaustinjr.employeeattendance.ui.main.isChildDestination
@@ -40,6 +47,9 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 object Attendance
+
+@Serializable
+object Reports
 
 @Serializable
 object LocationDetail
@@ -66,6 +76,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val application = application as EmployeeAttendanceApplication
+        // Only on a fresh launch: after recreation the restored back stack already says where the
+        // user is, and re-applying the extra would yank them back to Reports.
+        val openReportsOnStart =
+            savedInstanceState == null && intent?.getStringExtra(EXTRA_START_TAB) == TAB_REPORTS
         setContent {
             EmployeeAttendanceTheme {
                 // Gate every ViewModel construction on startup wiring being finished (issue #58).
@@ -99,10 +113,10 @@ class MainActivity : ComponentActivity() {
                     val showUpButton = isChildDestination(currentRoute)
 
                     // The developer-settings unlock. Offered only on the attendance destination —
-                    // which is exactly the root, so it reuses the same derivation as the up button
-                    // rather than testing the route a second way — and only in a debug build. In
-                    // release `onTitleClick` stays null and the title is an ordinary,
-                    // non-interactive label.
+                    // the root, which is no longer the only destination without an up button now
+                    // that Reports is a tab — and only in a debug build. In release `onTitleClick`
+                    // stays null and the title is an ordinary, non-interactive label.
+                    val onAttendance = destinationOrRoot(currentRoute) == AppNavGraph.root
                     //
                     // The countdown toast is not decoration: without it the gesture gives no sign
                     // it is working, so someone tapping deliberately pauses between taps, silently
@@ -119,7 +133,7 @@ class MainActivity : ComponentActivity() {
                             pluralStringResource(R.plurals.dev_unlock_progress, taps, taps)
                         }
                     val onTitleClick: (() -> Unit)? =
-                        if (BuildConfig.DEBUG && !showUpButton) {
+                        if (BuildConfig.DEBUG && onAttendance) {
                             {
                                 // elapsedRealtime, not wall clock: the run must not be broken (or
                                 // spuriously extended) by a clock change mid-gesture.
@@ -142,8 +156,25 @@ class MainActivity : ComponentActivity() {
 
                     // Leaving the attendance screen abandons a half-finished run, so taps from an
                     // earlier visit can't combine with later ones into an accidental unlock.
-                    LaunchedEffect(showUpButton) {
-                        if (showUpButton) devTapCounter.reset()
+                    LaunchedEffect(onAttendance) {
+                        if (!onAttendance) devTapCounter.reset()
+                    }
+
+                    // Tab switches save the tab being left and restore the one being entered, so
+                    // each tab keeps its own back stack and its ViewModels: returning to Reports
+                    // shows the report already computed rather than loading it again.
+                    val navigateToTab: (Any) -> Unit = { route ->
+                        navController.navigate(route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+
+                    LaunchedEffect(Unit) {
+                        if (openReportsOnStart) navigateToTab(Reports)
                     }
 
                     // Scoped to the Activity so the attendance and detail destinations share one
@@ -173,7 +204,21 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onTitleClick = onTitleClick,
                             )
-                        }
+                        },
+                        bottomBar = {
+                            // Tabs only: a child screen is a drill-in with an up button, and a
+                            // bottom bar there would offer a second, conflicting way out.
+                            if (!showUpButton) {
+                                MainBottomBar(
+                                    currentRoute = currentRoute,
+                                    onSelect = { destination ->
+                                        navigateToTab(
+                                            if (destination == AppNavGraph.Reports) Reports else Attendance,
+                                        )
+                                    },
+                                )
+                            }
+                        },
                     ) { padding ->
                         NavHost(
                             navController,
@@ -187,6 +232,9 @@ class MainActivity : ComponentActivity() {
                                     locationViewModel = locationViewModel,
                                     locationPermissionViewModel = locationPermissionViewModel,
                                 )
+                            }
+                            composable<Reports> {
+                                ReportsScreen()
                             }
                             composable<LocationDetail> {
                                 LocationDetailScreen(
@@ -217,5 +265,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    companion object {
+        const val EXTRA_START_TAB = "com.jaustinjr.employeeattendance.extra.START_TAB"
+        const val TAB_REPORTS = "reports"
+
+        /** Opens the app on the Reports tab, replacing any existing task. */
+        fun openReportsIntent(context: Context): Intent =
+            Intent(context, MainActivity::class.java)
+                .putExtra(EXTRA_START_TAB, TAB_REPORTS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
     }
 }

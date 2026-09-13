@@ -34,6 +34,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // java.time on minSdk 24; reporting does all of its calendar math with it.
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -78,6 +80,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.play.services.location)
+    implementation(libs.vico.compose)
+    implementation(libs.vico.compose.m3)
+    implementation(libs.androidx.work.runtime.ktx)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
 
     // Navigation
@@ -94,6 +100,7 @@ dependencies {
     androidTestImplementation(libs.androidx.test.core.ktx)
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.androidx.work.testing)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

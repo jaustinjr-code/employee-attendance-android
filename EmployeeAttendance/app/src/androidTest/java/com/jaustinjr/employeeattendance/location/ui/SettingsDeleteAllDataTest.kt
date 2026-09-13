@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.location.ui
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.jaustinjr.employeeattendance.attendance.AttendanceEvent
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
 import com.jaustinjr.employeeattendance.attendance.ClockSource
 import com.jaustinjr.employeeattendance.attendance.ClockType
@@ -12,11 +13,15 @@ import com.jaustinjr.employeeattendance.location.proximity.SharedPrefsProximityS
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
+import com.jaustinjr.employeeattendance.reporting.BiweeklyReportController
+import com.jaustinjr.employeeattendance.reporting.ReportScheduler
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
+import com.jaustinjr.employeeattendance.settings.ReportSettingsStore
 import com.jaustinjr.employeeattendance.settings.UserProfileStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.time.Clock
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -57,6 +62,8 @@ class SettingsDeleteAllDataTest {
         private val _attendance = MutableStateFlow<Map<String, LocationAttendance>>(emptyMap())
         override val attendance: StateFlow<Map<String, LocationAttendance>> =
             _attendance.asStateFlow()
+        override val eventLog: StateFlow<List<AttendanceEvent>> =
+            MutableStateFlow(emptyList<AttendanceEvent>()).asStateFlow()
 
         override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) {
             _attendance.value = mapOf(locationId to LocationAttendance(lastClockInMillis = epochMillis))
@@ -84,6 +91,7 @@ class SettingsDeleteAllDataTest {
         val proximity = ProximityRepository(store)
         val workLocations = FakeWorkLocationRepository()
         val attendance = FakeAttendanceRepository()
+        val reportSettings = ReportSettingsStore(context)
 
         val viewModel = SettingsViewModel(
             settingsStore = ClockNotificationSettingsStore(context),
@@ -92,6 +100,14 @@ class SettingsDeleteAllDataTest {
             workLocationRepository = workLocations,
             attendanceRepository = attendance,
             proximityUpdater = proximity,
+            reportSettings = reportSettings,
+            biweeklyReportController = BiweeklyReportController(
+                settings = reportSettings,
+                scheduler = object : ReportScheduler {
+                    override fun setBiweeklyCheckScheduled(scheduled: Boolean) = Unit
+                },
+                clock = Clock.systemDefaultZone(),
+            ),
         )
 
         // The user is registered at, and currently inside, a worksite.

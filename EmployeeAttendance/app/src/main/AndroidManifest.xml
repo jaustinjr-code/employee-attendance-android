@@ -71,6 +71,28 @@
         <receiver
             android:name=".attendance.ClockActionReceiver"
             android:exported="false" />
+
+        <!-- Shares the attendance report file with the app the user picks (Drive, email, ...).
+             A FileProvider subclass, so it cannot merge with the debug devlogs provider. Scoped
+             to cacheDir/reports by @xml/report_paths; its authority must match FileReportSharer. -->
+        <provider
+            android:name=".reporting.ReportFileProvider"
+            android:authorities="${applicationId}.reports"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!-- WorkManager is initialized on demand from the startup job (see
+             EmployeeAttendanceApplication), not by its content provider on the main thread. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>

@@ -36,6 +36,12 @@ interface AttendanceRepository {
     /** Derived attendance status per work-location id. */
     val attendance: StateFlow<Map<String, LocationAttendance>>
 
+    /**
+     * The full event log, oldest first. Each mutation publishes a new list instance and never
+     * mutates one already emitted, so readers may cache work keyed on the list's identity.
+     */
+    val eventLog: StateFlow<List<AttendanceEvent>>
+
     /** Records a clock-in for [locationId]. [source] defaults to automatic (geofence-driven). */
     fun recordClockIn(
         locationId: String,
@@ -153,6 +159,10 @@ class DefaultAttendanceRepository(
 
     override val attendance: StateFlow<Map<String, LocationAttendance>> = _attendance.asStateFlow()
 
+    private val _eventLog = MutableStateFlow(events)
+
+    override val eventLog: StateFlow<List<AttendanceEvent>> = _eventLog.asStateFlow()
+
     override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) =
         append(AttendanceEvent(locationId, ClockType.CLOCK_IN, epochMillis, source))
 
@@ -225,6 +235,7 @@ class DefaultAttendanceRepository(
         events = updated
         local.save(updated)
         _attendance.value = attendanceByLocation(updated)
+        _eventLog.value = updated
     }
 
     private fun attendanceByLocation(log: List<AttendanceEvent>): Map<String, LocationAttendance> =
