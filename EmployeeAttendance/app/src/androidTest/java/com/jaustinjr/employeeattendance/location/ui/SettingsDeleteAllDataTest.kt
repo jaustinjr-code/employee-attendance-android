@@ -13,7 +13,10 @@ import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
+import com.jaustinjr.employeeattendance.settings.StatusUpdateSettingsStore
 import com.jaustinjr.employeeattendance.settings.UserProfileStore
+import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateRepository
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,6 +65,7 @@ class SettingsDeleteAllDataTest {
             _attendance.value = mapOf(locationId to LocationAttendance(lastClockInMillis = epochMillis))
         }
         override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) = Unit
+        override fun hasClockOutEvent(locationId: String, epochMillis: Long) = false
         override fun undoEvent(locationId: String, type: ClockType, epochMillis: Long) = false
         override fun clearAll() {
             _attendance.value = emptyMap()
@@ -84,6 +88,7 @@ class SettingsDeleteAllDataTest {
         val proximity = ProximityRepository(store)
         val workLocations = FakeWorkLocationRepository()
         val attendance = FakeAttendanceRepository()
+        val statusUpdates = DefaultStatusUpdateRepository()
 
         val viewModel = SettingsViewModel(
             settingsStore = ClockNotificationSettingsStore(context),
@@ -92,6 +97,8 @@ class SettingsDeleteAllDataTest {
             workLocationRepository = workLocations,
             attendanceRepository = attendance,
             proximityUpdater = proximity,
+            statusUpdateSettingsStore = StatusUpdateSettingsStore(context),
+            statusUpdateRepository = statusUpdates,
         )
 
         // The user is registered at, and currently inside, a worksite.
@@ -107,6 +114,15 @@ class SettingsDeleteAllDataTest {
         proximity.onGeofenceTransition("site-to-delete", ProximityState.INSIDE)
         attendance.recordClockIn("site-to-delete", epochMillis = 1_000L)
         assertEquals("site-to-delete", store.loadTargetId())
+        statusUpdates.save(
+            StatusUpdate(
+                clockOutId = "site-to-delete@2000",
+                didToday = "did today",
+                plannedTomorrow = "planned tomorrow",
+                couldNotDo = "could not do",
+                completedAtMillis = 2_000L,
+            ),
+        )
 
         viewModel.onDeleteAllData()
 
@@ -120,5 +136,6 @@ class SettingsDeleteAllDataTest {
         assertEquals(ProximityState.UNKNOWN, reread.load())
         assertEquals(emptyList<WorkLocation>(), workLocations.workLocations.value)
         assertEquals(emptyMap<String, LocationAttendance>(), attendance.attendance.value)
+        assertEquals(emptyList<StatusUpdate>(), statusUpdates.statusUpdates.value)
     }
 }

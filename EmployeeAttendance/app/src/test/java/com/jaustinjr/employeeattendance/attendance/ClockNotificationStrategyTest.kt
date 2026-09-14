@@ -179,4 +179,51 @@ class ClockNotificationStrategyTest {
             notifier.recorded,
         )
     }
+
+    @Test
+    fun `a recorded clock-out notifies the clockOutListener with AUTO`() {
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val clockOutListener = RecordingClockOutListener()
+        val strategy = ClockNotificationStrategy.forPreference(
+            ClockNotificationPreference.SILENT, attendance, notifier, clockOutListener,
+        )
+
+        strategy.onArrived(worksite)
+        strategy.onDeparted(worksite)
+
+        assertEquals(1, clockOutListener.calls.size)
+        val call = clockOutListener.calls.single()
+        assertEquals("site-a", call.locationId)
+        assertEquals(ClockOutSource.AUTO, call.source)
+    }
+
+    @Test
+    fun `a skipped crossing does not notify the clockOutListener`() {
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val clockOutListener = RecordingClockOutListener()
+        val strategy = ClockNotificationStrategy.forPreference(
+            ClockNotificationPreference.SILENT, attendance, notifier, clockOutListener,
+        )
+
+        // Not clocked in, so this departure is a no-op.
+        strategy.onDeparted(worksite)
+
+        assertTrue(clockOutListener.calls.isEmpty())
+    }
+
+    @Test
+    fun `a recorded clock-in does not notify the clockOutListener`() {
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val clockOutListener = RecordingClockOutListener()
+        val strategy = ClockNotificationStrategy.forPreference(
+            ClockNotificationPreference.SILENT, attendance, notifier, clockOutListener,
+        )
+
+        strategy.onArrived(worksite)
+
+        assertTrue(clockOutListener.calls.isEmpty())
+    }
 }

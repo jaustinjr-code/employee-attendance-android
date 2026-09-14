@@ -18,12 +18,14 @@ class ClockActionHandlerTest {
         locationId: String,
         type: ClockType,
         epochMillis: Long,
+        clockOutListener: ClockOutListener? = null,
     ) = ClockActionHandler.handle(
         repository = repository,
         action = ClockActionReceiver.ACTION_UNDO,
         locationId = locationId,
         clockType = type,
         epochMillis = epochMillis,
+        clockOutListener = clockOutListener,
     )
 
     private fun confirm(
@@ -185,5 +187,102 @@ class ClockActionHandlerTest {
 
         assertEquals(before, attendance.events)
         assertFalse(attendance.isClockedIn("site-a"))
+    }
+
+    @Test
+    fun `confirming a clock-out notifies the clockOutListener with NOTIFICATION_CONFIRMED`() {
+        val attendance = RecordingAttendanceRepository()
+        attendance.recordClockIn("site-a", 1_000L)
+        val clockOutListener = RecordingClockOutListener()
+
+        val handled = ClockActionHandler.handle(
+            repository = attendance,
+            action = ClockActionReceiver.ACTION_CONFIRM,
+            locationId = "site-a",
+            clockType = ClockType.CLOCK_OUT,
+            epochMillis = ClockActionHandler.NO_EVENT,
+            clockOutListener = clockOutListener,
+        )
+
+        assertTrue(handled)
+        val call = clockOutListener.calls.single()
+        assertEquals("site-a", call.locationId)
+        assertEquals(ClockOutSource.NOTIFICATION_CONFIRMED, call.source)
+    }
+
+    @Test
+    fun `confirming a clock-in does not notify the clockOutListener`() {
+        val attendance = RecordingAttendanceRepository()
+        val clockOutListener = RecordingClockOutListener()
+
+        confirm(attendance, "site-a", ClockType.CLOCK_IN)
+        ClockActionHandler.handle(
+            repository = attendance,
+            action = ClockActionReceiver.ACTION_CONFIRM,
+            locationId = "site-a",
+            clockType = ClockType.CLOCK_IN,
+            epochMillis = ClockActionHandler.NO_EVENT,
+            clockOutListener = clockOutListener,
+        )
+
+        assertTrue(clockOutListener.calls.isEmpty())
+    }
+
+    @Test
+    fun `a stale clock-out confirm does not notify the clockOutListener`() {
+        val attendance = RecordingAttendanceRepository()
+        val clockOutListener = RecordingClockOutListener()
+
+        val handled = ClockActionHandler.handle(
+            repository = attendance,
+            action = ClockActionReceiver.ACTION_CONFIRM,
+            locationId = "site-a",
+            clockType = ClockType.CLOCK_OUT,
+            epochMillis = ClockActionHandler.NO_EVENT,
+            clockOutListener = clockOutListener,
+        )
+
+        assertFalse(handled)
+        assertTrue(clockOutListener.calls.isEmpty())
+    }
+
+    @Test
+    fun `undoing a clock-out notifies the clockOutListener`() {
+        val attendance = RecordingAttendanceRepository()
+        attendance.recordClockIn("site-a", 1_000L)
+        attendance.recordClockOut("site-a", 2_000L)
+        val clockOutListener = RecordingClockOutListener()
+
+        val handled = undo(attendance, "site-a", ClockType.CLOCK_OUT, 2_000L, clockOutListener)
+
+        assertTrue(handled)
+        val undone = clockOutListener.undone.single()
+        assertEquals("site-a", undone.locationId)
+        assertEquals(2_000L, undone.clockOutAtMillis)
+    }
+
+    @Test
+    fun `undoing a clock-in does not notify the clockOutListener`() {
+        val attendance = RecordingAttendanceRepository()
+        attendance.recordClockIn("site-a", 1_000L)
+        val clockOutListener = RecordingClockOutListener()
+
+        undo(attendance, "site-a", ClockType.CLOCK_IN, 1_000L, clockOutListener)
+
+        assertTrue(clockOutListener.undone.isEmpty())
+    }
+
+    @Test
+    fun `a no-op undo does not notify the clockOutListener`() {
+        val attendance = RecordingAttendanceRepository()
+        attendance.recordClockIn("site-a", 1_000L)
+        attendance.recordClockOut("site-a", 2_000L)
+        val clockOutListener = RecordingClockOutListener()
+
+        // Names an already-superseded clock-out; the earlier "undo from a stale card" case.
+        val handled = undo(attendance, "site-a", ClockType.CLOCK_OUT, 999L, clockOutListener)
+
+        assertFalse(handled)
+        assertTrue(clockOutListener.undone.isEmpty())
     }
 }

@@ -88,6 +88,17 @@ interface AttendanceRepository {
         attendance.value[locationId]?.isClockedIn == true
 
     /**
+     * Whether the log holds a `CLOCK_OUT` event for [locationId] at exactly [epochMillis].
+     *
+     * Read-only query used to validate untrusted input against the actual log — concretely, the
+     * extras on a "status update waiting" notification's launch `Intent`, since `MainActivity` is
+     * exported and its extras cannot be trusted just because they round-trip parse. No default body:
+     * every implementation (including test doubles) must say explicitly whether it can answer this,
+     * rather than silently inheriting "no" from a base the reviewer would have to know to check.
+     */
+    fun hasClockOutEvent(locationId: String, epochMillis: Long): Boolean
+
+    /**
      * Reverses one *specific* event: the latest event for [locationId], and only if it is the one
      * named by [type] and [epochMillis]. Backs the "Undo" action on a clock-in/out notification.
      *
@@ -181,6 +192,12 @@ class DefaultAttendanceRepository(
                 .onFailure { Log.w(TAG, "remote push failed", it) }
         }
     }
+
+    @Synchronized
+    override fun hasClockOutEvent(locationId: String, epochMillis: Long): Boolean =
+        events.any {
+            it.locationId == locationId && it.type == ClockType.CLOCK_OUT && it.epochMillis == epochMillis
+        }
 
     @Synchronized
     override fun undoEvent(locationId: String, type: ClockType, epochMillis: Long): Boolean {

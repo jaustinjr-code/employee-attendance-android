@@ -36,4 +36,7 @@
     <!-- developer_settings: debug-only developer overrides -->
     <exclude domain="sharedpref" path="developer_settings.xml"/>
     <exclude domain="sharedpref" path="developer_settings_secure.xml"/>
+    <!-- status_update_settings: whether Status Update is enabled -->
+    <exclude domain="sharedpref" path="status_update_settings.xml"/>
+    <exclude domain="sharedpref" path="status_update_settings_secure.xml"/>
 </full-backup-content>

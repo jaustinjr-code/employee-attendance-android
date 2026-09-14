@@ -122,3 +122,61 @@ $ANDROID_HOME/emulator/emulator -avd <your-avd> -no-window -no-audio -no-boot-an
 
 `swiftshader_indirect` matches what CI uses, which keeps local renders closer to the CI goldens.
 Confirm the device is up with `adb devices` before running `connectedDebugAndroidTest`.
+
+## 6. Patterns for overlay and launch-intent tests
+
+The Status Update tests use three patterns. Reuse them for any UI that swipes, opens from a launch
+intent, or renders in its own window.
+
+### Drive gestures with real swipes, then wait for idle
+
+`StatusUpdateCardStackTest` advances and retreats with
+`onNodeWithTag(StatusUpdateTestTags.CARD).performTouchInput { swipeLeft() }` (or `swipeRight()`)
+instead of calling `onForward`/`onBack`. That exercises the `detectHorizontalDragGestures` handler
+and its 96 dp threshold. The deck is hosted in a small stateful harness inside `setContent` that
+holds drafts and the index in `remember`, so recomposition is real.
+
+When a test swipes more than once, call `composeRule.waitForIdle()` after each swipe, as
+`typedText_survivesSwipingAwayAndBack` does. The card flip runs in a `LaunchedEffect` keyed on the
+index, and the next gesture must land on the settled card.
+
+The question heading uses `clearAndSetSemantics` and exposes the question only as a
+`contentDescription`, so `onAllNodesWithText(question)` matches the answer field's label alone.
+Match the heading itself with `hasContentDescriptionExactly(question)`. The tests still select the
+question with `onAllNodesWithText(text).onFirst()` so the helper keeps working if a second text node
+appears.
+
+### Launch a real Activity with an intent
+
+`StatusUpdateNotificationLaunchTest` uses `createEmptyComposeRule()` with
+`ActivityScenario.launch<MainActivity>(intent)`, because the notification extras must be on the
+launch `Intent` and `createAndroidComposeRule<MainActivity>()` cannot supply one.
+
+`MainActivity` shows `StartupScreen` until `EmployeeAttendanceApplication.startupComplete` is `true`,
+so every test first calls `waitForStartupGateToOpen()`, which waits in two steps:
+
+1. `composeRule.waitUntil(timeoutMillis = 10_000) { context.startupComplete.value }`
+2. `waitUntil` again until a node that exists only inside the gated content (the "Attendance" app
+   bar title) is present, because the `StateFlow` can flip before composition catches up.
+
+Only then does the test wait for or assert on the deck. Skip the gate wait and a negative assertion
+such as `forgedExtras_showNoDeck` passes because nothing has composed yet, not because
+`claimNotificationRequest` rejected the extras.
+
+The container is the real app-scoped one and outlives each scenario, so reset shared state in a
+method annotated both `@Before` and `@After` (`attendanceRepository.clearAll()`,
+`statusUpdateRepository.clearAll()`, re-enable the setting). Check configuration changes with
+`scenario.recreate()`.
+
+### Cross-window touch blocking cannot be proven in compose-ui-test
+
+`performClick()` and `performTouchInput` dispatch directly to the target node's own root, not
+through the OS input pipeline. A click on content underneath a `Dialog` therefore succeeds in a test
+whether or not the dialog covers it on a device. `StatusUpdateOverlayContentTest` asserts the
+structural fact instead: the deck's text has an `isDialog()` ancestor and the underlying content does
+not (`hasAnyAncestor(isDialog())`). Do not write a "click underneath is blocked" test, because it
+passes without proving anything.
+
+System back into a second window is also unreliable in this harness (`Espresso.pressBack()` and an
+injected `KEYCODE_BACK` both fail to reach it). Back handling is tested on the composable directly in
+`StatusUpdateCardStackTest.systemBack_dismissesTheDeck`.
