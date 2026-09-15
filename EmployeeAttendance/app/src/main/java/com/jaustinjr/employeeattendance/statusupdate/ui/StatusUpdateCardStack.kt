@@ -3,7 +3,9 @@ package com.jaustinjr.employeeattendance.statusupdate.ui
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,41 +15,49 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.sign
+import kotlinx.coroutines.launch
 
 /**
  * UI state for the Status Update card stack: the three drafts (indexed to [StatusUpdateQuestion])
@@ -97,13 +107,30 @@ private val SwipeThreshold = 96.dp
 /** Card width / height when there is room for it; the card shrinks below this when there is not. */
 private const val CardAspectRatio = 0.8f
 
-/** Vertical room reserved above the front card so the peeking cards stay inside the deck bounds. */
-private val PeekSpace = 24.dp
+/** How much of the previous and next cards shows at the screen edges. */
+private val PeekWidth = 28.dp
+
+/** Space between the front card and a neighbour's peeking edge. */
+private val CardGap = 16.dp
 
 /**
- * Stateless three-card deck for the Status Update feature. Swipe left / "Next" advances (submitting
- * on the last card); swipe right / "Back" retreats, stopping at the first card. Knows nothing about
- * where it's mounted, permissions, or persistence — see [StatusUpdateOverlayHost].
+ * How far a card two positions away shows from behind its neighbour, inside [CardGap], so a deck
+ * of more than one remaining card reads as a stack.
+ */
+private val StackInset = 10.dp
+
+/** Height fraction a card two positions away loses, so its edge sits visibly behind the neighbour. */
+private const val StackScaleStep = 0.12f
+
+private const val SlideDurationMillis = 300
+
+/**
+ * Stateless three-card deck for the Status Update feature. Swipe left / "Next" slides the card off
+ * to the left and the next one in (submitting on the last card); swipe right / "Back" slides back,
+ * stopping at the first card. The previous and next cards peek from the screen edges. Knows nothing
+ * about where it's mounted, permissions, or persistence — see [StatusUpdateOverlayHost].
+ *
+ * [onBack] on the first card is expected to leave the index unchanged.
  */
 @Composable
 fun StatusUpdateCardStack(
@@ -119,63 +146,138 @@ fun StatusUpdateCardStack(
 
     val density = LocalDensity.current
     val swipeThresholdPx = with(density) { SwipeThreshold.toPx() }
+    val stackInsetPx = with(density) { StackInset.toPx() }
+    val lastIndex = state.drafts.lastIndex
+
+    // Continuous deck position: equal to currentIndex at rest, fractional while sliding or dragging.
+    val position = remember { Animatable(state.currentIndex.toFloat()) }
+    val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val slideSpec = tween<Float>(SlideDurationMillis, easing = FastOutSlowInEasing)
+
+    LaunchedEffect(state.currentIndex) {
+        // Typing must not keep going into the card that is sliding away.
+        focusManager.clearFocus()
+        position.animateTo(state.currentIndex.toFloat(), slideSpec)
+    }
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(vertical = 24.dp),
         contentAlignment = Alignment.Center,
     ) {
-        // Size the card from the space actually available (which shrinks when the keyboard opens)
-        // instead of from its width alone, so it can never overflow the deck.
-        val cardHeight = minOf(maxHeight - PeekSpace, maxWidth / CardAspectRatio).coerceAtLeast(0.dp)
+        // Cards stop short of the screen edges by the peek width plus the gap, so the neighbours'
+        // edges show there. Height follows the space actually available (it shrinks when the
+        // keyboard opens), so the card can never overflow the deck.
+        val cardWidth = (maxWidth - (PeekWidth + CardGap) * 2).coerceAtLeast(0.dp)
+        val cardHeight = minOf(maxHeight, cardWidth / CardAspectRatio).coerceAtLeast(0.dp)
+        val slidePx = with(density) { (cardWidth + CardGap).toPx() }
+
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(cardHeight + PeekSpace),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            // Peeking cards behind the front one, so the stack visibly has more than one card.
-            val remaining = state.drafts.size - 1 - state.currentIndex
-            repeat(minOf(remaining, 2)) { depthFromTop ->
-                val depth = remaining - depthFromTop
-                PeekingCard(depth = depth, height = cardHeight)
-            }
-
-            FlippingCard(
-                targetIndex = state.currentIndex,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(cardHeight)
-                    .pointerInput(state.currentIndex) {
-                        var dragTotal = 0f
-                        detectHorizontalDragGestures(
-                            onDragStart = { dragTotal = 0f },
-                            onHorizontalDrag = { change, dragAmount ->
-                                change.consume()
-                                dragTotal += dragAmount
-                            },
-                            onDragEnd = {
-                                when {
-                                    dragTotal <= -swipeThresholdPx -> onForward()
-                                    dragTotal >= swipeThresholdPx -> onBack()
+                .fillMaxSize()
+                .pointerInput(state.currentIndex, slidePx) {
+                    var dragTotal = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { dragTotal = 0f },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            dragTotal += dragAmount
+                            val dragged = (state.currentIndex - dragTotal / slidePx)
+                                .coerceIn(0f, lastIndex.toFloat())
+                            scope.launch { position.snapTo(dragged) }
+                        },
+                        onDragEnd = {
+                            val forward = dragTotal <= -swipeThresholdPx
+                            val back = dragTotal >= swipeThresholdPx
+                            when {
+                                forward -> onForward()
+                                back -> onBack()
+                            }
+                            val indexChanges = (forward && state.currentIndex < lastIndex) ||
+                                (back && state.currentIndex > 0)
+                            // When the index changes, the LaunchedEffect above slides to the new card.
+                            if (!indexChanges) {
+                                scope.launch {
+                                    position.animateTo(state.currentIndex.toFloat(), slideSpec)
                                 }
-                            },
+                            }
+                        },
+                        onDragCancel = {
+                            scope.launch {
+                                position.animateTo(state.currentIndex.toFloat(), slideSpec)
+                            }
+                        },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            state.drafts.indices.forEach { index ->
+                key(index) {
+                    val isCurrent = index == state.currentIndex
+                    Box(
+                        modifier = Modifier
+                            .zIndex(-abs(index - state.currentIndex).toFloat())
+                            .size(cardWidth, cardHeight)
+                            .offset {
+                                val x = cardOffsetX(index - position.value, slidePx, stackInsetPx)
+                                IntOffset(x.roundToInt(), 0)
+                            }
+                            .graphicsLayer {
+                                val distance = abs(index - position.value)
+                                scaleY = 1f - (distance - 1f).coerceIn(0f, 1f) * StackScaleStep
+                                alpha = (3f - distance).coerceIn(0f, 1f)
+                            }
+                            .then(
+                                if (isCurrent) {
+                                    Modifier
+                                } else {
+                                    // A peeking card is a visual cue only: hidden from
+                                    // accessibility and not a place to type or tap.
+                                    Modifier.clearAndSetSemantics {
+                                        testTag = StatusUpdateTestTags.peek(index)
+                                    }
+                                }
+                            ),
+                    ) {
+                        QuestionCard(
+                            question = StatusUpdateQuestion.entries[index],
+                            draft = state.drafts[index],
+                            isFirstCard = index == 0,
+                            isLastCard = index == lastIndex,
+                            interactive = isCurrent,
+                            onDraftChanged = { onDraftChanged(index, it) },
+                            onForward = onForward,
+                            onBack = onBack,
+                            modifier = Modifier.fillMaxSize(),
                         )
-                    },
-            ) { displayedIndex ->
-                QuestionCard(
-                    question = StatusUpdateQuestion.entries[displayedIndex],
-                    draft = state.drafts[displayedIndex],
-                    isFirstCard = displayedIndex == 0,
-                    isLastCard = displayedIndex == state.drafts.lastIndex,
-                    onDraftChanged = { onDraftChanged(displayedIndex, it) },
-                    onForward = onForward,
-                    onBack = onBack,
-                )
+                        if (!isCurrent) {
+                            // Being hit-tested on top of the card keeps taps from reaching its
+                            // field and buttons; drags still reach the deck's gesture handler.
+                            Box(Modifier.matchParentSize().pointerInput(Unit) {})
+                        }
+                    }
+                }
             }
         }
     }
+}
+
+/**
+ * Horizontal offset, from the deck centre, of a card [distance] positions from the deck position.
+ * Up to one position away the card slides a full card width plus gap, which leaves its edge peeking
+ * from the screen edge. Between one and two positions it tucks back by [stackInsetPx], so it shows
+ * as a thinner edge behind its neighbour.
+ */
+private fun cardOffsetX(distance: Float, slidePx: Float, stackInsetPx: Float): Float {
+    val magnitude = abs(distance)
+    val x = if (magnitude <= 1f) {
+        magnitude * slidePx
+    } else {
+        slidePx - (minOf(magnitude, 2f) - 1f) * stackInsetPx
+    }
+    return x * sign(distance)
 }
 
 /**
@@ -188,13 +290,25 @@ private fun QuestionCard(
     draft: String,
     isFirstCard: Boolean,
     isLastCard: Boolean,
+    interactive: Boolean,
     onDraftChanged: (String) -> Unit,
     onForward: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val questionText = stringResource(question.questionRes)
-    ElevatedCard(modifier = modifier.testTag(StatusUpdateTestTags.CARD)) {
+    val focusable = Modifier.focusProperties { canFocus = interactive }
+    Card(
+        modifier = modifier.testTag(StatusUpdateTestTags.CARD),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
+        // A bold outline in the theme's outline colour keeps every card's edge visible in both
+        // light and dark themes, including the slivers peeking from the screen edges.
+        border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -204,7 +318,7 @@ private fun QuestionCard(
             Text(
                 text = questionText,
                 style = MaterialTheme.typography.titleMedium,
-                // The live region is scoped to this text, not the card, so a flip announces the new
+                // The live region is scoped to this text, not the card, so a new card announces its
                 // question once without re-announcing on every keystroke in the field below.
                 modifier = Modifier.semantics {
                     heading()
@@ -217,7 +331,7 @@ private fun QuestionCard(
                 placeholder = { Text(stringResource(question.hintRes)) },
                 // No visible label (the heading above says the same thing), so the question is
                 // given to accessibility services as the field's name instead.
-                modifier = Modifier
+                modifier = focusable
                     .fillMaxWidth()
                     .weight(1f)
                     .semantics { contentDescription = questionText },
@@ -231,11 +345,11 @@ private fun QuestionCard(
                 if (isFirstCard) {
                     Spacer(Modifier)
                 } else {
-                    TextButton(onClick = onBack) {
+                    TextButton(onClick = onBack, modifier = focusable) {
                         Text(stringResource(R.string.status_update_back))
                     }
                 }
-                Button(onClick = onForward) {
+                Button(onClick = onForward, modifier = focusable) {
                     Text(
                         stringResource(
                             if (isLastCard) R.string.status_update_done
@@ -248,74 +362,17 @@ private fun QuestionCard(
     }
 }
 
-/** A faded, inset card peeking out above the front one, purely decorative — it conveys "more cards follow". */
-@Composable
-private fun PeekingCard(depth: Int, height: Dp, modifier: Modifier = Modifier) {
-    val insetFraction = 0.05f * depth
-    val alpha = 1f - 0.3f * depth
-    ElevatedCard(
-        modifier = modifier
-            .fillMaxWidth(1f - insetFraction)
-            .height(height)
-            .offset(y = -(depth * 12).dp)
-            .graphicsLayer { this.alpha = alpha },
-        content = {},
-    )
-}
-
-/**
- * Renders [content] for [targetIndex] with a card-flip transition: the visible card rotates to its
- * edge, swaps to the new content, then rotates back into view. `cameraDistance` keeps the
- * perspective from looking flattened at the 90° edge-on point.
- */
-@Composable
-private fun FlippingCard(
-    targetIndex: Int,
-    modifier: Modifier = Modifier,
-    content: @Composable (index: Int) -> Unit,
-) {
-    var displayedIndex by remember { mutableIntStateOf(targetIndex) }
-    val rotationY = remember { Animatable(0f) }
-    val density = LocalDensity.current
-
-    LaunchedEffect(targetIndex) {
-        if (targetIndex != displayedIndex) {
-            // Respect "remove animations" (developer option or the test harness's
-            // animationsDisabled): a scale of 0 means every animateTo below would already resolve
-            // instantly, but snapping directly avoids animating through the two-step
-            // rotate-out/rotate-in sequence at all and keeps a11y announcements from lagging behind
-            // the (invisible) transition.
-            val durationScale = coroutineContext[MotionDurationScale]?.scaleFactor ?: 1f
-            if (durationScale == 0f) {
-                displayedIndex = targetIndex
-                rotationY.snapTo(0f)
-            } else {
-                rotationY.animateTo(90f, animationSpec = tween(150))
-                displayedIndex = targetIndex
-                rotationY.snapTo(-90f)
-                rotationY.animateTo(0f, animationSpec = tween(150))
-            }
-        }
-    }
-
-    Box(
-        modifier = modifier.graphicsLayer {
-            this.rotationY = rotationY.value
-            cameraDistance = 12f * density.density
-        },
-    ) {
-        content(displayedIndex)
-    }
-}
-
 /** Test tags for the androidTest layer; not user-visible. */
 object StatusUpdateTestTags {
     const val CARD = "status_update_card"
+
+    /** The card at [index] while it is not the front card, peeking from a screen edge. */
+    fun peek(index: Int) = "status_update_peek_$index"
 }
 
 private fun previewState() = StatusUpdateCardStackUiState(
     drafts = listOf("Finished the quarterly report", "", ""),
-    currentIndex = 0,
+    currentIndex = 1,
 )
 
 @Preview(showBackground = true, heightDp = 700)

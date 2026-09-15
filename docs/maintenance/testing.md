@@ -137,8 +137,14 @@ and its 96 dp threshold. The deck is hosted in a small stateful harness inside `
 holds drafts and the index in `remember`, so recomposition is real.
 
 When a test swipes more than once, call `composeRule.waitForIdle()` after each swipe, as
-`typedText_survivesSwipingAwayAndBack` does. The card flip runs in a `LaunchedEffect` keyed on the
+`typedText_survivesSwipingAwayAndBack` does. The slide runs in a `LaunchedEffect` keyed on the
 index, and the next gesture must land on the settled card.
+
+Every card is composed at once; only the front card carries `StatusUpdateTestTags.CARD` and
+semantics. The others are cleared and tagged `StatusUpdateTestTags.peek(index)`, so text and
+`hasSetTextAction()` matchers only ever find the front card. Assert where peeking cards sit by
+comparing their `getUnclippedBoundsInRoot()` with the front card and `onRoot()`, as
+`afterNext_previousCardSlidesOutAndPeeksFromTheLeftEdge` does.
 
 The answer field has no visible label, so `onAllNodesWithText(question)` matches the question
 heading alone. The field carries the question as its `contentDescription`: find it with

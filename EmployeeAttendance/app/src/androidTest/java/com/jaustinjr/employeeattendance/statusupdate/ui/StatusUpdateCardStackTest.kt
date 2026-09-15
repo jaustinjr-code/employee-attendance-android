@@ -17,9 +17,12 @@ import androidx.compose.ui.test.hasContentDescriptionExactly
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isNotFocused
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -228,6 +231,77 @@ class StatusUpdateCardStackTest {
         composeRule.onNode(hasText("Next") and inCard()).assertIsDisplayed()
         composeRule.onNodeWithText("Next").performClick()
         composeRule.onNode(hasText("Done") and inCard()).assertIsDisplayed()
+    }
+
+    @Test
+    fun firstCard_nextCardsPeekFromTheRightEdge_asAStack() {
+        setContent()
+
+        val root = composeRule.onRoot().getUnclippedBoundsInRoot()
+        val card = composeRule.onNodeWithTag(StatusUpdateTestTags.CARD).getUnclippedBoundsInRoot()
+        val next = composeRule.onNodeWithTag(StatusUpdateTestTags.peek(1)).getUnclippedBoundsInRoot()
+        val afterNext = composeRule.onNodeWithTag(StatusUpdateTestTags.peek(2))
+            .getUnclippedBoundsInRoot()
+
+        assertTrue("next $next should start right of card $card", next.left >= card.right)
+        assertTrue("next $next should peek inside root $root", next.left < root.right)
+        assertTrue("next $next should run off the screen edge", next.right > root.right)
+        assertTrue(
+            "card two away $afterNext should show between card $card and next $next",
+            afterNext.left >= card.right && afterNext.left < next.left,
+        )
+        assertEquals(0, composeRule.onAllNodesWithTag(StatusUpdateTestTags.peek(0)).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun afterNext_previousCardSlidesOutAndPeeksFromTheLeftEdge() {
+        setContent()
+
+        composeRule.onNodeWithText("Next").performClick()
+        composeRule.waitForIdle()
+
+        val root = composeRule.onRoot().getUnclippedBoundsInRoot()
+        val card = composeRule.onNodeWithTag(StatusUpdateTestTags.CARD).getUnclippedBoundsInRoot()
+        val previous = composeRule.onNodeWithTag(StatusUpdateTestTags.peek(0))
+            .getUnclippedBoundsInRoot()
+        val next = composeRule.onNodeWithTag(StatusUpdateTestTags.peek(2)).getUnclippedBoundsInRoot()
+
+        assertTrue("previous $previous should end left of card $card", previous.right <= card.left)
+        assertTrue("previous $previous should peek inside root $root", previous.right > root.left)
+        assertTrue("previous $previous should run off the screen edge", previous.left < root.left)
+        assertTrue("next $next should peek from the right edge", next.left in card.right..root.right)
+        assertEquals(
+            "front card should be centred",
+            (card.left - root.left).value,
+            (root.right - card.right).value,
+            1f,
+        )
+    }
+
+    @Test
+    fun tappingAPeekingCard_changesNothing() {
+        setContent()
+
+        composeRule.onNodeWithTag(StatusUpdateTestTags.peek(1)).performClick()
+        composeRule.waitForIdle()
+
+        questionNode("What did you do today?").assertIsDisplayed()
+        composeRule.onNode(hasSetTextAction()).assert(isNotFocused())
+    }
+
+    @Test
+    fun shortDrag_slidesBackToTheSameCard() {
+        setContent()
+        val before = composeRule.onNodeWithTag(StatusUpdateTestTags.CARD).getUnclippedBoundsInRoot()
+
+        composeRule.onNodeWithTag(StatusUpdateTestTags.CARD).performTouchInput {
+            swipeLeft(startX = centerX, endX = centerX - 20f)
+        }
+        composeRule.waitForIdle()
+
+        questionNode("What did you do today?").assertIsDisplayed()
+        val after = composeRule.onNodeWithTag(StatusUpdateTestTags.CARD).getUnclippedBoundsInRoot()
+        assertEquals(before.left.value, after.left.value, 1f)
     }
 
     @Test

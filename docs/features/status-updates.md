@@ -149,8 +149,17 @@ handling. Replacing it with an in-window overlay reintroduces those leaks.
 Deck behavior:
 
 - Each card holds the question as a heading, an unlabeled answer field showing an example answer as
-  its placeholder hint, and the Back and Next/Done buttons. The buttons are inside the card and flip
+  its placeholder hint, and the Back and Next/Done buttons. The buttons are inside the card and move
   with it. The field's accessible name is the question (`contentDescription`).
+- Cards have a 2 dp border in the theme's `outline` colour on `surfaceContainerHigh`, so their edges
+  stay visible in light and dark themes.
+- The cards sit side by side. Moving to another card slides the front card off the screen edge and
+  the next one in (300 ms); nothing rotates. The previous and next cards peek 28 dp (`PeekWidth`)
+  from the left and right screen edges, and a card two positions away shows as a shorter edge
+  tucked behind its neighbour, so the remaining cards read as a stack.
+- While dragging, the cards follow the finger. Releasing short of the threshold slides back.
+- Peeking cards are hidden from accessibility, can't take focus, and ignore taps; only the front
+  card is interactive. Changing cards clears focus so typing never lands in a card that is leaving.
 - The card is 0.8 width-to-height when there is room, and shrinks to the height available otherwise
   (for example with the keyboard open), so the field and buttons never overflow it.
 - Swipe left or "Next" advances. On the last card the button reads "Done", and advancing calls
@@ -161,7 +170,7 @@ Deck behavior:
 - System back calls `onDismissDeck` and discards the drafts.
 - Drafts and the card index live in the ViewModel, so typed text survives swiping away and back and
   a configuration change.
-- The card flip snaps instead of animating when `MotionDurationScale` is 0.
+- The slide finishes immediately when the system animation scale is 0.
 
 ---
 
