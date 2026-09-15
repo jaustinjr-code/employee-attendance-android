@@ -78,7 +78,13 @@ active locations require a `ProximityRepository` change in the same PR.
 | `EmployeeAttendanceApplication.kt` | coordinator start; anything relying on app-scoped collection | `LocationFeatureCoordinatorTest`, `AppStartupTest` |
 | `startup/AppStartup.kt` | *when* every app-lifetime pipeline starts; the app-scoped `CoroutineExceptionHandler` | `AppStartupTest` |
 | `startup/ForegroundGate.kt` | whether foreground-service starts are legal at all — see overview §8 | `ProcessLifecycleForegroundGateTest` (androidTest) |
-| `MainActivity.kt` | app bar title `LaunchedEffect` per destination; ViewModel sharing (Activity-scoped on purpose) | `LocationNavigationTest`, `AttendanceScreenTest` |
+| `MainActivity.kt` | app bar title `LaunchedEffect` per destination; ViewModel sharing (Activity-scoped on purpose); the bottom bar shows only on tabs; the dev title-tap is gated on `AppNavGraph.root`, not on "no up button" (Reports has none either); the Reports deep link navigates from inside `composable<Attendance>` because the graph is not set before then | `LocationNavigationTest`, `AttendanceScreenTest`, `BottomBarNavigationTest`, `ReportsDeepLinkTest` |
+| `attendance/AttendanceRepository.kt` `eventLog` | every mutation must publish a **new** list through `publish()` and never mutate an emitted one — `ReportGenerator`'s cache is keyed on list identity and would serve stale reports otherwise | `DefaultAttendanceRepositoryTest`, `ReportGeneratorTest` |
+| `reporting/ReportPeriod.kt` | `BIWEEKLY_ANCHOR` must stay a Sunday and must never move: moving it re-pairs every fortnight and `lastNotifiedPeriodStart` stops matching, so a period can be notified twice or skipped | `ReportPeriodTest`, `BiweeklyReportTest` |
+| `reporting/AttendanceReport.kt` `ReportCalculator` | the clipping and midnight-split rules; open shifts are never counted | `ReportCalculatorTest`, `SessionLogTest` |
+| `reporting/ReportSharer.kt` | `PROVIDER_SUFFIX` must match `android:authorities` of `ReportFileProvider` in the main manifest, whose `FILE_PROVIDER_PATHS` meta-data must stay (the static `getUriForFile` reads it); `ClipData` carries the read grant | `FileReportSharerTest` |
+| `reporting/BiweeklyReport*.kt` | the daily check with `KEEP`; WorkManager's startup initializer stays removed and its first call stays in the startup job, off the main thread | `BiweeklyReportTest`, `BiweeklyReportPlatformTest`, `StartupThreadPolicyTest` |
+| `ui/reports/ReportsViewModel.kt` | per-section flows, `mapLatest` on `Dispatchers.Default`, no work before the first subscriber | `ReportsViewModelTest` |
 | `location/LocationFeatureCoordinator.kt` | both pipelines' invariants: `collectLatest`, `CancellationException` rethrow, geofence gating | `LocationFeatureCoordinatorTest` |
 | `location/permission/LocationPermissionRepository.kt` | the three `refresh()` call sites (host `ON_RESUME`, launchers, service) | `SystemLocationPermissionRepositoryTest` |
 | `location/tracking/LocationTracker.kt` | `.conflate()`, `awaitClose` removal, `toSample()` accuracy fallback | `LocationTrackingServiceTest` |
@@ -106,7 +112,7 @@ active locations require a `ProximityRepository` change in the same PR.
 | `devtools/DeveloperLogExporter.kt` | `PROVIDER_SUFFIX` must match `android:authorities` in `src/debug/AndroidManifest.xml`; the chooser needs the read grant repeated on it | `EmailDeveloperLogExporterTest` |
 | `attendance/AttendanceEvent.kt` `ClockSource` | adding a value means auditing every branch on the enum. Only one exists in production — `lastClockOutManual` — so a new value silently joins the 'not manual' bucket with `AUTO`. Decide whether that is right, and assert it. Values persist by name: never rename or reorder | `DefaultAttendanceRepositoryTest`, `DevAttendanceFacadeTest` |
 | `res/xml/backup_rules.xml`, `res/xml/data_extraction_rules.xml` | every `PREFS_NAME` needs both `<name>.xml` and `<name>_secure.xml` excluded, in **all** sections | `BackupRulesTest` |
-| `ui/main/AppNavGraph.kt` | a destination missing here still renders, but falls back to the root's title and loses its up button. `DeveloperSettings` is `BuildConfig.DEBUG`-gated to match the `NavHost` | `AppBarTitleNavigationTest`, `AppBarUpButtonTest` |
+| `ui/main/AppNavGraph.kt` | a destination missing here still renders, but falls back to the root's title and loses its up button. A parentless destination is a bottom-bar tab and must also be in `topLevel`. `DeveloperSettings` is `BuildConfig.DEBUG`-gated to match the `NavHost` | `AppBarTitleNavigationTest`, `AppBarUpButtonTest` |
 | `AndroidManifest.xml` | matching runtime request in `LocationPermissions`; FGS type; `<service>`/`<receiver>` entries | instrumented suite |
 | `gradle/libs.versions.toml` | never inline versions in `build.gradle.kts` | full build |
 
@@ -131,6 +137,10 @@ where one is possible.
 9. **Domain models validate at construction** — some call sites project outside try/catch.
 10. **Every `stateIn` uses `WhileSubscribed(5_000)`** — keeps upstreams warm across config changes
     without leaking.
+11. **Attendance is the start destination and home** — Reports is a second tab, never the start
+    destination; tab switches go through `navigateToTab` so tabs never stack on the back stack.
+12. **Reports never count a shift in progress** — `SessionLog` keeps open shifts separate, and every
+    surface that shows a report says when one is excluded.
 
 ## Reverse index — "who reads this state?"
 
@@ -143,3 +153,5 @@ where one is possible.
 | `ProximityRepository.proximity` | geofence receiver, coordinator pipeline 2 | `LocationViewModel.uiState`, `LocationPowerPolicy` (via the VM) |
 | `ProximityRepository.events` | `setState`, `reset` | **nobody yet** — the auto-clock-in seam |
 | `LocationClockInRepository.lastClockIns` | `LocationViewModel.onClockIn()` | `LocationViewModel.uiState` → detail screen |
+| `AttendanceRepository.eventLog` | every attendance mutation (`publish()`) | `ReportsViewModel` (report + biweekly), `BiweeklyReportRunner` |
+| `ReportSettings.biweeklyNotificationEnabled` | `BiweeklyReportController.setEnabled` (Settings switch) | `SettingsViewModel`, `BiweeklyReportController.reconcile` (startup), `BiweeklyReportRunner` |

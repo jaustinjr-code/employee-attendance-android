@@ -484,6 +484,81 @@ policy change is a one-line edit.
 
 ---
 
+## 6b. `reporting` and `ui.reports`
+
+See [../features/reporting.md](../features/reporting.md).
+
+```mermaid
+classDiagram
+    class AttendanceRepository {
+        <<interface>>
+        +eventLog: StateFlow~List~AttendanceEvent~~
+    }
+    class ReportGenerator {
+        +report(period, events, worksites, zone) AttendanceReport
+        +activeShiftNotice(period, events, worksites, zone, now) ActiveShiftNotice?
+        +biweeklySummary(today, events, worksites, zone) BiweeklySummary
+    }
+    class SessionLog {
+        +completed: List~WorkSession~
+        +active: List~ActiveShift~
+        +from(events)$ SessionLog
+    }
+    class ReportCalculator {
+        +calculate(period, sessions, worksites, zone)$ AttendanceReport
+    }
+    class ReportPeriod {
+        +type: ReportPeriodType
+        +start: LocalDate
+        +endExclusive: LocalDate
+        +containing(type, date)$ ReportPeriod
+        +lastCompletedBiweekly(today)$ ReportPeriod
+    }
+    class ReportsViewModel {
+        +selection: StateFlow~PeriodSelection~
+        +report: StateFlow~ReportSection~
+        +biweekly: StateFlow~BiweeklySection~
+        +onShare(target)
+    }
+    class ReportSharer {
+        <<interface>>
+        +share(report, activeShift, target) ReportShareResult
+    }
+    class FileReportSharer
+    class ReportScheduler {
+        <<interface>>
+    }
+    class WorkManagerReportScheduler
+    class ReportNotifications {
+        <<interface>>
+    }
+    class BiweeklyReportNotifier
+    class ReportSettings {
+        <<interface>>
+    }
+    class BiweeklyReportController
+    class BiweeklyReportRunner
+    class BiweeklyReportWorker
+
+    ReportsViewModel --> AttendanceRepository
+    ReportsViewModel --> ReportGenerator
+    ReportsViewModel --> ReportSharer
+    ReportGenerator --> SessionLog
+    ReportGenerator --> ReportCalculator
+    ReportCalculator --> ReportPeriod
+    FileReportSharer ..|> ReportSharer
+    WorkManagerReportScheduler ..|> ReportScheduler
+    BiweeklyReportNotifier ..|> ReportNotifications
+    BiweeklyReportController --> ReportSettings
+    BiweeklyReportController --> ReportScheduler
+    BiweeklyReportWorker --> BiweeklyReportRunner
+    BiweeklyReportRunner --> ReportGenerator
+    BiweeklyReportRunner --> ReportNotifications
+    BiweeklyReportRunner --> ReportSettings
+```
+
+---
+
 ## 7. Whole-feature dependency graph
 
 The single most useful picture for impact analysis: who depends on whom across the location feature.
@@ -506,6 +581,10 @@ graph LR
     HOST[LocationPermissionHost]
     AS[AttendanceScreen]
     LDS[LocationDetailScreen]
+    ATR[AttendanceRepository]
+    RVM[ReportsViewModel]
+    RG[ReportGenerator]
+    BRR[BiweeklyReportRunner]
 
     LFC --> LPR
     LFC --> WLR
@@ -530,6 +609,12 @@ graph LR
     AS --> LVM
     AS --> HOST
     LDS --> LVM
+    RVM --> ATR
+    RVM --> WLR
+    RVM --> RG
+    BRR --> ATR
+    BRR --> WLR
+    BRR --> RG
 
     classDef hub fill:#fde68a,stroke:#b45309,color:#111
     class LPR,PR,LSR,WLR hub
