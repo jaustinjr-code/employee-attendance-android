@@ -148,6 +148,11 @@ handling. Replacing it with an in-window overlay reintroduces those leaks.
 
 Deck behavior:
 
+- Each card holds the question as a heading, an unlabeled answer field showing an example answer as
+  its placeholder hint, and the Back and Next/Done buttons. The buttons are inside the card and flip
+  with it. The field's accessible name is the question (`contentDescription`).
+- The card is 0.8 width-to-height when there is room, and shrinks to the height available otherwise
+  (for example with the keyboard open), so the field and buttons never overflow it.
 - Swipe left or "Next" advances. On the last card the button reads "Done", and advancing calls
   `StatusUpdateCoordinator.complete`, which saves a `StatusUpdate` with `completedAtMillis` from the
   coordinator's injected clock, then closes the deck.

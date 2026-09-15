@@ -1,16 +1,22 @@
 package com.jaustinjr.employeeattendance.statusupdate.ui
 
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescriptionExactly
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
@@ -21,6 +27,8 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.test.espresso.Espresso
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 import org.junit.Assert.assertEquals
@@ -39,13 +47,15 @@ class StatusUpdateCardStackTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    // The question's heading Text carries a contentDescription rather than a Text/EditableText
-    // property (see QuestionCard), so onNodeWithText only ever matches the answer field's label —
-    // onAllNodesWithText(...).onFirst() is used defensively rather than onNodeWithText so this
-    // helper still works if that changes.
+    // The answer field has no visible label, so the question's text appears only on the heading.
+    // onAllNodesWithText(...).onFirst() stays defensive in case a second text node is ever added.
     private fun questionNode(text: String) = composeRule.onAllNodesWithText(text).onFirst()
 
-    private fun setContent(onDone: (List<String>) -> Unit = {}, onDismiss: () -> Unit = {}) {
+    private fun setContent(
+        onDone: (List<String>) -> Unit = {},
+        onDismiss: () -> Unit = {},
+        viewportHeight: Dp? = null,
+    ) {
         composeRule.setContent {
             EmployeeAttendanceTheme {
                 var drafts by remember { mutableStateOf(listOf("", "", "")) }
@@ -64,10 +74,13 @@ class StatusUpdateCardStackTest {
                     },
                     onBack = { if (index > 0) index-- },
                     onDismiss = onDismiss,
+                    modifier = if (viewportHeight != null) Modifier.height(viewportHeight) else Modifier,
                 )
             }
         }
     }
+
+    private fun inCard() = hasAnyAncestor(hasTestTag(StatusUpdateTestTags.CARD))
 
     @Test
     fun firstCard_showsFirstQuestionAndHidesBack() {
@@ -170,30 +183,68 @@ class StatusUpdateCardStackTest {
         }
     }
 
-    /**
-     * The visual question (QuestionCard's heading Text) carries its own controlled semantics
-     * (`clearAndSetSemantics`): a heading, a *Polite* live region, and a `contentDescription` —
-     * not a `Text`/`EditableText` property. That's what keeps it from showing up as a second
-     * `onNodeWithText` match against the answer field's identical `label`, i.e. TalkBack does not
-     * land on two back-to-back nodes reading the same words.
-     */
     @Test
-    fun questionHeading_announcesOnceAsAHeadingLiveRegion_distinctFromTheFieldLabel() {
+    fun questionHeading_isAPoliteLiveRegionHeading_andTheOnlyTextShowingTheQuestion() {
         setContent()
 
-        val headingMatcher = SemanticsMatcher.expectValue(SemanticsProperties.Heading, Unit) and
-            hasContentDescriptionExactly("What did you do today?")
-        composeRule.onNode(headingMatcher).assertExists()
-        composeRule.onNode(headingMatcher).assert(
-            SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite),
-        )
+        val question = "What did you do today?"
+        composeRule.onNode(hasText(question))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Heading, Unit))
+            .assert(
+                SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite),
+            )
+        assertEquals(1, composeRule.onAllNodesWithText(question).fetchSemanticsNodes().size)
+    }
 
-        // Only the field's label carries the question as matchable `Text` — the heading does not
-        // contribute a second match.
-        assertEquals(
-            1,
-            composeRule.onAllNodesWithText("What did you do today?").fetchSemanticsNodes().size,
-        )
+    @Test
+    fun answerField_isNamedByTheQuestion_andShowsAnExampleHintPerCard() {
+        setContent()
+
+        composeRule.onNode(hasSetTextAction())
+            .assert(hasContentDescriptionExactly("What did you do today?"))
+        composeRule.onNodeWithText("e.g. Finished the inventory count", substring = true)
+            .assertIsDisplayed()
+
+        composeRule.onNodeWithText("Next").performClick()
+        composeRule.onNode(hasSetTextAction())
+            .assert(hasContentDescriptionExactly("What's planned for tomorrow?"))
+        composeRule.onNodeWithText("e.g. Restock the front shelves", substring = true)
+            .assertIsDisplayed()
+
+        composeRule.onNodeWithText("Next").performClick()
+        composeRule.onNode(hasSetTextAction())
+            .assert(hasContentDescriptionExactly("What couldn't be done?"))
+        composeRule.onNodeWithText("e.g. Couldn't finish deliveries", substring = true)
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun navigationButtons_arePartOfTheCard() {
+        setContent()
+
+        composeRule.onNode(hasText("Next") and inCard()).assertIsDisplayed()
+        composeRule.onNodeWithText("Next").performClick()
+        composeRule.onNode(hasText("Back") and inCard()).assertIsDisplayed()
+        composeRule.onNode(hasText("Next") and inCard()).assertIsDisplayed()
+        composeRule.onNodeWithText("Next").performClick()
+        composeRule.onNode(hasText("Done") and inCard()).assertIsDisplayed()
+    }
+
+    @Test
+    fun shortViewport_keepsFieldAndButtonsInsideTheCard() {
+        // Roughly the space left above an open keyboard.
+        setContent(viewportHeight = 360.dp)
+        composeRule.onNodeWithText("Next").performClick()
+
+        val card = composeRule.onNodeWithTag(StatusUpdateTestTags.CARD).getUnclippedBoundsInRoot()
+        val field = composeRule.onNode(hasSetTextAction()).getUnclippedBoundsInRoot()
+        val back = composeRule.onNodeWithText("Back").getUnclippedBoundsInRoot()
+        val next = composeRule.onNodeWithText("Next").getUnclippedBoundsInRoot()
+
+        assertTrue("field $field overlaps buttons $next", field.bottom <= next.top)
+        assertTrue("field $field overlaps buttons $back", field.bottom <= back.top)
+        assertTrue("next $next outside card $card", next.bottom <= card.bottom)
+        assertTrue("back $back outside card $card", back.bottom <= card.bottom)
     }
 
     @Test

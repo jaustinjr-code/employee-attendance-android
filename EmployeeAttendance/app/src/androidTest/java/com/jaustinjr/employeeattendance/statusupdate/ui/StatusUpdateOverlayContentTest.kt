@@ -77,9 +77,7 @@ class StatusUpdateOverlayContentTest {
             }
         }
 
-        // The deck is on top of the Settings destination navigated to underneath it. The question
-        // text is matched via `onAllNodesWithText` — it appears twice (heading + answer field
-        // label; see QuestionCard) — an exact onNodeWithText match would be ambiguous.
+        // The deck is on top of the Settings destination navigated to underneath it.
         composeRule.onAllNodesWithText("What did you do today?").onFirst().assertIsDisplayed()
         composeRule.onNodeWithText("Settings content").assertIsDisplayed()
     }

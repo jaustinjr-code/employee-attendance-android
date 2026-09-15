@@ -7,12 +7,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
@@ -37,12 +38,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
@@ -73,15 +75,30 @@ data class StatusUpdateCardStackUiState(
     }
 }
 
-/** The three fixed Status Update questions, in draft-index order. */
-enum class StatusUpdateQuestion(val questionRes: Int) {
-    DID_TODAY(R.string.status_update_question_did_today),
-    PLANNED_TOMORROW(R.string.status_update_question_planned_tomorrow),
-    COULD_NOT_DO(R.string.status_update_question_could_not_do),
+/** The three fixed Status Update questions, in draft-index order, each with an example answer hint. */
+enum class StatusUpdateQuestion(val questionRes: Int, val hintRes: Int) {
+    DID_TODAY(
+        R.string.status_update_question_did_today,
+        R.string.status_update_hint_did_today,
+    ),
+    PLANNED_TOMORROW(
+        R.string.status_update_question_planned_tomorrow,
+        R.string.status_update_hint_planned_tomorrow,
+    ),
+    COULD_NOT_DO(
+        R.string.status_update_question_could_not_do,
+        R.string.status_update_hint_could_not_do,
+    ),
 }
 
 /** Pixel distance a horizontal drag must cover before it counts as a swipe, not a text-field drag. */
 private val SwipeThreshold = 96.dp
+
+/** Card width / height when there is room for it; the card shrinks below this when there is not. */
+private const val CardAspectRatio = 0.8f
+
+/** Vertical room reserved above the front card so the peeking cards stay inside the deck bounds. */
+private val PeekSpace = 24.dp
 
 /**
  * Stateless three-card deck for the Status Update feature. Swipe left / "Next" advances (submitting
@@ -103,30 +120,33 @@ fun StatusUpdateCardStack(
     val density = LocalDensity.current
     val swipeThresholdPx = with(density) { SwipeThreshold.toPx() }
 
-    Column(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentAlignment = Alignment.Center,
     ) {
+        // Size the card from the space actually available (which shrinks when the keyboard opens)
+        // instead of from its width alone, so it can never overflow the deck.
+        val cardHeight = minOf(maxHeight - PeekSpace, maxWidth / CardAspectRatio).coerceAtLeast(0.dp)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
-            contentAlignment = Alignment.Center,
+                .height(cardHeight + PeekSpace),
+            contentAlignment = Alignment.BottomCenter,
         ) {
             // Peeking cards behind the front one, so the stack visibly has more than one card.
             val remaining = state.drafts.size - 1 - state.currentIndex
             repeat(minOf(remaining, 2)) { depthFromTop ->
                 val depth = remaining - depthFromTop
-                PeekingCard(depth = depth)
+                PeekingCard(depth = depth, height = cardHeight)
             }
 
             FlippingCard(
                 targetIndex = state.currentIndex,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(0.8f)
+                    .height(cardHeight)
                     .pointerInput(state.currentIndex) {
                         var dragTotal = 0f
                         detectHorizontalDragGestures(
@@ -147,40 +167,30 @@ fun StatusUpdateCardStack(
                 QuestionCard(
                     question = StatusUpdateQuestion.entries[displayedIndex],
                     draft = state.drafts[displayedIndex],
+                    isFirstCard = displayedIndex == 0,
+                    isLastCard = displayedIndex == state.drafts.lastIndex,
                     onDraftChanged = { onDraftChanged(displayedIndex, it) },
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            if (state.isFirstCard) {
-                Spacer(Modifier)
-            } else {
-                TextButton(onClick = onBack) {
-                    Text(stringResource(R.string.status_update_back))
-                }
-            }
-            Button(onClick = onForward) {
-                Text(
-                    stringResource(
-                        if (state.isLastCard) R.string.status_update_done
-                        else R.string.status_update_next
-                    ),
+                    onForward = onForward,
+                    onBack = onBack,
                 )
             }
         }
     }
 }
 
-/** A single question card: a one-line prompt and a text box for the draft answer. */
+/**
+ * A single question card: a one-line prompt, a text box for the draft answer with an example
+ * answer as its hint, and the Back / Next-or-Done controls, all inside the card.
+ */
 @Composable
 private fun QuestionCard(
     question: StatusUpdateQuestion,
     draft: String,
+    isFirstCard: Boolean,
+    isLastCard: Boolean,
     onDraftChanged: (String) -> Unit,
+    onForward: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val questionText = stringResource(question.questionRes)
@@ -194,44 +204,59 @@ private fun QuestionCard(
             Text(
                 text = questionText,
                 style = MaterialTheme.typography.titleMedium,
-                // clearAndSetSemantics replaces this node's semantics outright (rather than
-                // merging via Modifier.semantics{}), so it is the single, controlled announcement
-                // point for the question: a heading, and a *Polite* live region scoped to just
-                // this text — not the whole card — so the flip's new question is announced once,
-                // without re-announcing on every keystroke in the field below (which would happen
-                // if the live region wrapped the field too). Linear TalkBack navigation still
-                // reaches both this heading and the field's own `label` (same text) as two stops —
-                // that's intended, the same way any field is preceded by a label naming it; the
-                // live region is what announces the question once on a card flip, not a claim that
-                // navigation skips the heading.
-                modifier = Modifier.clearAndSetSemantics {
+                // The live region is scoped to this text, not the card, so a flip announces the new
+                // question once without re-announcing on every keystroke in the field below.
+                modifier = Modifier.semantics {
                     heading()
                     liveRegion = LiveRegionMode.Polite
-                    contentDescription = questionText
                 },
             )
             OutlinedTextField(
                 value = draft,
                 onValueChange = onDraftChanged,
-                label = { Text(questionText) },
+                placeholder = { Text(stringResource(question.hintRes)) },
+                // No visible label (the heading above says the same thing), so the question is
+                // given to accessibility services as the field's name instead.
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+                    .semantics { contentDescription = questionText },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (isFirstCard) {
+                    Spacer(Modifier)
+                } else {
+                    TextButton(onClick = onBack) {
+                        Text(stringResource(R.string.status_update_back))
+                    }
+                }
+                Button(onClick = onForward) {
+                    Text(
+                        stringResource(
+                            if (isLastCard) R.string.status_update_done
+                            else R.string.status_update_next
+                        ),
+                    )
+                }
+            }
         }
     }
 }
 
 /** A faded, inset card peeking out above the front one, purely decorative — it conveys "more cards follow". */
 @Composable
-private fun PeekingCard(depth: Int, modifier: Modifier = Modifier) {
+private fun PeekingCard(depth: Int, height: Dp, modifier: Modifier = Modifier) {
     val insetFraction = 0.05f * depth
     val alpha = 1f - 0.3f * depth
     ElevatedCard(
         modifier = modifier
             .fillMaxWidth(1f - insetFraction)
-            .aspectRatio(0.8f)
+            .height(height)
             .offset(y = -(depth * 12).dp)
             .graphicsLayer { this.alpha = alpha },
         content = {},

@@ -257,6 +257,9 @@
     <string name="status_update_question_did_today">What did you do today?</string>
     <string name="status_update_question_planned_tomorrow">What\'s planned for tomorrow?</string>
     <string name="status_update_question_could_not_do">What couldn\'t be done?</string>
+    <string name="status_update_hint_did_today">e.g. Finished the inventory count and helped onboard a new hire</string>
+    <string name="status_update_hint_planned_tomorrow">e.g. Restock the front shelves and start the weekly report</string>
+    <string name="status_update_hint_could_not_do">e.g. Couldn\'t finish deliveries because the van was in for repairs</string>
     <string name="status_update_back">Back</string>
     <string name="status_update_next">Next</string>
     <string name="status_update_done">Done</string>

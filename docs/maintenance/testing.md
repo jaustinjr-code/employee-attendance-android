@@ -140,11 +140,15 @@ When a test swipes more than once, call `composeRule.waitForIdle()` after each s
 `typedText_survivesSwipingAwayAndBack` does. The card flip runs in a `LaunchedEffect` keyed on the
 index, and the next gesture must land on the settled card.
 
-The question heading uses `clearAndSetSemantics` and exposes the question only as a
-`contentDescription`, so `onAllNodesWithText(question)` matches the answer field's label alone.
-Match the heading itself with `hasContentDescriptionExactly(question)`. The tests still select the
-question with `onAllNodesWithText(text).onFirst()` so the helper keeps working if a second text node
-appears.
+The answer field has no visible label, so `onAllNodesWithText(question)` matches the question
+heading alone. The field carries the question as its `contentDescription`: find it with
+`hasSetTextAction()` and check its name with `hasContentDescriptionExactly(question)`. The tests
+still select the question with `onAllNodesWithText(text).onFirst()` so the helper keeps working if a
+second text node appears.
+
+To check that nothing in the card overflows when space is short (as with the keyboard open), pass a
+fixed height through the composable's `modifier` and compare `getUnclippedBoundsInRoot()` of the
+card, field and buttons, as `shortViewport_keepsFieldAndButtonsInsideTheCard` does.
 
 ### Launch a real Activity with an intent
 
