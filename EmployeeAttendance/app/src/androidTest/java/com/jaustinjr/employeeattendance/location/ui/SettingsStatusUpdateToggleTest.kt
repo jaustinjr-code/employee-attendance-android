@@ -1,13 +1,19 @@
 package com.jaustinjr.employeeattendance.location.ui
 
 import android.content.Context
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
 import com.jaustinjr.employeeattendance.attendance.ClockSource
@@ -27,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.junit.After
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -93,8 +100,8 @@ class SettingsStatusUpdateToggleTest {
             SettingsScreen(viewModel = viewModel())
         }
 
-        composeRule.onNodeWithText("Status updates").assertIsDisplayed()
-        composeRule.onNodeWithText("Ask after clock-out").assertIsDisplayed()
+        composeRule.onNodeWithText("Status updates").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Ask after clock-out").performScrollTo().assertIsDisplayed()
         statusUpdateSwitch().assertIsOn()
     }
 
@@ -104,10 +111,28 @@ class SettingsStatusUpdateToggleTest {
             SettingsScreen(viewModel = viewModel())
         }
 
-        statusUpdateSwitch().performClick()
+        statusUpdateSwitch().performScrollTo().performClick()
         statusUpdateSwitch().assertIsOff()
 
         val reread = StatusUpdateSettingsStore(context)
         assertFalse(reread.enabled.value)
+    }
+
+    @Test
+    fun shortViewport_scrollsToLastRowsWithoutOverlap() {
+        composeRule.setContent {
+            Box(Modifier.height(480.dp)) {
+                SettingsScreen(viewModel = viewModel())
+            }
+        }
+
+        statusUpdateSwitch().performScrollTo().assertIsDisplayed()
+        val deleteBounds = composeRule.onNodeWithText("Delete all data").performScrollTo()
+            .assertIsDisplayed().getUnclippedBoundsInRoot()
+        val switchBounds = statusUpdateSwitch().getUnclippedBoundsInRoot()
+        assertTrue(
+            "switch $switchBounds overlaps delete button $deleteBounds",
+            deleteBounds.top >= switchBounds.bottom,
+        )
     }
 }
