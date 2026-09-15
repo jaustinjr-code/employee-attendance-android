@@ -77,7 +77,6 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 
 /** Callbacks for [ReportsContent], grouped so the whole set is one stable parameter. */
 @Immutable
@@ -330,7 +329,6 @@ private fun EmptyReport() {
 @Composable
 private fun StatGrid(report: AttendanceReport, formatter: ReportTextFormatter) {
     val none = stringResource(R.string.reports_stat_none)
-    val timeFormat = remember(formatter) { DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT) }
     val stats = listOf(
         stringResource(R.string.reports_stat_total) to formatter.duration(report.totalMillis),
         stringResource(R.string.reports_stat_shifts) to report.shiftCount.toString(),
@@ -339,7 +337,7 @@ private fun StatGrid(report: AttendanceReport, formatter: ReportTextFormatter) {
             formatter.duration(report.averageMillisPerWorkedDay),
         stringResource(R.string.reports_stat_longest_shift) to formatter.duration(report.longestShiftMillis),
         stringResource(R.string.reports_stat_average_clock_in) to
-            (report.averageClockIn?.let(timeFormat::format) ?: none),
+            (report.averageClockIn?.let(formatter::timeOfDay) ?: none),
     )
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         stats.chunked(2).forEach { row ->

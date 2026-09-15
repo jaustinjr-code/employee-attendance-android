@@ -3,6 +3,7 @@ package com.jaustinjr.employeeattendance.reporting
 import android.content.res.Resources
 import com.jaustinjr.employeeattendance.R
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -127,6 +128,8 @@ class ReportTextFormatter(
 
     fun shiftCount(count: Int): String = strings.shiftCount(count)
 
+    fun timeOfDay(time: LocalTime): String = timeFormat.format(time)
+
     fun subject(period: ReportPeriod): String =
         strings.subject.format(locale, periodLabel(period.type), dateRange(period))
 
@@ -160,7 +163,7 @@ class ReportTextFormatter(
         appendLine("${strings.statAveragePerDay}: ${duration(report.averageMillisPerWorkedDay)}")
         appendLine("${strings.statLongestShift}: ${duration(report.longestShiftMillis)}")
         report.averageClockIn?.let {
-            appendLine("${strings.statAverageClockIn}: ${timeFormat.format(it)}")
+            appendLine("${strings.statAverageClockIn}: ${timeOfDay(it)}")
         }
         appendLine()
         appendLine(strings.sectionByDay)

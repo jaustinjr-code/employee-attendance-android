@@ -28,6 +28,18 @@ class ReportTextFormatterTest {
     }
 
     @Test
+    fun `times of day follow the formatter's locale, not the JVM default`() {
+        val german = ReportTextFormatter(ENGLISH_STRINGS, Locale.GERMANY, NEW_YORK)
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.US)
+        try {
+            assertEquals("14:05", german.timeOfDay(java.time.LocalTime.of(14, 5)))
+        } finally {
+            Locale.setDefault(previous)
+        }
+    }
+
+    @Test
     fun `the date range is inclusive of the last day`() {
         assertEquals("Sep 6, 2026 – Sep 12, 2026", formatter.dateRange(week))
     }
