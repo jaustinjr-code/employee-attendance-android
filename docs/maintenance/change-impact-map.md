@@ -79,7 +79,7 @@ active locations require a `ProximityRepository` change in the same PR.
 | `di/AppContainer.kt` `clockOutListener` | the only `ClockOutSource` to `StatusUpdateTrigger` mapping; `AttendanceAutoClockController` and `ClockActionReceiver` must both use this instance | `ClockActionHandlerTest`, `AttendanceAutoClockControllerTest` |
 | `EmployeeAttendanceApplication.kt` | tracker built before the container; `startupJob` order (auto-clock subscribed before the location coordinator); every store a factory can reach is forced; `startupComplete` flips on any terminal state | `StartupThreadPolicyTest`, `StartupGateTest` (androidTest) |
 | `ui/main/StartupGate.kt` | content must not be composed at all while `started` is false, or factories run early | `StartupGateTest` (androidTest) |
-| `MainActivity.kt` | app bar title `LaunchedEffect` per destination; ViewModel sharing (Activity-scoped on purpose); `StatusUpdateOverlayHost` mounted once as a sibling of the `Scaffold`; `consumeRequest` only when `savedInstanceState == null` and in `onNewIntent`; manifest `launchMode="singleTop"` | `StatusUpdateNotificationLaunchTest`, `AttendanceScreenTest` |
+| `MainActivity.kt` | up must stay `onBackPressedDispatcher.onBackPressed()`, not a direct pop, or up skips the status update editor's discard confirmation; app bar title `LaunchedEffect` per destination; ViewModel sharing (Activity-scoped on purpose); `StatusUpdateOverlayHost` mounted once as a sibling of the `Scaffold`; `consumeRequest` only when `savedInstanceState == null` and in `onNewIntent`; manifest `launchMode="singleTop"` | `StatusUpdateNotificationLaunchTest`, `AttendanceScreenTest`, `StatusUpdateEditFlowTest` |
 | `location/LocationFeatureCoordinator.kt` | both pipelines' invariants: `collectLatest`, `CancellationException` rethrow, geofence gating | `LocationFeatureCoordinatorTest` |
 | `location/permission/LocationPermissionRepository.kt` | the three `refresh()` call sites (host `ON_RESUME`, launchers, service) | `SystemLocationPermissionRepositoryTest` |
 | `location/tracking/LocationTracker.kt` | `.conflate()`, `awaitClose` removal, `toSample()` accuracy fallback | `LocationTrackingServiceTest` |
@@ -97,8 +97,9 @@ active locations require a `ProximityRepository` change in the same PR.
 | `location/ui/LocationPermissionViewModel.kt` | `computePrompt`, `SavedStateHandle` keys (changing them drops persisted dismissals) | `LocationPermissionViewModelTest` |
 | `location/ui/LocationPermissionHost.kt` | `ON_RESUME` `DisposableEffect`, dismiss-before-launch ordering, both launchers | `LocationPermissionDialogTest` |
 | `ui/attendance/AttendanceScreen.kt` | the single-control rule (pill XOR chip); `LocationPermissionHost` placement | `AttendanceScreenTest` |
-| `location/ui/SettingsViewModel.kt` | `onDeleteAllData` must keep calling `statusUpdateRepository.clearAll()`; the factory reads `statusUpdateSettingsStore` (forced in `startupJob`) | `SettingsDeleteAllDataTest`, `SettingsStatusUpdateToggleTest` (androidTest) |
+| `location/ui/SettingsViewModel.kt` | no longer reads `UserProfileStore` (the name moved to Account); `onDeleteAllData` must keep calling `statusUpdateRepository.clearAll()`, which also empties history; the factory reads `statusUpdateSettingsStore` (forced in `startupJob`) | `SettingsDeleteAllDataTest`, `SettingsStatusUpdateToggleTest` (androidTest) |
 | `attendance/AttendanceRepository.kt` `hasClockOutEvent` | abstract with no default body: every implementation overrides it, including `DefaultAttendanceRepository`, `RecordingAttendanceRepository`, `devtools` `FakeAttendanceRepository`, and the private fakes in `SettingsDeleteAllDataTest` and `SettingsStatusUpdateToggleTest`. It gates the notification launch path, so a fake returning `false` blocks the deck | `StatusUpdateCoordinatorTest`, `StatusUpdateNotificationLaunchTest` |
+| `attendance/AttendanceRepository.kt` `clockInBefore` | default `null` (display-only); `DefaultAttendanceRepository` and `RecordingAttendanceRepository` answer it. A fake that leaves the default saves updates with no shift start ("Clocked out …") | `DefaultAttendanceRepositoryTest`, `StatusUpdateCoordinatorTest` |
 | `attendance/ClockNotificationStrategy.kt` `ClockOutListener`, `ClockOutSource` | report only after an event is recorded, only for `CLOCK_OUT`; `attendance/` must not import `statusupdate`. A new `ClockOutSource` value needs a branch in `AppContainer.clockOutListener` | `ClockNotificationStrategyTest`, `AttendanceAutoClockControllerTest` |
 | `attendance/ClockActionReceiver.kt` | `confirm` reports `NOTIFICATION_CONFIRMED` with the recorded event's time; `undo` calls `onClockOutUndone` only when `undoEvent` returned true for a clock-out | `ClockActionHandlerTest` |
 | `settings/StatusUpdateSettingsStore.kt` | default `true`; `PREFS_NAME` `status_update_settings` needs backup exclusions; forced in `startupJob` | `StatusUpdateSettingsStoreTest` (androidTest), `BackupRulesTest` |
@@ -106,8 +107,13 @@ active locations require a `ProximityRepository` change in the same PR.
 | `statusupdate/AppForegroundTracker.kt` | must be registered before the first `onStart`; count clamped at 0 | `AppForegroundTrackerTest` (androidTest) |
 | `statusupdate/StatusUpdateIntents.kt` | extra keys shared by `StatusUpdateNotifier` and `MainActivity`; strip after read; ignore `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY` | `StatusUpdateIntentsTest` (androidTest) |
 | `statusupdate/StatusUpdateNotifier.kt` | channel id `status_update`; notification id derived from `clockOutId` so `cancel` finds it; `FLAG_IMMUTABLE` | `StatusUpdateNotifierTest` (androidTest) |
-| `statusupdate/StatusUpdateRepository.kt` | in-memory stub; `clearAll` backs "Delete all data"; `statusUpdates` is read by `claimNotificationRequest` | `StatusUpdateCoordinatorTest`, `SettingsDeleteAllDataTest` |
-| `statusupdate/StatusUpdateModels.kt` | `clockOutId` format `locationId@clockOutAtMillis` keys notifications, claims, and undo | `StatusUpdateCoordinatorTest` |
+| `statusupdate/StatusUpdateRepository.kt` | persisted through `StatusUpdateLocalDataSource`; `PREFS_NAME` `status_updates` needs backup exclusions and must stay forced in `startupJob`; `clearAll` backs "Delete all data"; `statusUpdates` is read by `claimNotificationRequest` and every history ViewModel | `DefaultStatusUpdateRepositoryTest`, `SharedPrefsStatusUpdateLocalDataSourceTest`, `SettingsDeleteAllDataTest`, `BackupRulesTest` |
+| `statusupdate/StatusUpdateModels.kt` | `clockOutId` format `locationId@clockOutAtMillis` keys notifications, claims, undo, and the detail/edit route argument; `StatusUpdate` is persisted by name, so new fields need defaults and existing ones must not be renamed | `StatusUpdateCoordinatorTest`, `SharedPrefsStatusUpdateLocalDataSourceTest` |
+| `statusupdate/history/StatusUpdateHistory.kt` | blank updates dropped; days by clock-out in the device time zone; answered questions only | `StatusUpdateHistoryTest` |
+| `statusupdate/history/StatusUpdateHistoryViewModels.kt` | `CLOCK_OUT_ID_ARG` must equal the `clockOutId` property of `StatusUpdateDetail`/`StatusUpdateEdit`; edit drafts and dialog in `SavedStateHandle`; entering edit counts as changed | `StatusUpdateHistoryViewModelsTest` |
+| `statusupdate/history/ui/StatusUpdateHistorySection.kt` | item keys prefixed so the section can share a list; all row gestures in one `detectTapGestures`; the peek popup is non-focusable while held | `AccountScreenTest` (androidTest) |
+| `statusupdate/history/ui/StatusUpdateEditScreen.kt` | every exit except Save asks first; Save disabled while all answers are blank | `StatusUpdateEditFlowTest` (androidTest) |
+| `account/ui/AccountScreen.kt`, `account/ui/DisplayNameSection.kt` | sections are independent `LazyListScope` extensions; keep keys unique on the page | `AccountScreenTest` (androidTest) |
 | `statusupdate/ui/StatusUpdateOverlayViewModel.kt` | Activity-scoped; `onBeginPrompt` is a no-op while a deck is open, and `openDeck` ignores a second request; undo closes a matching deck without saving | `StatusUpdateOverlayViewModelTest` |
 | `statusupdate/ui/StatusUpdateOverlayHost.kt` | the deck stays inside a real `Dialog` window; consume the notification request once | `StatusUpdateOverlayContentTest` (androidTest) |
 | `statusupdate/ui/StatusUpdateCardStack.kt` | stateless; swipe threshold; `StatusUpdateTestTags.CARD`; `CARD_COUNT` matches `StatusUpdateQuestion` | `StatusUpdateCardStackTest` (androidTest), `StatusUpdateCardStackUiStateTest` |
@@ -121,7 +127,7 @@ active locations require a `ProximityRepository` change in the same PR.
 | `devtools/DeveloperLogExporter.kt` | `PROVIDER_SUFFIX` must match `android:authorities` in `src/debug/AndroidManifest.xml`; the chooser needs the read grant repeated on it | `EmailDeveloperLogExporterTest` |
 | `attendance/AttendanceEvent.kt` `ClockSource` | adding a value means auditing every branch on the enum. Only one exists in production — `lastClockOutManual` — so a new value silently joins the 'not manual' bucket with `AUTO`. Decide whether that is right, and assert it. Values persist by name: never rename or reorder | `DefaultAttendanceRepositoryTest`, `DevAttendanceFacadeTest` |
 | `res/xml/backup_rules.xml`, `res/xml/data_extraction_rules.xml` | every `PREFS_NAME` needs both `<name>.xml` and `<name>_secure.xml` excluded, in **all** sections | `BackupRulesTest` |
-| `ui/main/AppNavGraph.kt` | a destination missing here still renders, but falls back to the root's title and loses its up button. `DeveloperSettings` is `BuildConfig.DEBUG`-gated to match the `NavHost` | `AppBarTitleNavigationTest`, `AppBarUpButtonTest` |
+| `ui/main/AppNavGraph.kt` | a destination missing here still renders, but falls back to the root's title and loses its up button. `destinationFor` strips route arguments, so a destination with arguments matches by type name. `DeveloperSettings` is `BuildConfig.DEBUG`-gated to match the `NavHost` | `AppBarTitleNavigationTest`, `AppBarUpButtonTest` |
 | `AndroidManifest.xml` | matching runtime request in `LocationPermissions`; FGS type; `<service>`/`<receiver>` entries; `MainActivity` `launchMode="singleTop"` (without it a warm notification tap creates a second Activity) | instrumented suite |
 | `gradle/libs.versions.toml` | never inline versions in `build.gradle.kts` | full build |
 
@@ -151,6 +157,8 @@ where one is possible.
 12. **Notification extras are untrusted.** `MainActivity` is exported; only
     `claimNotificationRequest` may turn a launch intent into an open deck.
 13. **Every store reachable from a ViewModel factory is forced in `startupJob`.**
+14. **The app bar's up button is a back press.** A screen that must confirm before leaving (the status
+    update editor) relies on its `BackHandler` catching up as well as system back.
 
 ## Reverse index — "who reads this state?"
 
@@ -169,5 +177,6 @@ where one is possible.
 | `AppForegroundTracker.isForeground` | `ActivityLifecycleCallbacks` | `StatusUpdateCoordinator.onClockOut` (`AUTO` only) |
 | `StatusUpdateCoordinator.pendingPrompt` | `onClockOut` (set), `acceptPrompt`, `dismissPrompt`, `onClockOutUndone` (clear) | `StatusUpdateOverlayViewModel.uiState` |
 | `StatusUpdateCoordinator.undoneClockOuts` | `onClockOutUndone` | `StatusUpdateOverlayViewModel` (closes a matching deck) |
-| `StatusUpdateRepository.statusUpdates` | `StatusUpdateCoordinator.complete`, `clearAll` | `StatusUpdateCoordinator.claimNotificationRequest` |
+| `StatusUpdateRepository.statusUpdates` | `StatusUpdateCoordinator.complete`, `StatusUpdateEditViewModel.save` (`updateAnswers`), `clearAll` | `StatusUpdateCoordinator.claimNotificationRequest`, `StatusUpdateHistoryViewModel`, `StatusUpdateDetailViewModel`, `StatusUpdateEditViewModel` (initial drafts) |
+| `UserProfileStore.displayName` | `AccountViewModel.onDisplayNameChanged` | `AttendanceViewModel` greeting, `AccountViewModel` |
 | `MainActivity.pendingStatusUpdateRequest` | `StatusUpdateIntents.consumeRequest` in `onCreate`/`onNewIntent` | `StatusUpdateOverlayHost` |

@@ -40,6 +40,7 @@ class StatusUpdateCoordinator(
     private val repository: StatusUpdateRepository,
     private val attendanceRepository: AttendanceRepository,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val worksiteName: (locationId: String) -> String? = { null },
 ) {
 
     private val _pendingPrompt = MutableStateFlow<StatusUpdateRequest?>(null)
@@ -141,22 +142,35 @@ class StatusUpdateCoordinator(
         _undoneClockOuts.tryEmit(request.clockOutId)
     }
 
-    /** Saves the completed update via the repository (`completedAt` from the injected [clock]). */
+    /**
+     * Saves the completed update via the repository (`completedAt` from the injected [clock]),
+     * together with the shift it closes: the clock-in before it and the worksite's current name.
+     * An update with every answer blank is not kept, since there is nothing to look back on.
+     */
     fun complete(
         request: StatusUpdateRequest,
         didToday: String,
         plannedTomorrow: String,
         couldNotDo: String,
     ) {
-        repository.save(
-            StatusUpdate(
-                clockOutId = request.clockOutId,
-                didToday = didToday,
-                plannedTomorrow = plannedTomorrow,
-                couldNotDo = couldNotDo,
-                completedAtMillis = clock(),
+        val update = StatusUpdate(
+            clockOutId = request.clockOutId,
+            didToday = didToday,
+            plannedTomorrow = plannedTomorrow,
+            couldNotDo = couldNotDo,
+            completedAtMillis = clock(),
+            clockOutAtMillis = request.clockOutAtMillis,
+            clockInAtMillis = attendanceRepository.clockInBefore(
+                request.locationId,
+                request.clockOutAtMillis,
             ),
+            worksiteName = worksiteName(request.locationId),
         )
+        if (!update.hasAnyAnswer) {
+            Log.d(TAG, "complete: every answer blank; not saving ${request.clockOutId}")
+            return
+        }
+        repository.save(update)
     }
 
     private companion object {

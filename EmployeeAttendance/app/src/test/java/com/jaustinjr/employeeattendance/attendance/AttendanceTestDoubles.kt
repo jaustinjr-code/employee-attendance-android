@@ -55,6 +55,9 @@ class RecordingAttendanceRepository(
     override fun undoEvent(locationId: String, type: ClockType, epochMillis: Long): Boolean =
         delegate.undoEvent(locationId, type, epochMillis)
 
+    override fun clockInBefore(locationId: String, epochMillis: Long): Long? =
+        delegate.clockInBefore(locationId, epochMillis)
+
     override fun hasClockOutEvent(locationId: String, epochMillis: Long): Boolean =
         delegate.hasClockOutEvent(locationId, epochMillis)
 

@@ -31,7 +31,7 @@ sequenceDiagram
     MA->>MA: StartupGate(started = false) shows StartupScreen
     IO->>C: attendanceAutoClockController.start, then awaitSubscribed()
     IO->>C: locationFeatureCoordinator.start(applicationScope)
-    IO->>C: force privacySettingsStore, userProfileStore, statusUpdateSettingsStore
+    IO->>C: force privacySettingsStore, userProfileStore, statusUpdateSettingsStore, statusUpdateRepository
     IO-->>App: job completes (success or failure)
     App-->>MA: startupComplete = true
     MA->>C: ViewModel factories run inside StartupGate
@@ -440,3 +440,49 @@ sequenceDiagram
 
 Dismissing the prompt, the notification, or the deck drops the request. Nothing resurfaces it.
 See [../features/status-updates.md](../features/status-updates.md).
+
+---
+
+## 10. Editing a past status update
+
+**Files:** `MainActivity.kt`, `ui/main/MainAppBar.kt`, `statusupdate/history/ui/StatusUpdateEditScreen.kt`,
+`statusupdate/history/StatusUpdateHistoryViewModels.kt`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant Bar as MainAppBar
+    participant D as OnBackPressedDispatcher
+    participant E as StatusUpdateEditScreen
+    participant VM as StatusUpdateEditViewModel
+    participant R as StatusUpdateRepository
+    participant Nav as NavHostController
+
+    U->>Bar: Edit (from StatusUpdateDetail)
+    Note over E,VM: drafts seeded from the saved answers into SavedStateHandle
+    alt Cancel, system back, or up
+        U->>Bar: up
+        Bar->>D: onBackPressed()
+        D->>E: BackHandler (enabled while the update exists)
+        E->>VM: onExitRequested()
+        VM-->>E: showDiscardDialog = true
+        alt Discard
+            U->>E: Discard
+            E->>Nav: popBackStack() to StatusUpdateDetail, edits lost
+        else Keep editing
+            U->>E: Keep editing
+            E->>VM: onDiscardDialogDismissed()
+        end
+    else Save
+        U->>E: Save
+        E->>VM: save()
+        VM->>R: updateAnswers(clockOutId, answers, editedAtMillis)
+        R-->>VM: true
+        E->>Nav: popBackStack()
+        Note over Nav: StatusUpdateDetailViewModel observes the repository and shows the edit
+    end
+```
+
+Up reaches the editor's `BackHandler` only because `MainActivity` dispatches it as a back press. See
+[../features/account.md](../features/account.md#up-goes-through-the-back-dispatcher).

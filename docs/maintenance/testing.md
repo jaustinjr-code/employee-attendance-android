@@ -125,7 +125,7 @@ Confirm the device is up with `adb devices` before running `connectedDebugAndroi
 
 ## 6. Patterns for overlay and launch-intent tests
 
-The Status Update tests use three patterns. Reuse them for any UI that swipes, opens from a launch
+The Status Update and account tests use the patterns below. Reuse them for any UI that swipes, opens from a launch
 intent, or renders in its own window.
 
 ### Drive gestures with real swipes, then wait for idle
@@ -177,6 +177,29 @@ The container is the real app-scoped one and outlives each scenario, so reset sh
 method annotated both `@Before` and `@After` (`attendanceRepository.clearAll()`,
 `statusUpdateRepository.clearAll()`, re-enable the setting). Check configuration changes with
 `scenario.recreate()`.
+
+### Holding a press, and asserting a popup that is shown while held
+
+`AccountScreenTest.holdingAShift_peeksUntilReleased_withoutOpeningIt` holds a press with
+`performTouchInput { down(center) }`, then `composeRule.mainClock.advanceTimeBy(1_000)`.
+`detectTapGestures`' long-press timeout runs on the test clock, and a held finger sends no events that
+would advance it, so `advanceEventTime` inside `performTouchInput` is not enough. Release with
+`performTouchInput { up() }`.
+
+The peek is a non-focusable `Popup` window. While a finger is injected into the root below it, the
+framework finds its nodes but does not report them as displayed, so the test uses `assertExists()` for
+the peek and asserts it is gone after release. That the peek really draws, and that lifting the
+finger hides it without opening the shift, was checked on an emulator with
+`adb shell input swipe x y x y 4000` and `screencap` taken mid-press.
+
+### Hosting a flow that needs the real back dispatcher
+
+`StatusUpdateEditFlowTest` uses `createAndroidComposeRule<ComponentActivity>()`, a real
+`rememberNavController()` `NavHost`, and `MainAppBar` with
+`onNavigateUp = { composeRule.activity.onBackPressedDispatcher.onBackPressed() }`, as `MainActivity`
+does. ViewModels are built directly with a `SavedStateHandle` holding `CLOCK_OUT_ID_ARG` and an
+in-memory repository. That exercises the discard confirmation from Cancel, `Espresso.pressBack()` and
+the up button against the same back stack the app uses.
 
 ### Cross-window touch blocking cannot be proven in compose-ui-test
 

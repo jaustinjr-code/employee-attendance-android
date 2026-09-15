@@ -27,6 +27,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import com.jaustinjr.employeeattendance.account.ui.AccountScreen
 import com.jaustinjr.employeeattendance.devtools.DevUnlockTapCounter
 import com.jaustinjr.employeeattendance.devtools.ui.DeveloperSettingsScreen
 import com.jaustinjr.employeeattendance.location.ui.LocationDetailScreen
@@ -37,6 +39,8 @@ import com.jaustinjr.employeeattendance.location.ui.WorksiteRegistrationScreen
 import com.jaustinjr.employeeattendance.location.ui.WorksitesScreen
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateIntents
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRequest
+import com.jaustinjr.employeeattendance.statusupdate.history.ui.StatusUpdateDetailScreen
+import com.jaustinjr.employeeattendance.statusupdate.history.ui.StatusUpdateEditScreen
 import com.jaustinjr.employeeattendance.statusupdate.ui.StatusUpdateOverlayHost
 import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
 import com.jaustinjr.employeeattendance.ui.main.MainAppBar
@@ -60,6 +64,18 @@ object WorksiteRegistration
 
 @Serializable
 object Settings
+
+/** The user's account: their display name and past status updates. */
+@Serializable
+object Account
+
+/** One past status update, read-only. [clockOutId] names the shift it belongs to. */
+@Serializable
+data class StatusUpdateDetail(val clockOutId: String)
+
+/** Editing one past status update. [clockOutId] names the shift it belongs to. */
+@Serializable
+data class StatusUpdateEdit(val clockOutId: String)
 
 /**
  * Developer settings. Registered as a destination only in debug builds, and reachable only through
@@ -184,9 +200,15 @@ class MainActivity : ComponentActivity() {
                                 MainAppBar(
                                     title = appBarTitle,
                                     showUpButton = showUpButton,
-                                    // A plain pop, so up goes to the destination the user came
-                                    // from rather than jumping to the root.
-                                    onNavigateUp = { navController.popBackStack() },
+                                    // Dispatched as a back press rather than a direct pop, so a
+                                    // screen with its own BackHandler (the status update editor's
+                                    // discard confirmation) intercepts up exactly as it does system
+                                    // back. With no such handler, the NavHost's own back handling
+                                    // pops one entry, so up still goes to where the user came from.
+                                    onNavigateUp = { onBackPressedDispatcher.onBackPressed() },
+                                    onOpenAccount = {
+                                        navController.navigate(Account) { launchSingleTop = true }
+                                    },
                                     // launchSingleTop: the overflow menu is on every destination,
                                     // so picking the one already on screen would otherwise push a
                                     // duplicate that up has to be pressed twice to get past.
@@ -231,6 +253,25 @@ class MainActivity : ComponentActivity() {
                                 }
                                 composable<Settings> {
                                     SettingsScreen()
+                                }
+                                composable<Account> {
+                                    AccountScreen(
+                                        onOpenStatusUpdate = { clockOutId ->
+                                            navController.navigate(StatusUpdateDetail(clockOutId))
+                                        },
+                                    )
+                                }
+                                composable<StatusUpdateDetail> { entry ->
+                                    val clockOutId = entry.toRoute<StatusUpdateDetail>().clockOutId
+                                    StatusUpdateDetailScreen(
+                                        onEdit = { navController.navigate(StatusUpdateEdit(clockOutId)) },
+                                    )
+                                }
+                                composable<StatusUpdateEdit> {
+                                    StatusUpdateEditScreen(
+                                        onSaved = { navController.popBackStack() },
+                                        onExit = { navController.popBackStack() },
+                                    )
                                 }
                                 if (BuildConfig.DEBUG) {
                                     composable<DeveloperSettings> {

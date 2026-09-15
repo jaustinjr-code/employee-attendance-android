@@ -293,4 +293,20 @@ class DefaultAttendanceRepositoryTest {
         assertEquals(1, recorded.get())
         assertEquals(1, local.stored.count { it.type == ClockType.CLOCK_IN })
     }
+
+    @Test
+    fun `clockInBefore returns the latest clock-in at or before the time for that location`() {
+        val repo = repo()
+        repo.recordClockIn("site-a", 1_000L)
+        repo.recordClockOut("site-a", 2_000L)
+        repo.recordClockIn("site-b", 2_500L)
+        repo.recordClockIn("site-a", 3_000L)
+        repo.recordClockOut("site-a", 4_000L)
+
+        assertEquals(3_000L, repo.clockInBefore("site-a", 4_000L))
+        assertEquals(1_000L, repo.clockInBefore("site-a", 2_000L))
+        assertEquals(3_000L, repo.clockInBefore("site-a", 3_000L))
+        assertEquals(null, repo.clockInBefore("site-a", 999L))
+        assertEquals(null, repo.clockInBefore("site-c", 4_000L))
+    }
 }

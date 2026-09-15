@@ -1,5 +1,7 @@
 package com.jaustinjr.employeeattendance.statusupdate
 
+import kotlinx.serialization.Serializable
+
 /**
  * What triggered a clock-out, for the purposes of deciding how the Status Update feature should
  * surface: an in-app pop-up, a notification, or nothing at all.
@@ -25,11 +27,31 @@ data class StatusUpdateRequest(val locationId: String, val clockOutAtMillis: Lon
     val clockOutId: String get() = "$locationId@$clockOutAtMillis"
 }
 
-/** A completed Status Update: the three answers captured for one clock-out. */
+/**
+ * A completed Status Update: the three answers captured for one clock-out (a work shift), plus a
+ * snapshot of the shift it belongs to so history still reads correctly after the worksite is renamed
+ * or removed, or the attendance log is changed.
+ *
+ * @param clockInAtMillis the clock-in that opened the shift, or null if none was on record.
+ * @param worksiteName the worksite's name when the update was saved; null for the general timeclock
+ *   or an unknown worksite.
+ * @param editedAtMillis when the answers were last edited from history, or null if never edited.
+ */
+@Serializable
 data class StatusUpdate(
     val clockOutId: String,
     val didToday: String,
     val plannedTomorrow: String,
     val couldNotDo: String,
     val completedAtMillis: Long,
-)
+    val clockOutAtMillis: Long = completedAtMillis,
+    val clockInAtMillis: Long? = null,
+    val worksiteName: String? = null,
+    val editedAtMillis: Long? = null,
+) {
+    /** The three answers in question order ([didToday], [plannedTomorrow], [couldNotDo]). */
+    val answers: List<String> get() = listOf(didToday, plannedTomorrow, couldNotDo)
+
+    /** Whether at least one answer has content; only these are kept in history. */
+    val hasAnyAnswer: Boolean get() = answers.any { it.isNotBlank() }
+}

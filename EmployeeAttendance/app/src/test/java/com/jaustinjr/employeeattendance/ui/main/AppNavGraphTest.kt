@@ -122,4 +122,26 @@ class AppNavGraphTest {
         )
         assertEquals("com.jaustinjr.employeeattendance.Settings", SettingsRoute)
     }
+
+    @Test
+    fun `a destination with arguments resolves from its route pattern and from a query form`() {
+        // Navigation reports a destination with a required argument as "<serialName>/{arg}".
+        assertSame(
+            AppNavGraph.StatusUpdateDetail,
+            AppNavGraph.destinationFor("${StatusUpdateDetailRoute}/{clockOutId}"),
+        )
+        assertSame(
+            AppNavGraph.StatusUpdateEdit,
+            AppNavGraph.destinationFor("${StatusUpdateEditRoute}?clockOutId={clockOutId}"),
+        )
+    }
+
+    @Test
+    fun `status update screens nest under account`() {
+        assertEquals(
+            listOf(AppNavGraph.StatusUpdateDetail, AppNavGraph.Account, AppNavGraph.Attendance),
+            AppNavGraph.StatusUpdateEdit.ancestors,
+        )
+        assertTrue(isChildDestination("${StatusUpdateEditRoute}/{clockOutId}"))
+    }
 }

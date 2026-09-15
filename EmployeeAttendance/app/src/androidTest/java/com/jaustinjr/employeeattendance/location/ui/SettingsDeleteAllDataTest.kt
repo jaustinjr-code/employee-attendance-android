@@ -14,7 +14,6 @@ import com.jaustinjr.employeeattendance.location.registration.WorkLocationReposi
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
 import com.jaustinjr.employeeattendance.settings.StatusUpdateSettingsStore
-import com.jaustinjr.employeeattendance.settings.UserProfileStore
 import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateRepository
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdate
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,7 +92,6 @@ class SettingsDeleteAllDataTest {
         val viewModel = SettingsViewModel(
             settingsStore = ClockNotificationSettingsStore(context),
             privacySettingsStore = PrivacySettingsStore(context),
-            userProfileStore = UserProfileStore(context),
             workLocationRepository = workLocations,
             attendanceRepository = attendance,
             proximityUpdater = proximity,

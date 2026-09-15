@@ -99,6 +99,13 @@ interface AttendanceRepository {
     fun hasClockOutEvent(locationId: String, epochMillis: Long): Boolean
 
     /**
+     * The time of the latest `CLOCK_IN` for [locationId] at or before [epochMillis] — the start of
+     * the shift a clock-out at [epochMillis] closes — or null if there is none. Display-only, so
+     * implementations that keep no log may leave the default.
+     */
+    fun clockInBefore(locationId: String, epochMillis: Long): Long? = null
+
+    /**
      * Reverses one *specific* event: the latest event for [locationId], and only if it is the one
      * named by [type] and [epochMillis]. Backs the "Undo" action on a clock-in/out notification.
      *
@@ -198,6 +205,14 @@ class DefaultAttendanceRepository(
         events.any {
             it.locationId == locationId && it.type == ClockType.CLOCK_OUT && it.epochMillis == epochMillis
         }
+
+    @Synchronized
+    override fun clockInBefore(locationId: String, epochMillis: Long): Long? =
+        events
+            .filter {
+                it.locationId == locationId && it.type == ClockType.CLOCK_IN && it.epochMillis <= epochMillis
+            }
+            .maxOfOrNull { it.epochMillis }
 
     @Synchronized
     override fun undoEvent(locationId: String, type: ClockType, epochMillis: Long): Boolean {

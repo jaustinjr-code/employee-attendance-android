@@ -41,6 +41,7 @@ fun MainAppBar(
     title: String,
     showUpButton: Boolean = false,
     onNavigateUp: () -> Unit = {},
+    onOpenAccount: () -> Unit = {},
     onOpenWorksites: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onTitleClick: (() -> Unit)? = null,
@@ -67,7 +68,7 @@ fun MainAppBar(
                     )
                 }
             } else {
-                IconButton(onClick = {}) {
+                IconButton(onClick = onOpenAccount) {
                     Icon(
                         painter = painterResource(R.drawable.account_circle_24px),
                         contentDescription = stringResource(R.string.cd_account),

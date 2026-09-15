@@ -1,12 +1,15 @@
 package com.jaustinjr.employeeattendance.ui.main
 
 import androidx.annotation.StringRes
+import com.jaustinjr.employeeattendance.Account
 import com.jaustinjr.employeeattendance.Attendance
 import com.jaustinjr.employeeattendance.BuildConfig
 import com.jaustinjr.employeeattendance.DeveloperSettings
 import com.jaustinjr.employeeattendance.LocationDetail
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.Settings
+import com.jaustinjr.employeeattendance.StatusUpdateDetail
+import com.jaustinjr.employeeattendance.StatusUpdateEdit
 import com.jaustinjr.employeeattendance.Worksites
 import com.jaustinjr.employeeattendance.WorksiteRegistration
 import kotlinx.serialization.serializer
@@ -48,8 +51,8 @@ data class AppDestination(
 /**
  * The app's destination tree.
  *
- * Attendance is the root and every other screen currently hangs directly off it, so the tree is
- * one level deep today. It is expressed as parent links rather than as a flat set of "child
+ * Attendance is the root. Most screens hang directly off it; the status update screens nest under
+ * Account (history → one update → editing it). It is expressed as parent links rather than as a flat set of "child
  * routes" so that it stays the single description of the hierarchy as the graph grows: to nest a
  * screen, give it a different [AppDestination.parent] and nothing else in the app bar changes.
  *
@@ -88,6 +91,26 @@ object AppNavGraph {
         parent = Attendance,
     )
 
+    val Account = AppDestination(
+        route = AccountRoute,
+        titleRes = R.string.account_title,
+        parent = Attendance,
+    )
+
+    /** One past status update, read-only. Opened from the history on the account screen. */
+    val StatusUpdateDetail = AppDestination(
+        route = StatusUpdateDetailRoute,
+        titleRes = R.string.status_update_detail_title,
+        parent = Account,
+    )
+
+    /** Editing one past status update. */
+    val StatusUpdateEdit = AppDestination(
+        route = StatusUpdateEditRoute,
+        titleRes = R.string.status_update_edit_title,
+        parent = StatusUpdateDetail,
+    )
+
     /**
      * Developer settings. Present in the graph only in a debug build, matching the `NavHost`, which
      * registers its `composable` under the same gate — so in release an unrecognised route resolves
@@ -109,13 +132,22 @@ object AppNavGraph {
         add(Worksites)
         add(WorksiteRegistration)
         add(Settings)
+        add(Account)
+        add(StatusUpdateDetail)
+        add(StatusUpdateEdit)
         if (BuildConfig.DEBUG) add(DeveloperSettings)
     }
 
     private val byRoute: Map<String, AppDestination> = all.associateBy { it.route }
 
-    /** The destination for [route], or null if the graph does not know it. */
-    fun destinationFor(route: String?): AppDestination? = byRoute[route]
+    /**
+     * The destination for [route], or null if the graph does not know it.
+     *
+     * A destination with arguments reports its route as a pattern (`…StatusUpdateDetail/{clockOutId}`),
+     * so only the part before any path or query arguments is matched.
+     */
+    fun destinationFor(route: String?): AppDestination? =
+        route?.let { byRoute[it.substringBefore('/').substringBefore('?')] }
 }
 
 /**
@@ -150,6 +182,9 @@ internal val LocationDetailRoute: String = routeOf<LocationDetail>()
 internal val WorksitesRoute: String = routeOf<Worksites>()
 internal val WorksiteRegistrationRoute: String = routeOf<WorksiteRegistration>()
 internal val SettingsRoute: String = routeOf<Settings>()
+internal val AccountRoute: String = routeOf<Account>()
+internal val StatusUpdateDetailRoute: String = routeOf<StatusUpdateDetail>()
+internal val StatusUpdateEditRoute: String = routeOf<StatusUpdateEdit>()
 internal val DeveloperSettingsRoute: String = routeOf<DeveloperSettings>()
 
 private inline fun <reified T : Any> routeOf(): String = serializer<T>().descriptor.serialName

@@ -45,6 +45,9 @@
         <!-- status_update_settings: whether Status Update is enabled -->
         <exclude domain="sharedpref" path="status_update_settings.xml"/>
         <exclude domain="sharedpref" path="status_update_settings_secure.xml"/>
+        <!-- status_updates: the user's saved status update answers -->
+        <exclude domain="sharedpref" path="status_updates.xml"/>
+        <exclude domain="sharedpref" path="status_updates_secure.xml"/>
     </cloud-backup>
     <device-transfer>
         <!-- attendance_events: clock-in/out history -->
@@ -71,5 +74,8 @@
         <!-- status_update_settings: whether Status Update is enabled -->
         <exclude domain="sharedpref" path="status_update_settings.xml"/>
         <exclude domain="sharedpref" path="status_update_settings_secure.xml"/>
+        <!-- status_updates: the user's saved status update answers -->
+        <exclude domain="sharedpref" path="status_updates.xml"/>
+        <exclude domain="sharedpref" path="status_updates_secure.xml"/>
     </device-transfer>
 </data-extraction-rules>
