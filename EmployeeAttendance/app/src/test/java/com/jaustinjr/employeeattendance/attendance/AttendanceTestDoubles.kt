@@ -57,6 +57,9 @@ class RecordingAttendanceRepository(
     override fun undoEvent(locationId: String, type: ClockType, epochMillis: Long): Boolean =
         delegate.undoEvent(locationId, type, epochMillis)
 
+    override fun hasClockOutEvent(locationId: String, epochMillis: Long): Boolean =
+        delegate.hasClockOutEvent(locationId, epochMillis)
+
     /** Convenience for tests: undoes the most recent event for [locationId], as the UI's Undo did. */
     fun undoMostRecent(locationId: String): Boolean {
         val last = events.lastOrNull { it.locationId == locationId } ?: return false
@@ -91,5 +94,22 @@ class RecordingClockNotifier : ClockNotifications {
 
     override fun cancel(worksite: WorkLocation, clockType: ClockType) {
         cancelled += Cancelled(worksite.id, clockType)
+    }
+}
+
+/** [ClockOutListener] test double recording every call, in order. */
+class RecordingClockOutListener : ClockOutListener {
+    data class Call(val locationId: String, val clockOutAtMillis: Long, val source: ClockOutSource)
+    data class UndoneCall(val locationId: String, val clockOutAtMillis: Long)
+
+    val calls = mutableListOf<Call>()
+    val undone = mutableListOf<UndoneCall>()
+
+    override fun onClockOut(locationId: String, clockOutAtMillis: Long, source: ClockOutSource) {
+        calls += Call(locationId, clockOutAtMillis, source)
+    }
+
+    override fun onClockOutUndone(locationId: String, clockOutAtMillis: Long) {
+        undone += UndoneCall(locationId, clockOutAtMillis)
     }
 }

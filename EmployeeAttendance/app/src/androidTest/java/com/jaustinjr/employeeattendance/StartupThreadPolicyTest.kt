@@ -1,11 +1,13 @@
 package com.jaustinjr.employeeattendance
 
+import android.app.Application
 import android.content.Context
 import android.os.StrictMode
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SdkSuppress
 import com.jaustinjr.employeeattendance.di.DefaultAppContainer
+import com.jaustinjr.employeeattendance.statusupdate.DefaultAppForegroundTracker
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -61,9 +63,13 @@ class StartupThreadPolicyTest {
         }
 
         try {
-            // Step 1 — on the main thread, exactly as onCreate() does it. Allocation only.
+            // Step 1 — on the main thread, exactly as onCreate() does it: the foreground tracker
+            // registered first (pure callback registration, no I/O), then the container allocated.
             var container: DefaultAppContainer? = null
-            runOnMainThread { container = DefaultAppContainer(context) }
+            runOnMainThread {
+                val foregroundTracker = DefaultAppForegroundTracker(context as Application)
+                container = DefaultAppContainer(context, foregroundTracker)
+            }
             val appContainer = requireNotNull(container)
 
             // Step 2 — the feature wiring, on a background scope. This is what pulls in the four

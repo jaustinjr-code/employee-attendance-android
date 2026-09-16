@@ -14,46 +14,58 @@ Notation: `<|--` implements/extends, `*--` composition (owner constructs it), `o
 classDiagram
     class EmployeeAttendanceApplication {
         +container: AppContainer
-        -applicationScope: CoroutineScope
+        +appForegroundTracker: AppForegroundTracker
+        +applicationScope: CoroutineScope
+        -startupJob: Job
+        +startupComplete: StateFlow~Boolean~
         +onCreate()
+        +awaitStarted()
     }
 
     class AppContainer {
         <<interface>>
-        +locationPermissionRepository: LocationPermissionRepository
-        +locationTracker: LocationTracker
-        +locationStateRepository: LocationStateRepository
-        +locationTrackingController: LocationTrackingController
-        +proximityRepository: ProximityRepository
-        +geofenceManager: GeofenceManager
+        +attendanceRepository: AttendanceRepository
         +workLocationRepository: WorkLocationRepository
-        +locationClockInRepository: LocationClockInRepository
+        +proximityRepository: ProximityRepository
         +locationFeatureCoordinator: LocationFeatureCoordinator
+        +attendanceAutoClockController: AttendanceAutoClockController
+        +statusUpdateSettingsStore: StatusUpdateSettingsStore
+        +statusUpdateRepository: StatusUpdateRepository
+        +statusUpdateCoordinator: StatusUpdateCoordinator
+        +clockOutListener: ClockOutListener
     }
+    note for AppContainer "members trimmed; see di/AppContainer.kt"
 
     class DefaultAppContainer {
         -appContext: Context
+        -appForegroundTracker: AppForegroundTracker
+        -statusUpdateNotifier: StatusUpdateNotifications
     }
-    note for DefaultAppContainer "every member is created with `by lazy`"
-
+    note for DefaultAppContainer "every member is created with by lazy; the tracker is a constructor parameter"
 
     class MainActivity {
+        -pendingStatusUpdateRequest: StatusUpdateRequest?
         +onCreate(Bundle)
+        +onNewIntent(Intent)
     }
-    note for MainActivity "NavHost: Attendance to LocationDetail"
-
+    note for MainActivity "StartupGate wraps NavHost and StatusUpdateOverlayHost"
 
     class LocationFeatureCoordinator {
         +start(scope: CoroutineScope)
-        -reconcileTracking(permission, activeLocation)
     }
 
     AppContainer <|.. DefaultAppContainer
     EmployeeAttendanceApplication *-- DefaultAppContainer
-    EmployeeAttendanceApplication --> LocationFeatureCoordinator : start(applicationScope)
+    EmployeeAttendanceApplication *-- AppForegroundTracker : built first
+    DefaultAppContainer o-- AppForegroundTracker
+    EmployeeAttendanceApplication --> LocationFeatureCoordinator : start in startupJob
     DefaultAppContainer *-- LocationFeatureCoordinator
-    MainActivity --> EmployeeAttendanceApplication : container via ViewModel factories
+    DefaultAppContainer *-- StatusUpdateCoordinator
+    MainActivity --> EmployeeAttendanceApplication : startupComplete, container via factories
 ```
+
+`DefaultAppContainer.clockOutListener` is an anonymous `ClockOutListener` that maps
+`ClockOutSource` to `StatusUpdateTrigger` and forwards to `statusUpdateCoordinator`. See §7.
 
 ---
 
@@ -389,6 +401,7 @@ classDiagram
     class LocationViewModel {
         +uiState: StateFlow~LocationUiState~
         +onClockIn()
+        +onClockOut()
         -collectForegroundFixesWhenDegraded()
         +Factory$
     }
@@ -457,7 +470,8 @@ classDiagram
     LocationViewModel o-- LocationStateRepository
     LocationViewModel o-- LocationPermissionRepository
     LocationViewModel o-- LocationTracker
-    LocationViewModel o-- LocationClockInRepository
+    LocationViewModel o-- AttendanceRepository
+    LocationViewModel o-- StatusUpdateCoordinator : onClockOut MANUAL
     LocationViewModel --> LocationPowerPolicy
 
     LocationPermissionViewModel --> LocationPermissionUiState : produces
@@ -559,9 +573,118 @@ classDiagram
 
 ---
 
-## 7. Whole-feature dependency graph
+## 7. `statusupdate` and `statusupdate.ui`
 
-The single most useful picture for impact analysis: who depends on whom across the location feature.
+```mermaid
+classDiagram
+    class ClockOutListener {
+        <<interface>>
+        +onClockOut(locationId, clockOutAtMillis, source: ClockOutSource)
+        +onClockOutUndone(locationId, clockOutAtMillis)
+    }
+
+    class ClockOutSource {
+        <<enumeration>>
+        AUTO
+        NOTIFICATION_CONFIRMED
+    }
+
+    class StatusUpdateTrigger {
+        <<enumeration>>
+        MANUAL
+        AUTO
+        NOTIFICATION_CONFIRMED
+    }
+
+    class StatusUpdateCoordinator {
+        +pendingPrompt: StateFlow~StatusUpdateRequest?~
+        +undoneClockOuts: SharedFlow~String~
+        +onClockOut(locationId, clockOutAtMillis, trigger)
+        +acceptPrompt() StatusUpdateRequest?
+        +dismissPrompt()
+        +claimNotificationRequest(request) StatusUpdateRequest?
+        +onClockOutUndone(locationId, clockOutAtMillis)
+        +complete(request, didToday, plannedTomorrow, couldNotDo)
+    }
+
+    class AppForegroundTracker {
+        <<interface>>
+        +isForeground: StateFlow~Boolean~
+    }
+    class DefaultAppForegroundTracker
+
+    class StatusUpdateNotifications {
+        <<interface>>
+        +notifyPending(request)
+        +cancel(request)
+    }
+    class StatusUpdateNotifier
+
+    class StatusUpdateRepository {
+        <<interface>>
+        +statusUpdates: StateFlow~List_StatusUpdate~
+        +save(update)
+        +clearAll()
+    }
+    class DefaultStatusUpdateRepository
+    note for DefaultStatusUpdateRepository "in-memory stub"
+
+    class StatusUpdateIntents {
+        <<object>>
+        +consumeRequest(intent) StatusUpdateRequest?
+        +putExtras(intent, request) Intent
+    }
+
+    class StatusUpdateRequest {
+        +locationId: String
+        +clockOutAtMillis: Long
+        +clockOutId: String
+    }
+
+    class StatusUpdateOverlayViewModel {
+        +uiState: StateFlow~StatusUpdateOverlayUiState~
+        +onBeginPrompt()
+        +onNotificationRequest(request)
+        +onForward()
+        +onBack()
+        +onDismissDeck()
+        +Factory$
+    }
+
+    class StatusUpdateOverlayHost {
+        <<composable>>
+    }
+    class StatusUpdateCardStack {
+        <<composable>>
+    }
+
+    ClockOutListener --> ClockOutSource
+    AppForegroundTracker <|.. DefaultAppForegroundTracker
+    StatusUpdateNotifications <|.. StatusUpdateNotifier
+    StatusUpdateRepository <|.. DefaultStatusUpdateRepository
+    StatusUpdateCoordinator --> StatusUpdateTrigger
+    StatusUpdateCoordinator o-- AppForegroundTracker
+    StatusUpdateCoordinator o-- StatusUpdateNotifications
+    StatusUpdateCoordinator o-- StatusUpdateRepository
+    StatusUpdateCoordinator o-- AttendanceRepository : hasClockOutEvent
+    StatusUpdateCoordinator --> StatusUpdateRequest
+    StatusUpdateNotifier --> StatusUpdateIntents : putExtras
+    StatusUpdateOverlayViewModel o-- StatusUpdateCoordinator
+    StatusUpdateOverlayHost --> StatusUpdateOverlayViewModel
+    StatusUpdateOverlayHost --> StatusUpdateCardStack : inside Dialog
+```
+
+`ClockOutListener` and `ClockOutSource` live in `attendance/ClockNotificationStrategy.kt`, not in
+`statusupdate`, so `attendance/` never imports `statusupdate`. The coordinator also takes
+`enabled: StateFlow<Boolean>` (from `StatusUpdateSettingsStore`) and an injectable `clock`.
+`StatusUpdatePromptDialog` and `StatusUpdateOverlayContent` are omitted; both are stateless.
+
+---
+
+## 8. Whole-feature dependency graph
+
+The single most useful picture for impact analysis: who depends on whom across the location and
+Status Update features.
 
 ```mermaid
 graph LR
@@ -569,7 +692,14 @@ graph LR
     WLR[WorkLocationRepository]
     LSR[LocationStateRepository]
     PR[ProximityRepository]
-    LCIR[LocationClockInRepository]
+    AR[AttendanceRepository]
+    SUC[StatusUpdateCoordinator]
+    SUR[StatusUpdateRepository]
+    AFT[AppForegroundTracker]
+    COL[ClockOutListener]
+    CAR[ClockActionReceiver]
+    ACC[AttendanceAutoClockController]
+    SUOVM[StatusUpdateOverlayViewModel]
     LT[LocationTracker]
     LTC[LocationTrackingController]
     GR[GeofenceRegistrar/GeofenceManager]
@@ -603,7 +733,17 @@ graph LR
     LVM --> LSR
     LVM --> LPR
     LVM --> LT
-    LVM --> LCIR
+    LVM --> AR
+    LVM --> SUC
+    COL --> SUC
+    CAR --> AR
+    CAR --> COL
+    ACC --> AR
+    ACC --> COL
+    SUC --> AR
+    SUC --> SUR
+    SUC --> AFT
+    SUOVM --> SUC
     LPVM --> LPR
     HOST --> LPVM
     AS --> LVM
@@ -617,8 +757,8 @@ graph LR
     BRR --> RG
 
     classDef hub fill:#fde68a,stroke:#b45309,color:#111
-    class LPR,PR,LSR,WLR hub
+    class LPR,PR,LSR,WLR,AR,SUC hub
 ```
 
-The four amber nodes are **hubs** — three or more dependents each. A behavior change in any of them
+The amber nodes are **hubs** — three or more dependents each. A behavior change in any of them
 propagates widely; see [../maintenance/change-impact-map.md](../maintenance/change-impact-map.md).

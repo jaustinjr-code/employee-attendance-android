@@ -7,39 +7,38 @@ files involved so you can jump straight to the code.
 
 ## 1. App startup and coordinator wiring
 
-**Files:** `EmployeeAttendanceApplication.kt`, `di/AppContainer.kt`,
-`location/LocationFeatureCoordinator.kt`, `MainActivity.kt`
+**Files:** `EmployeeAttendanceApplication.kt`, `di/AppContainer.kt`, `statusupdate/AppForegroundTracker.kt`,
+`ui/main/StartupGate.kt`, `MainActivity.kt`
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant OS as Android
     participant App as EmployeeAttendanceApplication
+    participant AFT as DefaultAppForegroundTracker
     participant C as DefaultAppContainer
-    participant LFC as LocationFeatureCoordinator
-    participant LPR as LocationPermissionRepository
-    participant WLR as WorkLocationRepository
+    participant IO as startupJob on Dispatchers.IO
     participant MA as MainActivity
 
-    OS->>App: onCreate()
-    App->>C: DefaultAppContainer(this)
-    Note over C: every member is `by lazy` —<br/>nothing constructed yet
-    App->>LFC: start(applicationScope)
-    activate LFC
-    Note over C: touching locationFeatureCoordinator<br/>forces creation of LPR, WLR, LTC,<br/>GeofenceManager, LSR, ProximityRepository
-    LFC->>LPR: collect permissionState
-    LFC->>WLR: collect activeWorkLocation
-    Note over LFC: pipeline 1 = combine(permission, activeLocation)<br/>pipeline 2 = combine(latestFix, activeLocation)
-    deactivate LFC
-
+    OS->>App: onCreate() on main
+    App->>AFT: DefaultAppForegroundTracker(this)
+    Note over AFT: registers ActivityLifecycleCallbacks<br/>before any onStart can fire
+    App->>C: DefaultAppContainer(this, appForegroundTracker)
+    Note over C: every member is by lazy, nothing constructed yet
+    App->>IO: applicationScope.launch(Dispatchers.IO)
     OS->>MA: onCreate()
-    MA->>MA: setContent { NavHost(startDestination = Attendance) }
-    MA->>C: LocationViewModel.Factory / LocationPermissionViewModel.Factory
-    Note over MA: both ViewModels are Activity-scoped and<br/>shared by the Attendance + LocationDetail destinations
+    MA->>MA: consumeRequest(intent) if savedInstanceState == null
+    MA->>MA: StartupGate(started = false) shows StartupScreen
+    IO->>C: attendanceAutoClockController.start, then awaitSubscribed()
+    IO->>C: locationFeatureCoordinator.start(applicationScope)
+    IO->>C: force privacySettingsStore, userProfileStore, statusUpdateSettingsStore
+    IO-->>App: job completes (success or failure)
+    App-->>MA: startupComplete = true
+    MA->>C: ViewModel factories run inside StartupGate
 ```
 
-The coordinator starts **before** any UI exists and keeps running when the UI is gone. That is why
-permission changes made in system Settings still reconcile tracking.
+The coordinators start **before** any UI exists and keep running when the UI is gone. The UI waits on
+`startupComplete` so no factory constructs an encrypted store on the main thread (issue #58).
 
 ---
 
@@ -274,43 +273,32 @@ sequenceDiagram
 
 ---
 
-## 7. Clock in from the attendance screen
+## 7. Manual clock-out from the attendance screen
 
-**Files:** `ui/attendance/AttendanceScreen.kt`, `location/ui/LocationViewModel.kt`,
-`location/registration/LocationClockInRepository.kt`, `location/ui/LocationDetailScreen.kt`
+**Files:** `location/ui/LocationViewModel.kt`, `attendance/AttendanceRepository.kt`,
+`statusupdate/StatusUpdateCoordinator.kt`
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor U as User
-    participant TC as TimeCheck composable
     participant VM as LocationViewModel
-    participant WLR as WorkLocationRepository
-    participant CIR as LocationClockInRepository
-    participant LDS as LocationDetailScreen
+    participant AR as AttendanceRepository
+    participant SUC as StatusUpdateCoordinator
 
-    U->>TC: tap "Clock in"
-    TC->>TC: set isClockedIn true and record clockInTime in rememberSaveable
-    TC->>VM: onClockIn
-    VM->>WLR: read activeWorkLocation
-    alt an active location exists
-        VM->>CIR: recordClockIn for location.id at now
-        CIR-->>VM: lastClockIns StateFlow emits
-        VM-->>LDS: LocationUiState.lastClockInEpochMillis
-        LDS->>U: "Last clocked in: Sun, May 24 at 9:05 AM"
-    else no active location
-        VM-->>VM: no-op
+    U->>VM: onClockOut()
+    VM->>AR: recordIfStateChanges(id, CLOCK_OUT, source = MANUAL)
+    alt already clocked out
+        AR-->>VM: null
+        Note over VM: return, no Status Update
+    else recorded
+        AR-->>VM: AttendanceEvent
+        VM->>SUC: onClockOut(id, event.epochMillis, MANUAL)
     end
-
-    U->>TC: tap "Clock out"
-    TC->>TC: set isClockedIn false and record clockOutTime
-    Note right of TC: clock-out is NOT recorded anywhere —<br/>it stays in local composable state
 ```
 
-Note the asymmetry: clock-**in** reaches a repository, clock-**out** does not. Clock state also
-lives in `rememberSaveable` inside the composable rather than in a ViewModel, so it is lost on
-process death. Both are known gaps listed in
-[../features/attendance.md](../features/attendance.md).
+`id` is the active worksite's id, or `AttendanceRepository.GENERAL_TIMECLOCK_ID` when none is active.
+What the coordinator does next is §10.
 
 ---
 
@@ -352,11 +340,6 @@ title comes from `strings.xml`.
 ## 9. Switching to the Reports tab
 
 **Files:** `MainActivity.kt`, `ui/main/MainBottomBar.kt`, `ui/reports/ReportsViewModel.kt`
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor U as User
     participant Bar as MainBottomBar
     participant Nav as NavHostController
     participant RS as ReportsScreen
@@ -378,3 +361,108 @@ sequenceDiagram
 The biweekly notification flow is drawn in
 [../features/reporting.md](../features/reporting.md#biweekly-notification).
 
+---
+
+## 10. Status Update after a clock-out
+
+**Files:** `attendance/ClockNotificationStrategy.kt`, `attendance/ClockActionReceiver.kt`,
+`di/AppContainer.kt`, `statusupdate/StatusUpdateCoordinator.kt`, `statusupdate/StatusUpdateNotifier.kt`,
+`statusupdate/StatusUpdateIntents.kt`, `MainActivity.kt`, `statusupdate/ui/StatusUpdateOverlayViewModel.kt`
+
+### 10a. Choosing prompt or notification
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as Clock-out producer
+    participant COL as AppContainer.clockOutListener
+    participant SUC as StatusUpdateCoordinator
+    participant AFT as AppForegroundTracker
+    participant N as StatusUpdateNotifier
+    participant VM as StatusUpdateOverlayViewModel
+
+    alt manual (LocationViewModel)
+        P->>SUC: onClockOut(id, at, MANUAL)
+    else auto (GuardedClockStrategy.record) or Confirm (ClockActionHandler)
+        P->>COL: onClockOut(id, at, AUTO or NOTIFICATION_CONFIRMED)
+        COL->>SUC: onClockOut(id, at, mapped StatusUpdateTrigger)
+    end
+    alt enabled is false
+        SUC-->>SUC: return
+    else MANUAL, or AUTO while isForeground
+        SUC->>AFT: isForeground.value
+        SUC-->>VM: pendingPrompt = request
+        VM-->>VM: StatusUpdatePromptDialog shows
+    else AUTO in background, or NOTIFICATION_CONFIRMED
+        SUC->>N: notifyPending(request)
+    end
+```
+
+### 10b. Opening the deck from the notification
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant N as StatusUpdateNotifier
+    participant MA as MainActivity
+    participant SI as StatusUpdateIntents
+    participant VM as StatusUpdateOverlayViewModel
+    participant SUC as StatusUpdateCoordinator
+    participant AR as AttendanceRepository
+    participant SUR as StatusUpdateRepository
+
+    U->>N: tap "Status update waiting"
+    N->>MA: PendingIntent with request extras
+    alt cold start
+        MA->>SI: consumeRequest(intent) in onCreate
+    else already running (singleTop)
+        MA->>SI: consumeRequest(intent) in onNewIntent
+    end
+    SI-->>MA: request, extras removed (null if launched from history)
+    Note over MA: held in pendingStatusUpdateRequest<br/>until StartupGate opens
+    MA->>VM: onNotificationRequest(request) via StatusUpdateOverlayHost
+    VM->>SUC: claimNotificationRequest(request)
+    SUC->>AR: hasClockOutEvent(locationId, clockOutAtMillis)
+    SUC->>SUR: statusUpdates.value has clockOutId?
+    alt real clock-out, not yet answered
+        SUC-->>VM: request
+        VM-->>MA: deck opens in a full-screen Dialog
+    else forged or already answered
+        SUC-->>VM: null, no deck
+    end
+    U->>VM: Next, Next, Done
+    VM->>SUC: complete(request, three answers)
+    SUC->>SUR: save(StatusUpdate)
+```
+
+### 10c. Undo
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant H as ClockActionHandler
+    participant AR as AttendanceRepository
+    participant COL as AppContainer.clockOutListener
+    participant SUC as StatusUpdateCoordinator
+    participant N as StatusUpdateNotifier
+    participant VM as StatusUpdateOverlayViewModel
+
+    U->>H: Undo on a clock-out notification
+    H->>AR: undoEvent(locationId, CLOCK_OUT, epochMillis)
+    alt already gone or superseded
+        AR-->>H: false
+    else undone
+        AR-->>H: true
+        H->>COL: onClockOutUndone(locationId, epochMillis)
+        COL->>SUC: onClockOutUndone(locationId, epochMillis)
+        SUC->>SUC: clear pendingPrompt if it matches
+        SUC->>N: cancel(request)
+        SUC-->>VM: undoneClockOuts emits clockOutId
+        VM->>VM: close the deck if open for that clock-out, without saving
+    end
+```
+
+Dismissing the prompt, the notification, or the deck drops the request. Nothing resurfaces it.
+See [../features/status-updates.md](../features/status-updates.md).

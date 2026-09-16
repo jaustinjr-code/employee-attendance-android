@@ -29,15 +29,17 @@ class ClockActionReceiver : BroadcastReceiver() {
         // a guess at which event was meant.
         val epochMillis = intent.getLongExtra(EXTRA_EPOCH_MILLIS, ClockActionHandler.NO_EVENT)
 
-        val repository = (context.applicationContext as EmployeeAttendanceApplication)
-            .container.attendanceRepository
+        val container = (context.applicationContext as EmployeeAttendanceApplication).container
 
         ClockActionHandler.handle(
-            repository = repository,
+            repository = container.attendanceRepository,
             action = action,
             locationId = locationId,
             clockType = clockType,
             epochMillis = epochMillis,
+            // The single shared instance, so Status Update sees the same clock-out/undo reports
+            // as the auto-clock pipeline; see AppContainer.clockOutListener.
+            clockOutListener = container.clockOutListener,
         )
 
         // Dismissed either way: the user pressed the button, so the card should go. Whether the log
@@ -108,9 +110,12 @@ object ClockActionHandler {
         locationId: String,
         clockType: ClockType,
         epochMillis: Long,
+        clockOutListener: ClockOutListener? = null,
     ): Boolean = when (action) {
-        ClockActionReceiver.ACTION_UNDO -> undo(repository, locationId, clockType, epochMillis)
-        ClockActionReceiver.ACTION_CONFIRM -> confirm(repository, locationId, clockType)
+        ClockActionReceiver.ACTION_UNDO ->
+            undo(repository, locationId, clockType, epochMillis, clockOutListener)
+        ClockActionReceiver.ACTION_CONFIRM ->
+            confirm(repository, locationId, clockType, clockOutListener)
         else -> false
     }
 
@@ -119,6 +124,7 @@ object ClockActionHandler {
         locationId: String,
         clockType: ClockType,
         epochMillis: Long,
+        clockOutListener: ClockOutListener?,
     ): Boolean {
         if (epochMillis == NO_EVENT) {
             Log.d(TAG, "undo $clockType for $locationId names no event; ignoring")
@@ -127,23 +133,36 @@ object ClockActionHandler {
         val undone = repository.undoEvent(locationId, clockType, epochMillis)
         if (!undone) {
             Log.d(TAG, "undo $clockType for $locationId at $epochMillis: already gone; ignoring")
+            return false
         }
-        return undone
+        // A reversed clock-out means any Status Update pending/posted for it must be pulled too —
+        // otherwise the prompt (or notification) outlives the session it was about.
+        if (clockType == ClockType.CLOCK_OUT) {
+            clockOutListener?.onClockOutUndone(locationId, epochMillis)
+        }
+        return true
     }
 
     private fun confirm(
         repository: AttendanceRepository,
         locationId: String,
         clockType: ClockType,
+        clockOutListener: ClockOutListener?,
     ): Boolean {
         // Guarded like the auto path: the prompt may be stale (already confirmed from another card,
         // or clocked out manually since), and confirming it must not write a clock-out with no open
         // session behind it.
-        if (repository.recordIfStateChanges(locationId, clockType) == null) {
+        val event = repository.recordIfStateChanges(locationId, clockType)
+        if (event == null) {
             Log.d(TAG, "confirm $clockType ignored; $locationId already in the target state")
             return false
         }
         Log.d(TAG, "confirm $clockType for $locationId")
+        if (clockType == ClockType.CLOCK_OUT) {
+            clockOutListener?.onClockOut(
+                locationId, event.epochMillis, ClockOutSource.NOTIFICATION_CONFIRMED,
+            )
+        }
         return true
     }
 }

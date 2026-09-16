@@ -15,6 +15,10 @@ import com.jaustinjr.employeeattendance.location.tracking.LocationSample
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationPriority
+import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateRepository
+import com.jaustinjr.employeeattendance.statusupdate.FakeAppForegroundTracker
+import com.jaustinjr.employeeattendance.statusupdate.RecordingStatusUpdateNotifier
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateCoordinator
 import com.jaustinjr.employeeattendance.testutil.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +30,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -85,11 +90,24 @@ class LocationViewModelTest {
     private fun state(level: LocationAccessLevel) =
         LocationPermissionState(level, isPrecise = level != LocationAccessLevel.NONE)
 
+    private fun fakeStatusUpdateCoordinator(
+        enabled: Boolean = true,
+        notifier: RecordingStatusUpdateNotifier = RecordingStatusUpdateNotifier(),
+        attendanceRepository: AttendanceRepository = RecordingAttendanceRepository(),
+    ) = StatusUpdateCoordinator(
+        enabled = MutableStateFlow(enabled),
+        foregroundTracker = FakeAppForegroundTracker(initial = true),
+        notifier = notifier,
+        repository = DefaultStatusUpdateRepository(),
+        attendanceRepository = attendanceRepository,
+    )
+
     private fun viewModel(
         workLocations: WorkLocationRepository = SeededWorkLocationRepository(),
         permission: LocationAccessLevel = LocationAccessLevel.ALWAYS,
         tracker: LocationTracker = FakeLocationTracker(),
         attendance: AttendanceRepository = RecordingAttendanceRepository(),
+        statusUpdateCoordinator: StatusUpdateCoordinator = fakeStatusUpdateCoordinator(),
     ) = LocationViewModel(
         workLocationRepository = workLocations,
         proximityRepository = ProximityRepository(store),
@@ -97,6 +115,7 @@ class LocationViewModelTest {
         permissionRepository = FakePermissionRepository(state(permission)),
         locationTracker = tracker,
         attendanceRepository = attendance,
+        statusUpdateCoordinator = statusUpdateCoordinator,
     )
 
     @Test
@@ -140,11 +159,55 @@ class LocationViewModelTest {
     @Test
     fun `onClockOut records a manual clock-out against the active location`() = runTest {
         val attendance = RecordingAttendanceRepository()
+        attendance.recordClockIn(TEST_OFFICE.id, 1_000L)
         val vm = viewModel(attendance = attendance)
 
         vm.onClockOut()
 
         assertTrue(attendance.attendance.value[TEST_OFFICE.id]?.lastClockOutManual == true)
+    }
+
+    @Test
+    fun `onClockOut reports a MANUAL trigger to the status update coordinator`() = runTest {
+        val attendance = RecordingAttendanceRepository()
+        attendance.recordClockIn(TEST_OFFICE.id, 1_000L)
+        val coordinator = fakeStatusUpdateCoordinator(attendanceRepository = attendance)
+        val vm = viewModel(attendance = attendance, statusUpdateCoordinator = coordinator)
+
+        vm.onClockOut()
+
+        // MANUAL always shows the pop-up, so a live pending prompt proves the coordinator was
+        // reached with the MANUAL trigger.
+        assertEquals(TEST_OFFICE.id, coordinator.pendingPrompt.value?.clockOutId?.substringBefore('@'))
+    }
+
+    @Test
+    fun `onClockOut does nothing to the coordinator when status update is disabled`() = runTest {
+        val attendance = RecordingAttendanceRepository()
+        attendance.recordClockIn(TEST_OFFICE.id, 1_000L)
+        val notifier = RecordingStatusUpdateNotifier()
+        val coordinator = fakeStatusUpdateCoordinator(
+            enabled = false, notifier = notifier, attendanceRepository = attendance,
+        )
+        val vm = viewModel(attendance = attendance, statusUpdateCoordinator = coordinator)
+
+        vm.onClockOut()
+
+        assertNull(coordinator.pendingPrompt.value)
+        assertTrue(notifier.posted.isEmpty())
+    }
+
+    @Test
+    fun `a redundant onClockOut while not clocked in records nothing and leaves no prompt`() = runTest {
+        val attendance = RecordingAttendanceRepository()
+        val coordinator = fakeStatusUpdateCoordinator(attendanceRepository = attendance)
+        val vm = viewModel(attendance = attendance, statusUpdateCoordinator = coordinator)
+
+        // Never clocked in, so this clock-out is redundant.
+        vm.onClockOut()
+
+        assertTrue(attendance.events.isEmpty())
+        assertNull(coordinator.pendingPrompt.value)
     }
 
     @Test

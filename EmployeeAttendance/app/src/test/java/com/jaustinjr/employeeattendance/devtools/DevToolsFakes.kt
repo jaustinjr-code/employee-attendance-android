@@ -113,6 +113,11 @@ class FakeAttendanceRepository : AttendanceRepository {
         recompute()
     }
 
+    override fun hasClockOutEvent(locationId: String, epochMillis: Long): Boolean =
+        events.any {
+            it.locationId == locationId && it.type == ClockType.CLOCK_OUT && it.epochMillis == epochMillis
+        }
+
     /** Mirrors the real repository: only the latest event, and only if type and time both match. */
     override fun undoEvent(locationId: String, type: ClockType, epochMillis: Long): Boolean {
         val index = events.indexOfLast { it.locationId == locationId }

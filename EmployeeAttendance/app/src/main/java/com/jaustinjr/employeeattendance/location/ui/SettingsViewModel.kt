@@ -15,6 +15,8 @@ import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
 import com.jaustinjr.employeeattendance.settings.ReportSettings
 import com.jaustinjr.employeeattendance.settings.UserProfileStore
+import com.jaustinjr.employeeattendance.settings.StatusUpdateSettingsStore
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRepository
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -29,11 +31,16 @@ class SettingsViewModel(
     private val workLocationRepository: WorkLocationRepository,
     private val attendanceRepository: AttendanceRepository,
     private val proximityUpdater: ProximityUpdater,
+    private val statusUpdateSettingsStore: StatusUpdateSettingsStore,
+    private val statusUpdateRepository: StatusUpdateRepository,
     reportSettings: ReportSettings,
     private val biweeklyReportController: BiweeklyReportController,
 ) : ViewModel() {
 
     val preference: StateFlow<ClockNotificationPreference> = settingsStore.preference
+
+    /** Whether a clock-out (manual or automatic) offers a Status Update. */
+    val statusUpdateEnabled: StateFlow<Boolean> = statusUpdateSettingsStore.enabled
 
     /**
      * The name shown in the attendance greeting; empty when the user hasn't set one.
@@ -69,6 +76,10 @@ class SettingsViewModel(
         privacySettingsStore.setReverseGeocodeEnabled(enabled)
     }
 
+    fun onStatusUpdateEnabledChanged(enabled: Boolean) {
+        statusUpdateSettingsStore.setEnabled(enabled)
+    }
+
     /**
      * Deletes all locally-stored worksites, attendance history, and proximity tracking state.
      *
@@ -85,6 +96,7 @@ class SettingsViewModel(
         proximityUpdater.clear(deletedIds)
         workLocationRepository.clearAll()
         attendanceRepository.clearAll()
+        statusUpdateRepository.clearAll()
     }
 
     companion object {
@@ -98,6 +110,8 @@ class SettingsViewModel(
                     workLocationRepository = container.workLocationRepository,
                     attendanceRepository = container.attendanceRepository,
                     proximityUpdater = container.proximityRepository,
+                    statusUpdateSettingsStore = container.statusUpdateSettingsStore,
+                    statusUpdateRepository = container.statusUpdateRepository,
                     reportSettings = container.reportSettings,
                     biweeklyReportController = container.biweeklyReportController,
                 )
