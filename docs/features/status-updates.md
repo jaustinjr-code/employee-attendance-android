@@ -110,7 +110,7 @@ not already answered.
 `MainActivity` is exported, so any app can launch it with these extras. Treat step 6 as a security
 check. Do not open the deck from `consumeRequest`'s result directly.
 
-The flow is drawn in [sequence-diagrams.md §9](../architecture/sequence-diagrams.md#9-status-update-after-a-clock-out).
+The flow is drawn in [sequence-diagrams.md §10](../architecture/sequence-diagrams.md#10-status-update-after-a-clock-out).
 
 ---
 
@@ -135,7 +135,7 @@ The prompt and deck render over whichever destination is current, without naviga
 
 | Piece | Scope | Notes |
 | --- | --- | --- |
-| `StatusUpdateOverlayHost` | mounted once in `MainActivity`, in a `Box` as a sibling after the `Scaffold`/`NavHost` | obtains its own ViewModel; one of two deliberate exceptions to stateless composables (see [overview §2](../architecture/overview.md#layer-rules)) |
+| `StatusUpdateOverlayHost` | mounted once in `MainActivity`, in a `Box` as a sibling after the `Scaffold`/`NavHost` | obtains its own ViewModel; one of the deliberate exceptions to stateless composables (see [overview §2](../architecture/overview.md#layer-rules)). Being a sibling of the whole `Scaffold`, it also covers the bottom navigation bar, so the prompt and the deck are reachable from either tab and cannot be navigated away from underneath |
 | `StatusUpdateOverlayViewModel` | Activity-scoped | one instance receives both the in-app "Begin" and notification taps; while a deck is open, `onBeginPrompt` returns without accepting (the prompt stays pending) and `openDeck` ignores a notification request |
 | `StatusUpdateOverlayContent` | stateless | renders the prompt when `state.prompt != null` and the deck when `state.deck != null` |
 | `StatusUpdatePromptDialog` | stateless | "Begin" calls `acceptPrompt`; "Not now" and dismissal call `dismissPrompt` |

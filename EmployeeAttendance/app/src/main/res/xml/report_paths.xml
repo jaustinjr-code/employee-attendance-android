@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Exposes only cacheDir/reports, the single directory FileReportSharer writes the shared report
+    into. Nothing else in the app's storage is shareable through this provider.
+-->
+<paths>
+    <cache-path
+        name="reports"
+        path="reports/" />
+</paths>

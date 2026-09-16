@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
+import com.jaustinjr.employeeattendance.attendance.AttendanceEvent
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
 import com.jaustinjr.employeeattendance.attendance.ClockSource
 import com.jaustinjr.employeeattendance.attendance.ClockType
@@ -23,11 +24,15 @@ import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
 import com.jaustinjr.employeeattendance.location.proximity.SharedPrefsProximityStateStore
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
+import com.jaustinjr.employeeattendance.reporting.BiweeklyReportController
+import com.jaustinjr.employeeattendance.reporting.ReportScheduler
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
+import com.jaustinjr.employeeattendance.settings.ReportSettingsStore
 import com.jaustinjr.employeeattendance.settings.StatusUpdateSettingsStore
 import com.jaustinjr.employeeattendance.settings.UserProfileStore
 import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateRepository
+import java.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -65,6 +70,8 @@ class SettingsStatusUpdateToggleTest {
         private val _attendance = MutableStateFlow<Map<String, LocationAttendance>>(emptyMap())
         override val attendance: StateFlow<Map<String, LocationAttendance>> =
             _attendance.asStateFlow()
+        override val eventLog: StateFlow<List<AttendanceEvent>> =
+            MutableStateFlow<List<AttendanceEvent>>(emptyList()).asStateFlow()
         override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) = Unit
         override fun recordClockOut(locationId: String, epochMillis: Long, source: ClockSource) = Unit
         override fun hasClockOutEvent(locationId: String, epochMillis: Long) = false
@@ -80,16 +87,27 @@ class SettingsStatusUpdateToggleTest {
         }
     }
 
-    private fun viewModel() = SettingsViewModel(
-        settingsStore = ClockNotificationSettingsStore(context),
-        privacySettingsStore = PrivacySettingsStore(context),
-        userProfileStore = UserProfileStore(context),
-        workLocationRepository = FakeWorkLocationRepository(),
-        attendanceRepository = FakeAttendanceRepository(),
-        proximityUpdater = ProximityRepository(SharedPrefsProximityStateStore(context)),
-        statusUpdateSettingsStore = StatusUpdateSettingsStore(context),
-        statusUpdateRepository = DefaultStatusUpdateRepository(),
-    )
+    private fun viewModel(): SettingsViewModel {
+        val reportSettings = ReportSettingsStore(context)
+        return SettingsViewModel(
+            settingsStore = ClockNotificationSettingsStore(context),
+            privacySettingsStore = PrivacySettingsStore(context),
+            userProfileStore = UserProfileStore(context),
+            workLocationRepository = FakeWorkLocationRepository(),
+            attendanceRepository = FakeAttendanceRepository(),
+            proximityUpdater = ProximityRepository(SharedPrefsProximityStateStore(context)),
+            statusUpdateSettingsStore = StatusUpdateSettingsStore(context),
+            statusUpdateRepository = DefaultStatusUpdateRepository(),
+            reportSettings = reportSettings,
+            biweeklyReportController = BiweeklyReportController(
+                settings = reportSettings,
+                scheduler = object : ReportScheduler {
+                    override fun setBiweeklyCheckScheduled(scheduled: Boolean) = Unit
+                },
+                clock = Clock.systemDefaultZone(),
+            ),
+        )
+    }
 
     private fun statusUpdateSwitch() =
         composeRule.onNodeWithTag(SettingsTestTags.STATUS_UPDATE_SWITCH)

@@ -298,7 +298,7 @@ sequenceDiagram
 ```
 
 `id` is the active worksite's id, or `AttendanceRepository.GENERAL_TIMECLOCK_ID` when none is active.
-What the coordinator does next is §9.
+What the coordinator does next is §10.
 
 ---
 
@@ -337,13 +337,39 @@ title comes from `strings.xml`.
 
 ---
 
-## 9. Status Update after a clock-out
+## 9. Switching to the Reports tab
+
+**Files:** `MainActivity.kt`, `ui/main/MainBottomBar.kt`, `ui/reports/ReportsViewModel.kt`
+    participant Bar as MainBottomBar
+    participant Nav as NavHostController
+    participant RS as ReportsScreen
+    participant RVM as ReportsViewModel
+    participant RG as ReportGenerator
+
+    U->>Bar: tap Reports
+    Bar->>Nav: navigateToTab(Reports)<br/>popUpTo(start){saveState}, restoreState
+    Nav->>RS: composable<Reports>
+    RS->>RVM: viewModel() — created on first visit, restored after
+    RS->>RVM: collectAsStateWithLifecycle(selection, report, biweekly)
+    RVM->>RG: report(period, eventLog, workLocations) on Dispatchers.Default
+    RG-->>RVM: cached if the same period and list instances
+    RVM-->>RS: ReportSection.Ready
+    U->>Bar: tap Attendance
+    Bar->>Nav: navigateToTab(Attendance) — Reports entry saved, not destroyed
+```
+
+The biweekly notification flow is drawn in
+[../features/reporting.md](../features/reporting.md#biweekly-notification).
+
+---
+
+## 10. Status Update after a clock-out
 
 **Files:** `attendance/ClockNotificationStrategy.kt`, `attendance/ClockActionReceiver.kt`,
 `di/AppContainer.kt`, `statusupdate/StatusUpdateCoordinator.kt`, `statusupdate/StatusUpdateNotifier.kt`,
 `statusupdate/StatusUpdateIntents.kt`, `MainActivity.kt`, `statusupdate/ui/StatusUpdateOverlayViewModel.kt`
 
-### 9a. Choosing prompt or notification
+### 10a. Choosing prompt or notification
 
 ```mermaid
 sequenceDiagram
@@ -372,7 +398,7 @@ sequenceDiagram
     end
 ```
 
-### 9b. Opening the deck from the notification
+### 10b. Opening the deck from the notification
 
 ```mermaid
 sequenceDiagram
@@ -410,7 +436,7 @@ sequenceDiagram
     SUC->>SUR: save(StatusUpdate)
 ```
 
-### 9c. Undo
+### 10c. Undo
 
 ```mermaid
 sequenceDiagram

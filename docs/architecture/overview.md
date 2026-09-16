@@ -24,7 +24,9 @@ one of them is a source of coupling you need to know about:
 ```mermaid
 graph TB
     subgraph Presentation["Presentation — Compose + ViewModels"]
-        MA["MainActivity<br/>StartupGate + NavHost"]
+        MA["MainActivity<br/>StartupGate + NavHost + bottom bar: Attendance | Reports"]
+        RS["ReportsScreen"]
+        RVM["ReportsViewModel"]
         AS["AttendanceScreen"]
         LDS["LocationDetailScreen"]
         LPH["LocationPermissionHost<br/>(owns system launchers)"]
@@ -50,6 +52,8 @@ graph TB
         AR["AttendanceRepository"]
         SUR["StatusUpdateRepository"]
         LTC["LocationTrackingController"]
+        ATR["AttendanceRepository<br/>(eventLog)"]
+        RG["ReportGenerator<br/>(cached)"]
     end
 
     subgraph Platform["Platform edges — Android / Play Services"]
@@ -61,9 +65,14 @@ graph TB
         SUN["StatusUpdateNotifier"]
         SPS["SharedPrefsProximityStateStore"]
         SLPR["SystemLocationPermissionRepository"]
+        BRW["BiweeklyReportWorker<br/>(WorkManager, daily)"]
+        FRS["FileReportSharer<br/>+ ReportFileProvider"]
     end
 
-    MA --> AS & LDS & SUOH
+    MA --> AS & LDS & RS & SUOH
+    RS --> RVM
+    RVM --> ATR & WLR & RG & FRS
+    BRW --> RG & ATR
     AS --> LPH
     AS --> LVM
     LPH --> LPVM
@@ -108,12 +117,14 @@ graph TB
 The diagram omits the auto-clock path (`AttendanceAutoClockController` and its strategies also
 report auto clock-outs to `StatusUpdateCoordinator` through `AppContainer.clockOutListener`), the
 settings stores, and the Settings and Worksites screens. The Status Update flow is drawn in
-[sequence-diagrams.md §9](sequence-diagrams.md#9-status-update-after-a-clock-out).
+[sequence-diagrams.md §10](sequence-diagrams.md#10-status-update-after-a-clock-out).
 
-Two composables are deliberate exceptions to "composables stay stateless":
+Three composables are deliberate exceptions to "composables stay stateless":
 
 - `LocationPermissionHost` touches `Activity`, `Intent`, and `ActivityResultContracts`, because
   permission launchers can only be owned there.
+- The stateful `SettingsScreen` wrapper follows the same rule for one launcher — the notification
+  permission behind the biweekly report opt-in — while `SettingsContent` stays stateless.
 - `StatusUpdateOverlayHost` obtains the Activity-scoped `StatusUpdateOverlayViewModel` itself and
   receives the notification request from `MainActivity`, because it is mounted once at Activity
   level over the `NavHost` rather than inside a destination. Everything it renders
@@ -126,7 +137,9 @@ Two composables are deliberate exceptions to "composables stay stateless":
 | `` (root) | app shell, navigation, DI bootstrap | `EmployeeAttendanceApplication`, `MainActivity` |
 | `di` | hand-wired object graph | `AppContainer`, `DefaultAppContainer` |
 | `ui.attendance` | home screen, clock in/out, live clock | `AttendanceScreen`, `AttendanceViewModel` |
-| `ui.main` | top app bar, destination hierarchy, the startup loading gate | `MainAppBar`, `AppNavGraph`, `StartupGate`, `StartupScreen` |
+| `ui.main` | top app bar, bottom navigation bar, destination tree, the startup loading gate | `MainAppBar`, `MainBottomBar`, `AppNavGraph`, `StartupGate`, `StartupScreen` |
+| `ui.reports` | the Reports tab and its charts | `ReportsScreen`, `ReportsViewModel`, `ReportCharts` |
+| `reporting` | report periods, shift pairing, calculation, sharing, the biweekly notification | `ReportGenerator`, `ReportPeriod`, `FileReportSharer`, `BiweeklyReportController`, `BiweeklyReportWorker` |
 | `ui.theme` | Material 3 theme, colors, typography | `EmployeeAttendanceTheme` |
 | `location` | cross-cutting orchestration for the location feature | `LocationFeatureCoordinator` |
 | `location.permission` | permission model + reading grants | `LocationAccessLevel`, `LocationPermissions`, `LocationPermissionRepository` |
@@ -179,6 +192,7 @@ another.
 | `viewModelScope` | each ViewModel | its Activity (both location ViewModels and `StatusUpdateOverlayViewModel` are Activity-scoped from `MainActivity`) | `uiState` sharing, foreground fix collection, `undoneClockOuts` collection |
 | repository and coordinator singletons | `DefaultAppContainer` | the process | hold `StateFlow` state; `StatusUpdateCoordinator` is here so a clock-out with no Activity still reaches it |
 | `DefaultAppForegroundTracker` | `EmployeeAttendanceApplication.onCreate`, before the container | the process | an `ActivityLifecycleCallbacks` counter; no coroutines |
+| unique periodic work `biweekly_report_check` | `WorkManagerReportScheduler` | until the user opts out (survives process death and reboot) | `BiweeklyReportWorker`, once a day |
 
 `LocationViewModel` and `LocationPermissionViewModel` are created in `MainActivity` and passed down,
 so the Attendance and LocationDetail destinations **share one instance each**. That is deliberate:
@@ -191,6 +205,11 @@ instead of letting a corrupt store kill the process.
 
 `SharingStarted.WhileSubscribed(5_000)` is used for both ViewModels' `uiState`, so upstream flows
 stay warm across configuration changes but shut down 5 s after the last subscriber leaves.
+
+`ReportsViewModel` is the one ViewModel scoped to its **back-stack entry** rather than the Activity:
+it does no work until the Reports tab is first opened. Tab switches go through
+`NavController.navigateToTab`, which saves and restores each tab's back stack, so the entry — and its
+ViewModel — survive switching to Attendance and back.
 
 ## 6. Threading
 

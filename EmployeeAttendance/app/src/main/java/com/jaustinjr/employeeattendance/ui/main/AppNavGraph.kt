@@ -6,6 +6,7 @@ import com.jaustinjr.employeeattendance.BuildConfig
 import com.jaustinjr.employeeattendance.DeveloperSettings
 import com.jaustinjr.employeeattendance.LocationDetail
 import com.jaustinjr.employeeattendance.R
+import com.jaustinjr.employeeattendance.Reports
 import com.jaustinjr.employeeattendance.Settings
 import com.jaustinjr.employeeattendance.Worksites
 import com.jaustinjr.employeeattendance.WorksiteRegistration
@@ -22,22 +23,23 @@ import kotlinx.serialization.serializer
  * button still pops history, so it returns the user to where they actually came from; the
  * hierarchy only answers whether that button should be there at all.
  *
- * The type is recursive rather than a flat "is this home?" flag so that nesting a screen under
- * something other than the root is a one-line change here instead of a new special case at each
- * call site.
+ * A destination with no parent is *top level*: it is one of the bottom bar's tabs and shows the
+ * account affordance instead of an up button. The type is recursive rather than a flat flag so that
+ * nesting a screen under something other than a tab is a one-line change here instead of a new
+ * special case at each call site.
  */
 data class AppDestination(
     val route: String,
     @StringRes val titleRes: Int,
     val parent: AppDestination?,
 ) {
-    /** The root has no parent; every other destination shows an up button. */
-    val isRoot: Boolean get() = parent == null
+    /** A bottom bar tab. Every other destination shows an up button. */
+    val isTopLevel: Boolean get() = parent == null
 
     /**
-     * This destination's ancestors, nearest first, ending at the root.
+     * This destination's ancestors, nearest first, ending at a top-level destination.
      *
-     * Empty for the root itself. The size is the destination's depth, which is what an up-button
+     * Empty for a top-level destination itself. The size is the destination's depth, which is what an up-button
      * policy other than "pop one" (a breadcrumb, or Material's "up to parent" behaviour) would be
      * written against.
      */
@@ -48,8 +50,9 @@ data class AppDestination(
 /**
  * The app's destination tree.
  *
- * Attendance is the root and every other screen currently hangs directly off it, so the tree is
- * one level deep today. It is expressed as parent links rather than as a flat set of "child
+ * Attendance and Reports are the top-level tabs; Attendance is the root, the start destination and
+ * home. Every other screen currently hangs directly off Attendance, so the tree is one level deep
+ * today. It is expressed as parent links rather than as a flat set of "child
  * routes" so that it stays the single description of the hierarchy as the graph grows: to nest a
  * screen, give it a different [AppDestination.parent] and nothing else in the app bar changes.
  *
@@ -61,6 +64,12 @@ object AppNavGraph {
     val Attendance = AppDestination(
         route = AttendanceRoute,
         titleRes = R.string.attendance_title,
+        parent = null,
+    )
+
+    val Reports = AppDestination(
+        route = ReportsRoute,
+        titleRes = R.string.reports_title,
         parent = null,
     )
 
@@ -102,9 +111,13 @@ object AppNavGraph {
     /** Where the `NavHost` starts, and what an unrecognised route falls back to. */
     val root: AppDestination = Attendance
 
+    /** The bottom bar's tabs, in display order. The root is first. */
+    val topLevel: List<AppDestination> = listOf(Attendance, Reports)
+
     /** Every destination in the graph, in declaration order. */
     val all: List<AppDestination> = buildList {
         add(Attendance)
+        add(Reports)
         add(LocationDetail)
         add(Worksites)
         add(WorksiteRegistration)
@@ -130,8 +143,8 @@ fun destinationOrRoot(route: String?): AppDestination =
     AppNavGraph.destinationFor(route) ?: AppNavGraph.root
 
 /**
- * Whether the destination at [route] sits below the root, and so shows an up button in place of
- * the account affordance.
+ * Whether the destination at [route] sits below a top-level tab, and so shows an up button in place
+ * of the account affordance and hides the bottom bar.
  *
  * This is a pure function of the current destination rather than state a screen pushes into the
  * app bar, for the same reason [appBarTitleResFor] is: during a predictive-back gesture two
@@ -141,11 +154,12 @@ fun destinationOrRoot(route: String?): AppDestination =
  * An unrecognised or not-yet-resolved route resolves to the root, so the up button never appears
  * on a frame where the back stack has nothing to pop.
  */
-fun isChildDestination(route: String?): Boolean = !destinationOrRoot(route).isRoot
+fun isChildDestination(route: String?): Boolean = !destinationOrRoot(route).isTopLevel
 
 // Route strings as Navigation generates them from the @Serializable destination types, so the
 // graph above can't drift from the actual routes the way hand-written string literals would.
 internal val AttendanceRoute: String = routeOf<Attendance>()
+internal val ReportsRoute: String = routeOf<Reports>()
 internal val LocationDetailRoute: String = routeOf<LocationDetail>()
 internal val WorksitesRoute: String = routeOf<Worksites>()
 internal val WorksiteRegistrationRoute: String = routeOf<WorksiteRegistration>()

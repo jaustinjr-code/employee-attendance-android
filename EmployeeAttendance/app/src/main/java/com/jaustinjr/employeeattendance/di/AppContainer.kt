@@ -42,7 +42,16 @@ import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepositor
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationTrackingController
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
+import com.jaustinjr.employeeattendance.reporting.BiweeklyReportController
+import com.jaustinjr.employeeattendance.reporting.BiweeklyReportNotifier
+import com.jaustinjr.employeeattendance.reporting.BiweeklyReportRunner
+import com.jaustinjr.employeeattendance.reporting.FileReportSharer
+import com.jaustinjr.employeeattendance.reporting.ReportGenerator
+import com.jaustinjr.employeeattendance.reporting.ReportSharer
+import com.jaustinjr.employeeattendance.reporting.WorkManagerReportScheduler
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
+import com.jaustinjr.employeeattendance.settings.ReportSettings
+import com.jaustinjr.employeeattendance.settings.ReportSettingsStore
 import com.jaustinjr.employeeattendance.settings.StatusUpdateSettingsStore
 import com.jaustinjr.employeeattendance.settings.UserProfileStore
 import com.jaustinjr.employeeattendance.statusupdate.AppForegroundTracker
@@ -55,6 +64,7 @@ import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateTrigger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import java.time.Clock
 
 /**
  * Application-scoped dependency graph. The project does not use a DI framework, so dependencies are
@@ -90,6 +100,16 @@ interface AppContainer {
      * [StatusUpdateTrigger] and calls [statusUpdateCoordinator].
      */
     val clockOutListener: ClockOutListener
+
+    /** Wall clock in the device zone. Reporting reads time only through this. */
+    val clock: Clock
+
+    /** Cached report computation, shared by the Reports screen and the biweekly worker. */
+    val reportGenerator: ReportGenerator
+    val reportSettings: ReportSettings
+    val reportSharer: ReportSharer
+    val biweeklyReportController: BiweeklyReportController
+    val biweeklyReportRunner: BiweeklyReportRunner
 
     /**
      * Persisted developer overrides. Only ever read from the debug-gated developer settings screen
@@ -231,6 +251,33 @@ class DefaultAppContainer(
             notifier = clockNotifier,
             preference = clockNotificationSettingsStore.preference,
             clockOutListener = clockOutListener,
+        )
+    }
+
+    override val clock: Clock = Clock.systemDefaultZone()
+
+    override val reportGenerator: ReportGenerator by lazy { ReportGenerator() }
+
+    override val reportSettings: ReportSettings by lazy { ReportSettingsStore(appContext) }
+
+    override val reportSharer: ReportSharer by lazy { FileReportSharer(appContext) }
+
+    override val biweeklyReportController: BiweeklyReportController by lazy {
+        BiweeklyReportController(
+            settings = reportSettings,
+            scheduler = WorkManagerReportScheduler(appContext),
+            clock = clock,
+        )
+    }
+
+    override val biweeklyReportRunner: BiweeklyReportRunner by lazy {
+        BiweeklyReportRunner(
+            settings = reportSettings,
+            attendanceRepository = attendanceRepository,
+            workLocationRepository = workLocationRepository,
+            generator = reportGenerator,
+            notifier = BiweeklyReportNotifier(appContext),
+            clock = clock,
         )
     }
 
