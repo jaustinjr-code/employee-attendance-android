@@ -12,8 +12,10 @@ import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRepository
 import com.jaustinjr.employeeattendance.statusupdate.ui.StatusUpdateQuestion
 import java.util.TimeZone
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -109,6 +111,12 @@ class StatusUpdateEditViewModel(
     private val discardDialogFlow: StateFlow<Boolean> =
         savedStateHandle.getStateFlow(KEY_DISCARD_DIALOG, false)
 
+    // Not in SavedStateHandle: this is a one-shot navigation signal, not state to restore. The
+    // screen observes it to navigate only once the dialog has actually closed — see
+    // onDiscardConfirmed's doc for why that ordering matters.
+    private val _exitConfirmed = MutableStateFlow(false)
+    val exitConfirmed: StateFlow<Boolean> = _exitConfirmed.asStateFlow()
+
     val uiState: StateFlow<StatusUpdateEditUiState> =
         combine(draftsFlow, discardDialogFlow) { drafts, dialog ->
             StatusUpdateEditUiState(drafts, found = original != null, showDiscardDialog = dialog)
@@ -130,6 +138,29 @@ class StatusUpdateEditViewModel(
     /** "Keep editing". */
     fun onDiscardDialogDismissed() {
         savedStateHandle[KEY_DISCARD_DIALOG] = false
+    }
+
+    /**
+     * "Discard" in the confirmation dialog. Closes the dialog and only then signals
+     * [exitConfirmed], so the screen can close the dialog first and navigate as a separate,
+     * later effect — otherwise the dialog would still be composed while navigation happens
+     * behind it. Must not navigate itself: this ViewModel has no reference to the `NavController`,
+     * and doing the pop here instead of from the screen's effect would put the ordering back the
+     * way it was before the fix.
+     */
+    fun onDiscardConfirmed() {
+        savedStateHandle[KEY_DISCARD_DIALOG] = false
+        _exitConfirmed.value = true
+    }
+
+    /**
+     * Consumes [exitConfirmed] once the screen has acted on it. Without this, a `MutableStateFlow`
+     * conflates repeated `true` values: if [onDiscardConfirmed]'s navigation ever turned out to be
+     * a no-op (for example `popBackStack()` returning false), the flag would stay stuck at `true`
+     * forever and every later Discard would silently do nothing.
+     */
+    fun onExitHandled() {
+        _exitConfirmed.value = false
     }
 
     /** Writes the drafts back. Returns true when saved, so the caller can return to the read-only view. */

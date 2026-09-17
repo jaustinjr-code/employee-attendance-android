@@ -105,13 +105,29 @@ then each answered question. The Edit button navigates to `StatusUpdateEdit(cloc
 - If the update no longer exists (for example after "Delete all data"), both screens say so and back
   leaves directly.
 
-### Up goes through the back dispatcher
+### Up goes through an id-checked interceptor
 
-`MainActivity` passes `onNavigateUp = { onBackPressedDispatcher.onBackPressed() }` to `MainAppBar`,
-not `navController.popBackStack()`. That is what lets the editor's `BackHandler` intercept up. With
-no screen-level handler, the `NavHost`'s own back handling pops one entry, so up still returns to the
-previous destination everywhere else. Reverting to a direct pop would let up skip the discard
-confirmation.
+`MainActivity` passes `onNavigateUp = { performUp(upInterceptor, navController) }` to `MainAppBar`,
+where `performUp` (`ui/main/UpNavigation.kt`) is a small shared function — the same one
+`StatusUpdateEditFlowTest` calls, so a change to this rule can't drift between the app and its test.
+`upInterceptor` is `null` on every destination except the status update editor, which registers a
+`ui/main/UpInterceptor(entryId, onUp)` — its own discard-confirmation handler
+(`viewModel::onExitRequested`), tagged with its own `NavBackStackEntry.id` — via
+`StatusUpdateEditScreen`'s required `onInterceptUpChanged` parameter.
+
+Registration happens as soon as the editor composes, via a plain `DisposableEffect`, not gated on any
+lifecycle state: an earlier version gated it on the destination reaching `RESUMED` (mirroring how
+`BackHandler` catches system back), but `RESUMED` only arrives once `NavHost`'s *enter* transition
+finishes (~700ms by default), leaving a window right after opening the editor where up silently
+skipped the confirmation while system back already worked correctly. What makes registering this
+early *safe* — rather than reintroducing the opposite problem, a stale registration outliving a
+screen that's mid-*exit* — is the id: `performUp` only invokes `interceptor.onUp()` when
+`interceptor.entryId` still equals `navController.currentBackStackEntry?.id`. A popped entry stays
+composed through its own exit transition and so can't clear its registration until that finishes, but
+by then the current entry's id has already changed, so `performUp` falls through to a plain
+`popBackStack()` instead of invoking a handler that belongs to a screen the user has already left.
+With no registered interceptor at all, up is a direct `popBackStack()` everywhere else. Removing the
+editor's registration, or the id check, would let up skip the discard confirmation.
 
 ---
 

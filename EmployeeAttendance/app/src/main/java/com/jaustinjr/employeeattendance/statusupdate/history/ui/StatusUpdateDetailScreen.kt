@@ -83,6 +83,7 @@ fun StatusUpdateDetailContent(
             HorizontalDivider()
             StatusUpdateAnswers(shift)
         }
+        HorizontalDivider()
         Button(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.status_update_detail_edit))
         }

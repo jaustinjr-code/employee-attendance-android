@@ -123,6 +123,31 @@ class StatusUpdateHistoryViewModelsTest {
     }
 
     @Test
+    fun `discarding confirmed closes the dialog and signals exit`() {
+        val viewModel = editViewModel()
+        viewModel.onExitRequested()
+        assertTrue(viewModel.uiState.value.showDiscardDialog)
+        assertFalse(viewModel.exitConfirmed.value)
+
+        viewModel.onDiscardConfirmed()
+
+        assertFalse(viewModel.uiState.value.showDiscardDialog)
+        assertTrue(viewModel.exitConfirmed.value)
+    }
+
+    @Test
+    fun `onExitHandled resets exitConfirmed so a later discard is not swallowed`() {
+        val viewModel = editViewModel()
+        viewModel.onExitRequested()
+        viewModel.onDiscardConfirmed()
+        assertTrue(viewModel.exitConfirmed.value)
+
+        viewModel.onExitHandled()
+
+        assertFalse(viewModel.exitConfirmed.value)
+    }
+
+    @Test
     fun `drafts and the dialog survive recreating the view model from saved state`() {
         val handle = handle()
         editViewModel(handle).apply {

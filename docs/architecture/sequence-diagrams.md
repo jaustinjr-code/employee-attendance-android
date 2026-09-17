@@ -479,7 +479,7 @@ sequenceDiagram
     autonumber
     actor U as User
     participant Bar as MainAppBar
-    participant D as OnBackPressedDispatcher
+    participant MA as MainActivity (upInterceptor)
     participant E as StatusUpdateEditScreen
     participant VM as StatusUpdateEditViewModel
     participant R as StatusUpdateRepository
@@ -487,15 +487,25 @@ sequenceDiagram
 
     U->>Bar: Edit (from StatusUpdateDetail)
     Note over E,VM: drafts seeded from the saved answers into SavedStateHandle
+    E->>MA: onInterceptUpChanged(UpInterceptor(entryId, ::onExitRequested)) as soon as E composes\n(DisposableEffect, not gated on any lifecycle state — see note below)
     alt Cancel, system back, or up
-        U->>Bar: up
-        Bar->>D: onBackPressed()
-        D->>E: BackHandler (enabled while the update exists)
+        alt up
+            U->>Bar: up
+            Bar->>MA: performUp(upInterceptor, navController)
+            MA->>E: upInterceptor.onUp() — only when upInterceptor.entryId == navController.currentBackStackEntry?.id
+        else system back
+            U->>E: system back
+            Note over E: BackHandler (enabled while the update exists)
+        end
         E->>VM: onExitRequested()
         VM-->>E: showDiscardDialog = true
         alt Discard
             U->>E: Discard
-            E->>Nav: popBackStack() to StatusUpdateDetail, edits lost
+            E->>VM: onDiscardConfirmed()
+            VM-->>E: showDiscardDialog = false, exitConfirmed = true
+            Note over E: the dialog closes on this recomposition
+            E->>Nav: popBackStack() to StatusUpdateDetail, edits lost (LaunchedEffect(exitConfirmed))
+            E->>VM: onExitHandled() (resets exitConfirmed so a later Discard is not swallowed)
         else Keep editing
             U->>E: Keep editing
             E->>VM: onDiscardDialogDismissed()
@@ -505,10 +515,19 @@ sequenceDiagram
         E->>VM: save()
         VM->>R: updateAnswers(clockOutId, answers, editedAtMillis)
         R-->>VM: true
+        Note over E: focus cleared, IME hidden
         E->>Nav: popBackStack()
         Note over Nav: StatusUpdateDetailViewModel observes the repository and shows the edit
     end
+    Note over E,MA: E registers on first composition and clears on dispose — dispose doesn't run until\nthe ~700ms exit transition finishes, but that stale window is harmless: MA's performUp checks the\nregistration's entryId against the *current* back stack entry and ignores it once they no longer match.
 ```
 
-Up reaches the editor's `BackHandler` only because `MainActivity` dispatches it as a back press. See
-[../features/account.md](../features/account.md#up-goes-through-the-back-dispatcher).
+Up reaches the editor's discard confirmation because the editor registers an id-tagged interceptor
+with `MainActivity` as soon as it composes, not because it shares the `BackHandler` above (that only
+catches system back). An earlier version gated registration on the `NavBackStackEntry` reaching
+`RESUMED` instead, mirroring `BackHandler`'s own STARTED-based lifetime — but `RESUMED` only arrives
+once `NavHost`'s enter transition finishes (~700ms by default), so up silently skipped the
+confirmation for that whole window right after opening the editor. Registering immediately closes
+that gap; the id check on the interceptor (rather than lifecycle-gated clearing) is what keeps a
+stale registration from a screen that's mid-exit from being acted on. See
+[../features/account.md](../features/account.md#up-goes-through-an-id-checked-interceptor).

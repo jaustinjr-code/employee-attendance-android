@@ -13,14 +13,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -34,36 +39,91 @@ import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 
 /**
  * Editing one past status update. Opening this screen counts as having made changes: Cancel,
- * system back and the app bar's up button all ask before discarding (up reaches the [BackHandler]
- * because `MainActivity` dispatches it as a back press). Saving writes the answers and calls
- * [onSaved], which returns to the read-only screen.
+ * system back and the app bar's up button all ask before discarding. System back is caught by the
+ * [BackHandler] below; the up button is caught differently, since it lives in `MainActivity`'s app
+ * bar outside this screen's composition — this screen registers a handler for it via
+ * [onInterceptUpChanged] as soon as it composes (not gated on any lifecycle state), tagging the
+ * registration with [upEntryId] (this screen's own `NavBackStackEntry.id`, passed in as a plain
+ * string rather than the navigation type itself — this screen has no other reason to depend on
+ * `androidx.navigation`), and clears the registration on dispose. The host
+ * (`MainActivity`/`ui/main/UpNavigation.kt`) resolves registrations id-first on both the read side
+ * (`performUp` ignores a registration that no longer matches the current back stack entry) and the
+ * write side (`updateInterceptor` refuses to let a clear from a stale id overwrite a newer
+ * registration) — this screen only needs to report its own id and intent, not reason about either.
+ * Saving writes the answers and calls [onSaved], which returns to the read-only screen.
  */
 @Composable
 fun StatusUpdateEditScreen(
     onSaved: () -> Unit,
     onExit: () -> Unit,
+    onInterceptUpChanged: (entryId: String, onUp: (() -> Unit)?) -> Unit,
+    upEntryId: String,
     modifier: Modifier = Modifier,
     viewModel: StatusUpdateEditViewModel = viewModel(factory = StatusUpdateEditViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val exitConfirmed by viewModel.exitConfirmed.collectAsStateWithLifecycle()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    // Clears focus and hides the IME before actually leaving, so every exit path — Save, and
+    // Discard via the dialog — behaves the same instead of only the one path that happened to be
+    // fixed first.
+    fun leave(exit: () -> Unit) {
+        focusManager.clearFocus()
+        keyboardController?.hide()
+        exit()
+    }
 
     // Nothing to lose when the update no longer exists, so back leaves directly.
     BackHandler(enabled = state.found, onBack = viewModel::onExitRequested)
 
+    // Registers as soon as this screen composes, not gated on RESUMED (which only arrives once
+    // NavHost's *enter* transition finishes, ~700ms by default) — otherwise up would silently skip
+    // the confirmation for that whole window right after opening the editor, while BackHandler
+    // above (registered against STARTED) would already be live. This screen reports only its own
+    // id and intent; the host resolves registrations id-first (see updateInterceptor's doc), which
+    // is what makes both early registration and this effect's delayed onDispose (it doesn't run
+    // until the ~700ms exit transition finishes) safe: an id-tagged clear can neither be acted on
+    // by performUp nor overwrite a newer registration once it's no longer the current owner.
+    DisposableEffect(state.found) {
+        onInterceptUpChanged(upEntryId, if (state.found) viewModel::onExitRequested else null)
+        onDispose { onInterceptUpChanged(upEntryId, null) }
+    }
+
+    // The dialog must be gone from composition before navigating away, not after: flipping
+    // exitConfirmed closes the dialog (state change applies during composition, before this effect
+    // runs), and only once that has happened does this effect run and actually pop the back stack.
+    // Calling onExit() synchronously from the dialog's own click handler would navigate while the
+    // dialog was still on screen. Beyond visual ordering, this is also the only way the dialog
+    // actually gets closed at all once the pop is underway: collectAsStateWithLifecycle stops
+    // collecting the moment this entry drops below STARTED, so a showDiscardDialog = false emitted
+    // after that point would never be delivered — popping first would leave the flag permanently
+    // stuck at true for this (about-to-be-destroyed) instance. onExitHandled() resets exitConfirmed
+    // afterward so a later Discard is not silently dropped by MutableStateFlow's conflation of
+    // repeated `true` values.
+    LaunchedEffect(exitConfirmed) {
+        if (exitConfirmed) {
+            leave {
+                onExit()
+                viewModel.onExitHandled()
+            }
+        }
+    }
+
     StatusUpdateEditContent(
         state = state,
         onDraftChanged = viewModel::onDraftChanged,
-        onSave = { if (viewModel.save()) onSaved() },
+        onSave = {
+            if (viewModel.save()) leave { onSaved() }
+        },
         onCancel = viewModel::onExitRequested,
         modifier = modifier,
     )
 
     if (state.showDiscardDialog) {
         DiscardChangesDialog(
-            onDiscard = {
-                viewModel.onDiscardDialogDismissed()
-                onExit()
-            },
+            onDiscard = viewModel::onDiscardConfirmed,
             onKeepEditing = viewModel::onDiscardDialogDismissed,
         )
     }
@@ -109,6 +169,7 @@ fun StatusUpdateEditContent(
                 )
             }
         }
+        HorizontalDivider()
         // Next to the buttons rather than under the fields, so the keyboard can't hide why Save is off.
         if (!state.canSave) {
             Text(
