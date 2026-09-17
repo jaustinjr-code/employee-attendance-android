@@ -1,5 +1,10 @@
 package com.jaustinjr.employeeattendance.location.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -7,9 +12,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -22,14 +27,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.R
@@ -54,6 +62,31 @@ fun SettingsScreen(
     val preference by viewModel.preference.collectAsStateWithLifecycle()
     val reverseGeocodeEnabled by viewModel.reverseGeocodeEnabled.collectAsStateWithLifecycle()
     val statusUpdateEnabled by viewModel.statusUpdateEnabled.collectAsStateWithLifecycle()
+    val biweeklyReportEnabled by viewModel.biweeklyReportEnabled.collectAsStateWithLifecycle()
+
+    // The permission launcher must be owned by a composable, like LocationPermissionHost's, so the
+    // opt-in's permission step lives in this stateful wrapper rather than in the ViewModel.
+    val context = LocalContext.current
+    var notificationsDenied by rememberSaveable { mutableStateOf(false) }
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        notificationsDenied = !granted
+        if (granted) viewModel.onBiweeklyReportEnabledChanged(true)
+    }
+    val onBiweeklyReportChanged: (Boolean) -> Unit = { enabled ->
+        val needsPermission = enabled &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            notificationsDenied = false
+            viewModel.onBiweeklyReportEnabledChanged(enabled)
+        }
+    }
+
     SettingsContent(
         selected = preference,
         onSelect = viewModel::onPreferenceSelected,
@@ -62,6 +95,9 @@ fun SettingsScreen(
         statusUpdateEnabled = statusUpdateEnabled,
         onStatusUpdateEnabledChanged = viewModel::onStatusUpdateEnabledChanged,
         onDeleteAllData = viewModel::onDeleteAllData,
+        biweeklyReportEnabled = biweeklyReportEnabled,
+        onBiweeklyReportChanged = onBiweeklyReportChanged,
+        biweeklyReportDenied = notificationsDenied,
         modifier = modifier,
     )
 }
@@ -101,6 +137,9 @@ fun SettingsContent(
     onStatusUpdateEnabledChanged: (Boolean) -> Unit,
     onDeleteAllData: () -> Unit,
     modifier: Modifier = Modifier,
+    biweeklyReportEnabled: Boolean = false,
+    onBiweeklyReportChanged: (Boolean) -> Unit = {},
+    biweeklyReportDenied: Boolean = false,
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     if (showDeleteConfirm) {
@@ -168,6 +207,26 @@ fun SettingsContent(
             onCheckedChange = onStatusUpdateEnabledChanged,
             switchTestTag = SettingsTestTags.STATUS_UPDATE_SWITCH,
         )
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        Text(
+            text = stringResource(R.string.settings_reports_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        SwitchRow(
+            titleRes = R.string.settings_biweekly_report_title,
+            descriptionRes = R.string.settings_biweekly_report_desc,
+            checked = biweeklyReportEnabled,
+            onCheckedChange = onBiweeklyReportChanged,
+        )
+        if (biweeklyReportDenied) {
+            Text(
+                text = stringResource(R.string.settings_biweekly_report_denied),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 

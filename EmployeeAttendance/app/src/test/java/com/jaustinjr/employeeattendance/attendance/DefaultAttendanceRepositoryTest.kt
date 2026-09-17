@@ -35,6 +35,28 @@ class DefaultAttendanceRepositoryTest {
     }
 
     @Test
+    fun `eventLog publishes a new list on every change and never mutates an emitted one`() {
+        val local = FakeAttendanceLocalDataSource(
+            stored = listOf(AttendanceEvent("site-a", ClockType.CLOCK_IN, 500L)),
+        )
+        val repo = repo(local)
+        val seeded = repo.eventLog.value
+        assertEquals(1, seeded.size)
+
+        repo.recordClockOut("site-a", 1_000L, ClockSource.MANUAL)
+        val afterOut = repo.eventLog.value
+        assertEquals(1, seeded.size)
+        assertEquals(listOf(500L, 1_000L), afterOut.map { it.epochMillis })
+
+        repo.undoEvent("site-a", ClockType.CLOCK_OUT, 1_000L)
+        assertEquals(2, afterOut.size)
+        assertEquals(listOf(500L), repo.eventLog.value.map { it.epochMillis })
+
+        repo.clearAll()
+        assertEquals(emptyList<AttendanceEvent>(), repo.eventLog.value)
+    }
+
+    @Test
     fun `clock-out is tracked with its source`() {
         val repo = repo()
         repo.recordClockOut("site-a", 9_000L, ClockSource.MANUAL)

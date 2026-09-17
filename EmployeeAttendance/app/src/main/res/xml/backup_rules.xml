@@ -33,6 +33,9 @@
     <!-- user_profile: the display name the user entered -->
     <exclude domain="sharedpref" path="user_profile.xml"/>
     <exclude domain="sharedpref" path="user_profile_secure.xml"/>
+    <!-- report_settings: biweekly report opt-in and last-notified period -->
+    <exclude domain="sharedpref" path="report_settings.xml"/>
+    <exclude domain="sharedpref" path="report_settings_secure.xml"/>
     <!-- developer_settings: debug-only developer overrides -->
     <exclude domain="sharedpref" path="developer_settings.xml"/>
     <exclude domain="sharedpref" path="developer_settings_secure.xml"/>

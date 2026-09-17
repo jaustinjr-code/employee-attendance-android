@@ -42,6 +42,8 @@ class RecordingAttendanceRepository(
 
     override val attendance: StateFlow<Map<String, LocationAttendance>> get() = delegate.attendance
 
+    override val eventLog: StateFlow<List<AttendanceEvent>> get() = delegate.eventLog
+
     override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) {
         clockIns += locationId
         delegate.recordClockIn(locationId, epochMillis, source)

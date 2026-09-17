@@ -303,4 +303,61 @@
     <string name="settings_status_update_title">Status updates</string>
     <string name="settings_status_update_switch_title">Ask after clock-out</string>
     <string name="settings_status_update_desc">After you clock out, ask for a quick status update — what you did today, what\'s planned for tomorrow, and what couldn\'t be done.</string>
+
+    <!-- Reports -->
+    <string name="reports_title">Reports</string>
+    <string name="nav_attendance">Attendance</string>
+    <string name="nav_reports">Reports</string>
+    <string name="reports_period_week">Week</string>
+    <string name="reports_period_biweekly">Two weeks</string>
+    <string name="reports_period_month">Month</string>
+    <string name="reports_date_range">%1$s – %2$s</string>
+    <string name="reports_duration">%1$dh %2$02dm</string>
+    <string name="reports_previous_period">Previous period</string>
+    <string name="reports_next_period">Next period</string>
+    <string name="reports_active_shift_note">You\'re clocked in at %1$s since %2$s. That shift isn\'t included until you clock out.</string>
+    <string name="reports_worksite_general">General timeclock</string>
+    <string name="reports_worksite_removed">Removed worksite</string>
+    <string name="reports_stat_total">Total worked</string>
+    <string name="reports_stat_shifts">Shifts</string>
+    <string name="reports_stat_days_worked">Days worked</string>
+    <string name="reports_stat_average_per_day">Average per day worked</string>
+    <string name="reports_stat_longest_shift">Longest shift</string>
+    <string name="reports_stat_average_clock_in">Average clock-in</string>
+    <string name="reports_stat_none">—</string>
+    <string name="reports_empty">No completed shifts in this period.</string>
+    <string name="reports_chart_daily_title">Hours by day</string>
+    <string name="reports_chart_worksite_title">Time by worksite</string>
+    <string name="reports_chart_daily_description">Bar chart of hours worked per day. %1$s</string>
+    <string name="reports_chart_worksite_description">Pie chart of time by worksite. %1$s</string>
+    <string name="reports_worksite_value">%1$s · %2$d%%</string>
+    <string name="reports_worksite_share">%1$s, %2$s (%3$d%%)</string>
+    <string name="reports_biweekly_title">Last two weeks</string>
+    <string name="reports_biweekly_headline">%1$s across %2$s</string>
+    <plurals name="reports_shift_count">
+        <item quantity="one">%d shift</item>
+        <item quantity="other">%d shifts</item>
+    </plurals>
+    <string name="reports_biweekly_top_worksite">Most time at %1$s</string>
+    <string name="reports_change_up">Up %1$s from the two weeks before</string>
+    <string name="reports_change_down">Down %1$s from the two weeks before</string>
+    <string name="reports_change_none">Same as the two weeks before</string>
+    <string name="reports_share">Share</string>
+    <string name="reports_email">Email</string>
+    <string name="reports_share_failed">Couldn\'t prepare the report to share.</string>
+    <string name="reports_share_no_app">No app is available to share the report.</string>
+    <string name="report_share_chooser">Share attendance report</string>
+    <string name="report_share_subject">Attendance report: %1$s, %2$s</string>
+    <string name="report_text_title">Employee Attendance report</string>
+    <string name="report_text_by_day">By day</string>
+    <string name="report_text_by_worksite">By worksite</string>
+
+    <!-- Biweekly report notification -->
+    <string name="report_notification_channel_name">Biweekly reports</string>
+    <string name="report_notification_channel_description">A summary of your hours every other Sunday.</string>
+    <string name="report_notification_title">Your two-week summary: %1$s</string>
+    <string name="settings_reports_title">Reports</string>
+    <string name="settings_biweekly_report_title">Biweekly report notification</string>
+    <string name="settings_biweekly_report_desc">Every other Sunday, get a notification summarizing the previous two weeks. Shifts still in progress aren\'t counted.</string>
+    <string name="settings_biweekly_report_denied">Notifications are turned off for this app, so the biweekly report can\'t be shown.</string>
 </resources>

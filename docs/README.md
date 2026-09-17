@@ -51,6 +51,8 @@ touch.
   clock-out: the prompt-or-notification policy, the notification launch path, undo, and the card deck.
 - [features/work-location-registration.md](features/work-location-registration.md) — the work
   location model and the (stubbed) registration layer.
+- [features/reporting.md](features/reporting.md) — the Reports tab: weekly/monthly analysis, charts,
+  sharing, and the opt-in biweekly notification.
 
 ## One-paragraph orientation
 

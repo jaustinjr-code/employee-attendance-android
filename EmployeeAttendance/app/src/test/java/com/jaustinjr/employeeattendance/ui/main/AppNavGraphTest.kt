@@ -17,18 +17,25 @@ import org.junit.Test
 class AppNavGraphTest {
 
     @Test
-    fun `attendance is the root and nothing else is`() {
+    fun `attendance is the root and the first tab`() {
         assertSame(AppNavGraph.Attendance, AppNavGraph.root)
-        assertTrue(AppNavGraph.root.isRoot)
-        assertNull(AppNavGraph.root.parent)
-
-        val roots = AppNavGraph.all.filter { it.isRoot }
-        // Two roots would mean a destination that shows the account affordance without being home.
-        assertEquals(listOf(AppNavGraph.root), roots)
+        assertTrue(AppNavGraph.root.isTopLevel)
+        assertSame(AppNavGraph.root, AppNavGraph.topLevel.first())
     }
 
     @Test
-    fun `every parent chain terminates at the root`() {
+    fun `the top-level destinations are exactly the bottom bar tabs`() {
+        // A parentless destination that is not a tab would show the account affordance and the
+        // bottom bar while being unreachable from it.
+        assertEquals(
+            listOf(AppNavGraph.Attendance, AppNavGraph.Reports),
+            AppNavGraph.all.filter { it.isTopLevel },
+        )
+        assertEquals(AppNavGraph.topLevel, AppNavGraph.all.filter { it.isTopLevel })
+    }
+
+    @Test
+    fun `every parent chain terminates at a tab`() {
         // A cycle here would hang `ancestors`, and a chain ending anywhere else would mean a
         // destination the user cannot walk up out of.
         AppNavGraph.all.forEach { destination ->
@@ -38,10 +45,10 @@ class AppNavGraphTest {
                 "${destination.route} has more ancestors than the graph has destinations",
                 ancestors.size < AppNavGraph.all.size,
             )
-            if (destination.isRoot) {
+            if (destination.isTopLevel) {
                 assertEquals(emptyList<AppDestination>(), ancestors)
             } else {
-                assertSame(AppNavGraph.root, ancestors.last())
+                assertTrue(ancestors.last() in AppNavGraph.topLevel)
             }
         }
     }
@@ -83,9 +90,10 @@ class AppNavGraphTest {
     }
 
     @Test
-    fun `every destination below the root is a child`() {
-        // The root keeps the account affordance; everything beneath it shows an up button instead.
+    fun `every destination below a tab is a child`() {
+        // Tabs keep the account affordance; everything beneath them shows an up button instead.
         assertFalse(isChildDestination(AttendanceRoute))
+        assertFalse(isChildDestination(ReportsRoute))
         assertTrue(isChildDestination(LocationDetailRoute))
         assertTrue(isChildDestination(WorksitesRoute))
         assertTrue(isChildDestination(WorksiteRegistrationRoute))
@@ -114,6 +122,7 @@ class AppNavGraphTest {
         // Guards the graph against a rename or package move silently falling through to the root
         // fallback, which would look like the destination simply losing its title and up button.
         assertEquals("com.jaustinjr.employeeattendance.Attendance", AttendanceRoute)
+        assertEquals("com.jaustinjr.employeeattendance.Reports", ReportsRoute)
         assertEquals("com.jaustinjr.employeeattendance.LocationDetail", LocationDetailRoute)
         assertEquals("com.jaustinjr.employeeattendance.Worksites", WorksitesRoute)
         assertEquals(

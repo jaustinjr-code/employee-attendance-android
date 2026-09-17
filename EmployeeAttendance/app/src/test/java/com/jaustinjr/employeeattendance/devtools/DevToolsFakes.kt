@@ -100,6 +100,9 @@ class FakeAttendanceRepository : AttendanceRepository {
     private val _attendance = MutableStateFlow<Map<String, LocationAttendance>>(emptyMap())
     override val attendance: StateFlow<Map<String, LocationAttendance>> = _attendance
 
+    private val _eventLog = MutableStateFlow<List<AttendanceEvent>>(emptyList())
+    override val eventLog: StateFlow<List<AttendanceEvent>> = _eventLog
+
     override fun recordClockIn(locationId: String, epochMillis: Long, source: ClockSource) {
         events += AttendanceEvent(locationId, ClockType.CLOCK_IN, epochMillis, source)
         recompute()
@@ -137,6 +140,7 @@ class FakeAttendanceRepository : AttendanceRepository {
     }
 
     private fun recompute() {
+        _eventLog.value = events.toList()
         _attendance.value = events.groupBy { it.locationId }.mapValues { (_, forLocation) ->
             LocationAttendance(
                 lastClockInMillis = forLocation.filter { it.type == ClockType.CLOCK_IN }
