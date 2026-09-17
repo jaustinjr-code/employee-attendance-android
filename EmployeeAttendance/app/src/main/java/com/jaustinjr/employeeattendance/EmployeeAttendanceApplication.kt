@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.work.Configuration
 import com.jaustinjr.employeeattendance.di.AppContainer
 import com.jaustinjr.employeeattendance.di.DefaultAppContainer
+import com.jaustinjr.employeeattendance.statusupdate.AppForegroundTracker
+import com.jaustinjr.employeeattendance.statusupdate.DefaultAppForegroundTracker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,14 +23,16 @@ import kotlinx.coroutines.launch
  *
  * ## Startup threading (issue #19)
  * [onCreate] runs on the main thread before any window exists, so it must not touch disk or the
- * Android Keystore. Five of the container's singletons are backed by `EncryptedSharedPreferences`
+ * Android Keystore. Six of the container's singletons are backed by `EncryptedSharedPreferences`
  * (Keystore key unwrap + file I/O + JSON decode each), so the feature wiring that pulls them in is
  * moved onto [applicationScope] (`Dispatchers.IO`) as [startupJob].
  *
  * ### Why this is still ordering-safe
- * 1. `DefaultAppContainer(this)` itself stays on the main thread. It only allocates the object;
- *    every dependency inside it is `by lazy`, so no disk or crypto work happens here. That keeps
- *    `container` assigned before [onCreate] returns, so no component can ever observe the
+ * 1. `DefaultAppContainer(this, appForegroundTracker)` itself stays on the main thread. Besides the
+ *    eagerly-built [appForegroundTracker] passed in (pure callback registration, no I/O; see its
+ *    KDoc for why it can't wait for the container's usual `by lazy` wiring), it only allocates the
+ *    object — every other dependency inside it is `by lazy`, so no disk or crypto work happens here.
+ *    That keeps `container` assigned before [onCreate] returns, so no component can ever observe the
  *    `lateinit` unset — which is exactly the crash a background assignment would risk.
  * 2. Kotlin's default `by lazy` is `LazyThreadSafetyMode.SYNCHRONIZED`, so a UI read racing the
  *    background wiring blocks until construction finishes and still sees a single instance --
@@ -59,18 +63,28 @@ import kotlinx.coroutines.launch
  * observes [startupComplete] and renders a loading state until the wiring settles, constructing no
  * ViewModel before then. The main thread stays free to render instead of blocking.
  *
- * The guarantee only holds for stores [startupJob] actually forces, so it forces **all five**
+ * The guarantee only holds for stores [startupJob] actually forces, so it forces **all six**
  * `EncryptedSharedPreferences`-backed ones. Four come in transitively via the wiring above
  * (`attendanceRepository`, `workLocationRepository`, `proximityRepository`,
- * `clockNotificationSettingsStore`); `privacySettingsStore` does not, and is forced explicitly —
- * without that, `SettingsViewModel.Factory` and `WorksiteRegistrationViewModel.Factory` would still
- * construct it on the main thread during a navigation transition, after the gate had opened. The
- * container's remaining dependencies (`locationTracker`, `addressGeocoder`, `addressAutocomplete`)
- * touch no disk and need no warm-up.
+ * `clockNotificationSettingsStore`); `privacySettingsStore`, `userProfileStore` and
+ * `statusUpdateSettingsStore` do not, and are forced explicitly — without that,
+ * `SettingsViewModel.Factory`, `WorksiteRegistrationViewModel.Factory` and `LocationViewModel.Factory`
+ * (which now also reads `statusUpdateCoordinator`, transitively touching
+ * `statusUpdateSettingsStore`) would still construct it on the main thread during a navigation
+ * transition, after the gate had opened. The container's remaining dependencies (`locationTracker`,
+ * `addressGeocoder`, `addressAutocomplete`) touch no disk and need no warm-up.
  */
 class EmployeeAttendanceApplication : Application(), Configuration.Provider {
 
     lateinit var container: AppContainer
+        private set
+
+    /**
+     * Whether any Activity is currently visible. Registered eagerly in [onCreate] — see the
+     * comment there — rather than lazily via the container, so the very first `onStart` (which can
+     * land microseconds after [onCreate] returns) is never missed.
+     */
+    lateinit var appForegroundTracker: AppForegroundTracker
         private set
 
     /** App-lifetime scope for coordination that must run regardless of any screen being visible. */
@@ -102,8 +116,16 @@ class EmployeeAttendanceApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        // Registered before anything else: DefaultAppForegroundTracker's activity count only sees
+        // a matching onStart/onStop pair if the callback is already registered when the first one
+        // fires. MainActivity's first onStart can land microseconds after this method returns, so
+        // building this lazily (as the container's other dependencies are) risks registering after
+        // that onStart — the count would then only ever see the matching onStop and never recover,
+        // leaving isForeground stuck false for the rest of the process. Pure Application-callback
+        // registration, no disk or crypto work, so doing it here on the main thread costs nothing.
+        appForegroundTracker = DefaultAppForegroundTracker(this)
         // Allocation only — every dependency inside is `by lazy`, so this does no I/O.
-        container = DefaultAppContainer(this)
+        container = DefaultAppContainer(this, appForegroundTracker)
         // Dispatchers.IO: constructing the stores is blocking disk + Keystore work, which must not
         // occupy a Default worker (those are sized for CPU work and are what the collectors below
         // run on).
@@ -132,6 +154,7 @@ class EmployeeAttendanceApplication : Application(), Configuration.Provider {
                 // with. Constructing it here keeps the gate's guarantee true for every factory.
                 container.privacySettingsStore
                 container.userProfileStore
+                container.statusUpdateSettingsStore
                 // Also the first WorkManager call in the process: on-demand initialization (its
                 // startup provider is removed in the manifest) opens its database here on IO
                 // instead of on the main thread before the first frame.

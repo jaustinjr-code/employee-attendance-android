@@ -8,6 +8,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -31,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
@@ -41,6 +44,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.settings.ClockNotificationPreference
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
+
+/** Test tags for the androidTest layer; not user-visible. */
+object SettingsTestTags {
+    const val STATUS_UPDATE_SWITCH = "settings_status_update_switch"
+}
 
 /**
  * Settings screen. Hosts the account display name (temporarily — see
@@ -56,6 +64,7 @@ fun SettingsScreen(
     val preference by viewModel.preference.collectAsStateWithLifecycle()
     val reverseGeocodeEnabled by viewModel.reverseGeocodeEnabled.collectAsStateWithLifecycle()
     val displayName by viewModel.displayName.collectAsStateWithLifecycle()
+    val statusUpdateEnabled by viewModel.statusUpdateEnabled.collectAsStateWithLifecycle()
     val biweeklyReportEnabled by viewModel.biweeklyReportEnabled.collectAsStateWithLifecycle()
 
     // The permission launcher must be owned by a composable, like LocationPermissionHost's, so the
@@ -88,6 +97,8 @@ fun SettingsScreen(
         onDisplayNameChanged = viewModel::onDisplayNameChanged,
         reverseGeocodeEnabled = reverseGeocodeEnabled,
         onReverseGeocodeChanged = viewModel::onReverseGeocodeEnabledChanged,
+        statusUpdateEnabled = statusUpdateEnabled,
+        onStatusUpdateEnabledChanged = viewModel::onStatusUpdateEnabledChanged,
         onDeleteAllData = viewModel::onDeleteAllData,
         biweeklyReportEnabled = biweeklyReportEnabled,
         onBiweeklyReportChanged = onBiweeklyReportChanged,
@@ -129,6 +140,8 @@ fun SettingsContent(
     onDisplayNameChanged: (String) -> Unit,
     reverseGeocodeEnabled: Boolean,
     onReverseGeocodeChanged: (Boolean) -> Unit,
+    statusUpdateEnabled: Boolean,
+    onStatusUpdateEnabledChanged: (Boolean) -> Unit,
     onDeleteAllData: () -> Unit,
     modifier: Modifier = Modifier,
     biweeklyReportEnabled: Boolean = false,
@@ -146,7 +159,14 @@ fun SettingsContent(
         )
     }
     Column(
-        modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+        // The sections outgrow short screens; without scrolling, the last rows are squeezed into
+        // the remaining height and draw over each other. Insets as in WorksiteRegistrationScreen.
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .navigationBarsPadding()
+            .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         AccountSection(
@@ -186,6 +206,20 @@ fun SettingsContent(
             descriptionRes = R.string.settings_reverse_geocode_desc,
             checked = reverseGeocodeEnabled,
             onCheckedChange = onReverseGeocodeChanged,
+        )
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        Text(
+            text = stringResource(R.string.settings_status_update_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        SwitchRow(
+            titleRes = R.string.settings_status_update_switch_title,
+            descriptionRes = R.string.settings_status_update_desc,
+            checked = statusUpdateEnabled,
+            onCheckedChange = onStatusUpdateEnabledChanged,
+            switchTestTag = SettingsTestTags.STATUS_UPDATE_SWITCH,
         )
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -299,6 +333,7 @@ private fun SwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    switchTestTag: String? = null,
 ) {
     androidx.compose.foundation.layout.Row(
         modifier = modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -313,7 +348,11 @@ private fun SwitchRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = switchTestTag?.let { Modifier.testTag(it) } ?: Modifier,
+        )
     }
 }
 
@@ -358,6 +397,8 @@ private fun SettingsPreview() {
             onDisplayNameChanged = {},
             reverseGeocodeEnabled = true,
             onReverseGeocodeChanged = {},
+            statusUpdateEnabled = true,
+            onStatusUpdateEnabledChanged = {},
             onDeleteAllData = {},
         )
     }

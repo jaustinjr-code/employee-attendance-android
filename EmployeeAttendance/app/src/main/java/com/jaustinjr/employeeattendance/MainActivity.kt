@@ -8,6 +8,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
@@ -35,6 +37,9 @@ import com.jaustinjr.employeeattendance.location.ui.LocationViewModel
 import com.jaustinjr.employeeattendance.location.ui.SettingsScreen
 import com.jaustinjr.employeeattendance.location.ui.WorksiteRegistrationScreen
 import com.jaustinjr.employeeattendance.location.ui.WorksitesScreen
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateIntents
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRequest
+import com.jaustinjr.employeeattendance.statusupdate.ui.StatusUpdateOverlayHost
 import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
 import com.jaustinjr.employeeattendance.ui.main.AppNavGraph
 import com.jaustinjr.employeeattendance.ui.main.MainAppBar
@@ -74,6 +79,16 @@ object Settings
 object DeveloperSettings
 
 class MainActivity : ComponentActivity() {
+
+    // A notification tap's Status Update request, captured here rather than read from `intent`
+    // directly in composition: a Factory can't be constructed before StartupGate opens (see the
+    // comment below), so the request has to wait outside Compose until then. Populated only on a
+    // fresh intent (`onCreate` with no saved state, or `onNewIntent`) and cleared once
+    // StatusUpdateOverlayHost consumes it, so a later configuration change does not reopen it —
+    // on a config change, `onCreate` runs again but with `savedInstanceState != null`, so this
+    // stays at its default `null`.
+    private var pendingStatusUpdateRequest by mutableStateOf<StatusUpdateRequest?>(null)
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,6 +98,9 @@ class MainActivity : ComponentActivity() {
         // user is, and re-applying the extra would yank them back to Reports.
         val openReportsOnStart =
             savedInstanceState == null && intent?.getStringExtra(EXTRA_START_TAB) == TAB_REPORTS
+        if (savedInstanceState == null) {
+            pendingStatusUpdateRequest = StatusUpdateIntents.consumeRequest(intent)
+        }
         setContent {
             EmployeeAttendanceTheme {
                 // Gate every ViewModel construction on startup wiring being finished (issue #58).
@@ -174,97 +192,116 @@ class MainActivity : ComponentActivity() {
                     val locationPermissionViewModel: LocationPermissionViewModel =
                         viewModel(factory = LocationPermissionViewModel.Factory)
 
-                    Scaffold(
-                        topBar = {
-                            MainAppBar(
-                                title = appBarTitle,
-                                showUpButton = showUpButton,
-                                // A plain pop, so up goes to the destination the user came from
-                                // rather than jumping to the root.
-                                onNavigateUp = { navController.popBackStack() },
-                                // launchSingleTop: the overflow menu is on every destination, so
-                                // picking the one already on screen would otherwise push a
-                                // duplicate that up has to be pressed twice to get past.
-                                onOpenWorksites = {
-                                    navController.navigate(Worksites) { launchSingleTop = true }
-                                },
-                                onOpenSettings = {
-                                    navController.navigate(Settings) { launchSingleTop = true }
-                                },
-                                onTitleClick = onTitleClick,
-                            )
-                        },
-                        bottomBar = {
-                            // Tabs only: a child screen is a drill-in with an up button, and a
-                            // bottom bar there would offer a second, conflicting way out.
-                            if (!showUpButton) {
-                                MainBottomBar(
-                                    currentRoute = currentRoute,
-                                    onSelect = { destination ->
-                                        navController.navigateToTab(
-                                            if (destination == AppNavGraph.Reports) Reports else Attendance,
-                                        )
+                    // The Status Update overlay is a sibling of the Scaffold, not part of the
+                    // NavHost: it must render over whatever destination is current without
+                    // navigating to or disturbing it. See StatusUpdateOverlayHost's doc.
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Scaffold(
+                            topBar = {
+                                MainAppBar(
+                                    title = appBarTitle,
+                                    showUpButton = showUpButton,
+                                    // A plain pop, so up goes to the destination the user came from
+                                    // rather than jumping to the root.
+                                    onNavigateUp = { navController.popBackStack() },
+                                    // launchSingleTop: the overflow menu is on every destination, so
+                                    // picking the one already on screen would otherwise push a
+                                    // duplicate that up has to be pressed twice to get past.
+                                    onOpenWorksites = {
+                                        navController.navigate(Worksites) { launchSingleTop = true }
                                     },
+                                    onOpenSettings = {
+                                        navController.navigate(Settings) { launchSingleTop = true }
+                                    },
+                                    onTitleClick = onTitleClick,
                                 )
-                            }
-                        },
-                    ) { padding ->
-                        NavHost(
-                            navController,
-                            startDestination = Attendance,
-                            modifier = Modifier.padding(padding),
-                        ) {
-                            composable<Attendance> {
-                                // Navigating from here rather than from an effect beside the
-                                // Scaffold: the NavHost is subcomposed after that effect runs, so
-                                // its graph would not be set yet. Attendance is the start
-                                // destination, so this is the first place navigation is legal,
-                                // and it leaves Attendance beneath Reports for back.
-                                if (pendingOpenReports) {
-                                    LaunchedEffect(Unit) {
-                                        pendingOpenReports = false
-                                        navController.navigateToTab(Reports)
-                                    }
+                            },
+                            bottomBar = {
+                                // Tabs only: a child screen is a drill-in with an up button, and a
+                                // bottom bar there would offer a second, conflicting way out.
+                                if (!showUpButton) {
+                                    MainBottomBar(
+                                        currentRoute = currentRoute,
+                                        onSelect = { destination ->
+                                            navController.navigateToTab(
+                                                if (destination == AppNavGraph.Reports) Reports else Attendance,
+                                            )
+                                        },
+                                    )
                                 }
-                                AttendanceScreen(
-                                    onOpenLocationDetail = { navController.navigate(LocationDetail) },
-                                    onAddWorksite = { navController.navigate(WorksiteRegistration) },
-                                    locationViewModel = locationViewModel,
-                                    locationPermissionViewModel = locationPermissionViewModel,
-                                )
-                            }
-                            composable<Reports> {
-                                ReportsScreen()
-                            }
-                            composable<LocationDetail> {
-                                LocationDetailScreen(
-                                    viewModel = locationViewModel,
-                                    onManageWorksites = { navController.navigate(Worksites) },
-                                )
-                            }
-                            composable<Worksites> {
-                                WorksitesScreen(
-                                    onAddWorksite = { navController.navigate(WorksiteRegistration) },
-                                )
-                            }
-                            composable<WorksiteRegistration> {
-                                WorksiteRegistrationScreen(
-                                    onSaved = { navController.popBackStack() },
-                                )
-                            }
-                            composable<Settings> {
-                                SettingsScreen()
-                            }
-                            if (BuildConfig.DEBUG) {
-                                composable<DeveloperSettings> {
-                                    DeveloperSettingsScreen()
+                            },
+                        ) { padding ->
+                            NavHost(
+                                navController,
+                                startDestination = Attendance,
+                                modifier = Modifier.padding(padding),
+                            ) {
+                                composable<Attendance> {
+                                    // Navigating from here rather than from an effect beside the
+                                    // Scaffold: the NavHost is subcomposed after that effect runs, so
+                                    // its graph would not be set yet. Attendance is the start
+                                    // destination, so this is the first place navigation is legal,
+                                    // and it leaves Attendance beneath Reports for back.
+                                    if (pendingOpenReports) {
+                                        LaunchedEffect(Unit) {
+                                            pendingOpenReports = false
+                                            navController.navigateToTab(Reports)
+                                        }
+                                    }
+                                    AttendanceScreen(
+                                        onOpenLocationDetail = { navController.navigate(LocationDetail) },
+                                        onAddWorksite = { navController.navigate(WorksiteRegistration) },
+                                        locationViewModel = locationViewModel,
+                                        locationPermissionViewModel = locationPermissionViewModel,
+                                    )
+                                }
+                                composable<Reports> {
+                                    ReportsScreen()
+                                }
+                                composable<LocationDetail> {
+                                    LocationDetailScreen(
+                                        viewModel = locationViewModel,
+                                        onManageWorksites = { navController.navigate(Worksites) },
+                                    )
+                                }
+                                composable<Worksites> {
+                                    WorksitesScreen(
+                                        onAddWorksite = { navController.navigate(WorksiteRegistration) },
+                                    )
+                                }
+                                composable<WorksiteRegistration> {
+                                    WorksiteRegistrationScreen(
+                                        onSaved = { navController.popBackStack() },
+                                    )
+                                }
+                                composable<Settings> {
+                                    SettingsScreen()
+                                }
+                                if (BuildConfig.DEBUG) {
+                                    composable<DeveloperSettings> {
+                                        DeveloperSettingsScreen()
+                                    }
                                 }
                             }
                         }
+
+                        StatusUpdateOverlayHost(
+                            pendingNotificationRequest = pendingStatusUpdateRequest,
+                            onNotificationRequestConsumed = { pendingStatusUpdateRequest = null },
+                        )
                     }
                 }
             }
         }
+    }
+
+    // Delivers a notification tap while the Activity is already running (warm start). Requires
+    // launchMode="singleTop" on this Activity's manifest entry, so the tap reaches onNewIntent
+    // instead of creating a second instance.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingStatusUpdateRequest = StatusUpdateIntents.consumeRequest(intent)
     }
 
     companion object {

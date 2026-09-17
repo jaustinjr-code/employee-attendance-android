@@ -11,6 +11,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
 import com.jaustinjr.employeeattendance.attendance.ClockSource
+import com.jaustinjr.employeeattendance.attendance.ClockType
 import com.jaustinjr.employeeattendance.location.permission.LocationAccessLevel
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.proximity.ProximityRepository
@@ -21,6 +22,8 @@ import com.jaustinjr.employeeattendance.location.tracking.LocationPowerPolicy
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.TrackingStatus
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateCoordinator
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateTrigger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -120,6 +123,7 @@ class LocationViewModel(
     private val permissionRepository: LocationPermissionRepository,
     private val locationTracker: LocationTracker,
     private val attendanceRepository: AttendanceRepository,
+    private val statusUpdateCoordinator: StatusUpdateCoordinator,
 ) : ViewModel() {
 
     val uiState: StateFlow<LocationUiState> = combine(
@@ -166,11 +170,22 @@ class LocationViewModel(
     /**
      * Records a *manual* clock-out against the active worksite, or the general timeclock when none is
      * active. Manual clock-outs are shown on the attendance screen; automatic (geofence) ones are not.
+     *
+     * Guarded on the clocked-in state (like the auto-clock pipeline's strategies), so a redundant
+     * tap — already clocked out — records nothing and does not report a second clock-out to
+     * [statusUpdateCoordinator]; without the guard, tapping an already-clocked-out button would
+     * still pop the "Start status update?" prompt for a clock-out that never happened.
      */
     fun onClockOut() {
         val id = manualClockId()
+        val event = attendanceRepository.recordIfStateChanges(
+            id, ClockType.CLOCK_OUT, source = ClockSource.MANUAL,
+        ) ?: return
         Log.d(TAG, "onClockOut: id=$id")
-        attendanceRepository.recordClockOut(id, source = ClockSource.MANUAL)
+        // Every clock-out routes through Status Update's policy, manual ones included — a manual
+        // tap is by definition in the foreground, but the coordinator still decides based on the
+        // MANUAL trigger rather than that being assumed here.
+        statusUpdateCoordinator.onClockOut(id, event.epochMillis, StatusUpdateTrigger.MANUAL)
     }
 
     private fun manualClockId(): String =
@@ -226,6 +241,7 @@ class LocationViewModel(
                     permissionRepository = container.locationPermissionRepository,
                     locationTracker = container.locationTracker,
                     attendanceRepository = container.attendanceRepository,
+                    statusUpdateCoordinator = container.statusUpdateCoordinator,
                 )
             }
         }

@@ -72,6 +72,24 @@ repository here.
 `LocationPermissionViewModel` instance the setup chip drives. Move one without the other and tapping
 the chip stops opening the dialog.
 
+## What a clock-out also triggers
+
+Every clock-out that records an event also offers a Status Update. This applies to the manual button,
+automatic geofence clock-outs, and a clock-out confirmed from its notification.
+
+- `LocationViewModel.onClockOut()` records through `recordIfStateChanges(id, CLOCK_OUT, source =
+  MANUAL)`, so tapping clock-out while already clocked out records nothing and offers nothing. It
+  then calls `StatusUpdateCoordinator.onClockOut(id, event.epochMillis, StatusUpdateTrigger.MANUAL)`.
+- Automatic and confirmed clock-outs report through `ClockOutListener`
+  (`AppContainer.clockOutListener`) from `GuardedClockStrategy.record` and
+  `ClockActionHandler.confirm`.
+- Undoing a clock-out from its notification calls `ClockOutListener.onClockOutUndone`, which pulls the
+  prompt, the notification, or an open deck for it.
+
+If you add a new way to clock out, report it after the event is recorded: through
+`container.clockOutListener` from non-UI code, or by calling the coordinator with `MANUAL` from a
+ViewModel. The policy, the overlay, and the tests are in [status-updates.md](status-updates.md).
+
 ## Known gaps
 
 These are real, currently-shipping limitations. Fixing any of them is a well-scoped first task.
@@ -79,7 +97,6 @@ These are real, currently-shipping limitations. Fixing any of them is a well-sco
 | Gap | Where | Notes |
 | --- | --- | --- |
 | Clock state is composable-local | `TimeCheck` uses `rememberSaveable` | survives config change, lost on process death; belongs in a ViewModel/repository |
-| Clock-out isn't recorded | `TimeCheck.onClick` else-branch | only `onClockIn()` reaches `LocationClockInRepository` |
 | Clock-in isn't gated on proximity | `TimeCheck` | you can clock in while `ProximityState.OUTSIDE` |
 | Hardcoded strings | `"Good morning, Superstar"`, `"Current Time"`, `"Clock in"`, `"Clock out"`, `"Attendance"` title in `MainActivity` | should move to `strings.xml` |
 | Greeting is time-of-day-agnostic | `Greeting` | always "Good morning" |
@@ -92,7 +109,8 @@ These are real, currently-shipping limitations. Fixing any of them is a well-sco
 | --- | --- |
 | Greeting text/format | `Greeting` + `AttendanceViewModel.getTodayDateName()` |
 | Clock format | `SimpleDateFormat("HH:mm:ss")` in `TimeCheck` and `LiveClock` |
-| What clocking in records | `LocationViewModel.onClockIn()` → `LocationClockInRepository` |
+| What clocking in records | `LocationViewModel.onClockIn()` → `AttendanceRepository.recordClockIn` |
+| What happens after a clock-out | `StatusUpdateCoordinator.onClockOut`; see [status-updates.md](status-updates.md) |
 | Which location control shows | `LocationUiState.isSetUp` in `LocationViewModel.kt` |
 | App bar title for a new destination | the `LaunchedEffect` inside that destination's `composable<…>` block in `MainActivity` |
 | Theme/colors/typography | `ui/theme/` |

@@ -30,6 +30,8 @@ class AttendanceAutoClockController(
     private val attendanceRepository: AttendanceRepository,
     private val notifier: ClockNotifications,
     private val preference: StateFlow<ClockNotificationPreference>,
+    /** Notified on every auto-driven clock-out; see [ClockOutListener]. */
+    private val clockOutListener: ClockOutListener? = null,
 ) {
 
     /**
@@ -104,6 +106,7 @@ class AttendanceAutoClockController(
             preference = current,
             attendance = attendanceRepository,
             notifier = notifier,
+            clockOutListener = clockOutListener,
         )
         Log.d(TAG, "handle $event via $current")
         when (event) {

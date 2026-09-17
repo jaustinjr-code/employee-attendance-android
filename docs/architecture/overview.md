@@ -24,22 +24,24 @@ one of them is a source of coupling you need to know about:
 ```mermaid
 graph TB
     subgraph Presentation["Presentation — Compose + ViewModels"]
-        MA["MainActivity<br/>NavHost + bottom bar: Attendance | Reports"]
+        MA["MainActivity<br/>StartupGate + NavHost + bottom bar: Attendance | Reports"]
         RS["ReportsScreen"]
         RVM["ReportsViewModel"]
         AS["AttendanceScreen"]
         LDS["LocationDetailScreen"]
         LPH["LocationPermissionHost<br/>(owns system launchers)"]
-        AVM["AttendanceViewModel"]
+        SUOH["StatusUpdateOverlayHost<br/>(sibling over NavHost)"]
         LVM["LocationViewModel<br/>+ foreground fix collector"]
         LPVM["LocationPermissionViewModel"]
+        SUOVM["StatusUpdateOverlayViewModel"]
     end
 
     subgraph Coordination["Coordination — app-scoped"]
-        APP["EmployeeAttendanceApplication"]
+        APP["EmployeeAttendanceApplication<br/>startupJob / startupComplete"]
+        AFT["DefaultAppForegroundTracker<br/>(built before the container)"]
         DIC["AppContainer / DefaultAppContainer"]
-        AST["AppStartup<br/>+ ForegroundGate"]
         LFC["LocationFeatureCoordinator<br/>2 reactive pipelines"]
+        SUC["StatusUpdateCoordinator"]
     end
 
     subgraph Domain["Domain / State — repositories"]
@@ -47,7 +49,8 @@ graph TB
         WLR["WorkLocationRepository"]
         LSR["LocationStateRepository"]
         PR["ProximityRepository"]
-        LCIR["LocationClockInRepository"]
+        AR["AttendanceRepository"]
+        SUR["StatusUpdateRepository"]
         LTC["LocationTrackingController"]
         ATR["AttendanceRepository<br/>(eventLog)"]
         RG["ReportGenerator<br/>(cached)"]
@@ -58,30 +61,38 @@ graph TB
         LTS["LocationTrackingService<br/>(foreground service)"]
         GM["GeofenceManager"]
         GBR["GeofenceBroadcastReceiver"]
+        CAR["ClockActionReceiver"]
+        SUN["StatusUpdateNotifier"]
         SPS["SharedPrefsProximityStateStore"]
         SLPR["SystemLocationPermissionRepository"]
         BRW["BiweeklyReportWorker<br/>(WorkManager, daily)"]
         FRS["FileReportSharer<br/>+ ReportFileProvider"]
     end
 
-    MA --> AS & LDS & RS
+    MA --> AS & LDS & RS & SUOH
     RS --> RVM
     RVM --> ATR & WLR & RG & FRS
     BRW --> RG & ATR
     AS --> LPH
-    AS --> AVM & LVM
+    AS --> LVM
     LPH --> LPVM
     LDS --> LVM
+    SUOH --> SUOVM
 
+    APP --> AFT
     APP --> DIC
-    APP --> AST
-    AST -->|start on applicationScope, once foreground| LFC
-    DIC -.creates.-> LPR & WLR & LSR & PR & LCIR & LTC & LFC & LT & GM
+    APP -->|startupJob: start on applicationScope| LFC
+    DIC -.creates.-> LPR & WLR & LSR & PR & AR & SUR & LTC & LFC & SUC & LT & GM
 
-    LVM --> WLR & PR & LSR & LPR & LT & LCIR
+    LVM --> WLR & PR & LSR & LPR & LT & AR
+    LVM -->|onClockOut MANUAL| SUC
     LPVM --> LPR
+    SUOVM --> SUC
 
     LFC --> LPR & WLR & LTC & GM & LSR & PR
+
+    CAR -->|confirm / undo via clockOutListener| SUC
+    SUC --> AFT & SUR & AR & SUN
 
     LTC --> LTS
     LTS --> LT
@@ -91,8 +102,8 @@ graph TB
     GBR --> PR
     PR --> SPS
     LPR -.implemented by.-> SLPR
+    SUN -.PendingIntent with request extras.-> MA
 ```
-
 ### Layer rules
 
 | Layer | May depend on | Must never depend on |
@@ -103,10 +114,21 @@ graph TB
 | Repositories | domain models, store seams | ViewModels, composables |
 | Platform edges | Android SDK, Play Services | ViewModels, composables |
 
-`LocationPermissionHost` is the deliberate exception: it is a composable that touches `Activity`,
-`Intent`, and `ActivityResultContracts`, because permission launchers can only be owned there. The
-stateful `SettingsScreen` wrapper follows the same rule for one launcher — the notification
-permission behind the biweekly report opt-in — while `SettingsContent` stays stateless.
+The diagram omits the auto-clock path (`AttendanceAutoClockController` and its strategies also
+report auto clock-outs to `StatusUpdateCoordinator` through `AppContainer.clockOutListener`), the
+settings stores, and the Settings and Worksites screens. The Status Update flow is drawn in
+[sequence-diagrams.md §10](sequence-diagrams.md#10-status-update-after-a-clock-out).
+
+Three composables are deliberate exceptions to "composables stay stateless":
+
+- `LocationPermissionHost` touches `Activity`, `Intent`, and `ActivityResultContracts`, because
+  permission launchers can only be owned there.
+- The stateful `SettingsScreen` wrapper follows the same rule for one launcher — the notification
+  permission behind the biweekly report opt-in — while `SettingsContent` stays stateless.
+- `StatusUpdateOverlayHost` obtains the Activity-scoped `StatusUpdateOverlayViewModel` itself and
+  receives the notification request from `MainActivity`, because it is mounted once at Activity
+  level over the `NavHost` rather than inside a destination. Everything it renders
+  (`StatusUpdateOverlayContent`, `StatusUpdatePromptDialog`, `StatusUpdateCardStack`) is stateless.
 
 ## 3. Package map
 
@@ -114,9 +136,8 @@ permission behind the biweekly report opt-in — while `SettingsContent` stays s
 | --- | --- | --- |
 | `` (root) | app shell, navigation, DI bootstrap | `EmployeeAttendanceApplication`, `MainActivity` |
 | `di` | hand-wired object graph | `AppContainer`, `DefaultAppContainer` |
-| `startup` | when each piece of app-lifetime coordination is allowed to begin | `AppStartup`, `StartupTask`, `ForegroundGate`, `appLifetimeScope` |
 | `ui.attendance` | home screen, clock in/out, live clock | `AttendanceScreen`, `AttendanceViewModel` |
-| `ui.main` | top app bar, bottom navigation bar, destination tree | `MainAppBar`, `MainBottomBar`, `AppNavGraph` |
+| `ui.main` | top app bar, bottom navigation bar, destination tree, the startup loading gate | `MainAppBar`, `MainBottomBar`, `AppNavGraph`, `StartupGate`, `StartupScreen` |
 | `ui.reports` | the Reports tab and its charts | `ReportsScreen`, `ReportsViewModel`, `ReportCharts` |
 | `reporting` | report periods, shift pairing, calculation, sharing, the biweekly notification | `ReportGenerator`, `ReportPeriod`, `FileReportSharer`, `BiweeklyReportController`, `BiweeklyReportWorker` |
 | `ui.theme` | Material 3 theme, colors, typography | `EmployeeAttendanceTheme` |
@@ -127,6 +148,10 @@ permission behind the biweekly report opt-in — while `SettingsContent` stays s
 | `location.geofence` | OS geofence registration + delivery | `GeofenceManager`, `GeofenceBroadcastReceiver`, `GeofenceRegistrar` |
 | `location.registration` | the work-location domain model and its store | `WorkLocation`, `WorkLocationRepository`, `LocationClockInRepository` |
 | `location.ui` | location screens, chips, dialogs, ViewModels | `LocationViewModel`, `LocationPermissionViewModel`, `LocationDetailScreen`, `LocationPermissionHost` |
+| `attendance` | the attendance event log, auto clock in/out, clock notifications and their actions, the clock-out listener seam | `AttendanceRepository`, `AttendanceAutoClockController`, `ClockNotificationStrategy`, `ClockActionReceiver`, `ClockOutListener`, `ClockOutSource` |
+| `settings` | persisted user settings | `ClockNotificationSettingsStore`, `PrivacySettingsStore`, `UserProfileStore`, `StatusUpdateSettingsStore` |
+| `statusupdate` | the Status Update policy, foreground tracking, its notification and launch-intent contract, completed updates | `StatusUpdateCoordinator`, `AppForegroundTracker`, `StatusUpdateNotifier`, `StatusUpdateIntents`, `StatusUpdateRepository`, `StatusUpdateTrigger`, `StatusUpdateRequest`, `StatusUpdate` |
+| `statusupdate.ui` | the Status Update overlay: prompt dialog, card deck, and their ViewModel | `StatusUpdateOverlayHost`, `StatusUpdateOverlayViewModel`, `StatusUpdatePromptDialog`, `StatusUpdateCardStack` |
 | `devtools` | **debug builds only** — state simulation, the permission override, log export | `DeveloperToolsController`, `DeveloperSettingsStore`, `DebugLocationPermissionRepository`, `DeveloperLogExporter`, `DevUnlockTapCounter` |
 | `devtools.facade` | the seam developer actions reach user data through, so a dev write is never spelled like a user write | `DevAttendanceFacade`, `DevWorksiteFacade`, `DevNotificationPreview` |
 
@@ -145,7 +170,7 @@ Three consumption patterns exist, and you should follow the matching one:
 | --- | --- |
 | ViewModel | a `companion object val Factory: ViewModelProvider.Factory` using `viewModelFactory { initializer { … APPLICATION_KEY … } }` |
 | `Service` / `BroadcastReceiver` | casts `application` / `context.applicationContext` to `EmployeeAttendanceApplication` and reads `container` |
-| Composable | never directly — always through a ViewModel |
+| Composable | never directly, always through a ViewModel. `StatusUpdateOverlayHost` obtains its own ViewModel with `viewModel(factory = StatusUpdateOverlayViewModel.Factory)` (see §2) |
 
 **Adding a dependency means editing three places:** the `AppContainer` interface, the
 `DefaultAppContainer` implementation, and the consuming ViewModel factory.
@@ -162,10 +187,11 @@ another.
 
 | Scope | Created in | Lives as long as | What runs on it |
 | --- | --- | --- | --- |
-| `applicationScope` (`SupervisorJob + Dispatchers.Default + CoroutineExceptionHandler`) | `appLifetimeScope()`, held by `EmployeeAttendanceApplication` | the process | both `LocationFeatureCoordinator` pipelines, `AttendanceAutoClockController` |
+| `applicationScope` (`SupervisorJob + Dispatchers.Default`) | `EmployeeAttendanceApplication` | the process | `startupJob` (on `Dispatchers.IO`), both `LocationFeatureCoordinator` pipelines, `AttendanceAutoClockController` |
 | `serviceScope` (`SupervisorJob + Dispatchers.Main.immediate`) | `LocationTrackingService` | the service | the background location collection job |
-| `viewModelScope` | each ViewModel | its Activity (both location ViewModels are Activity-scoped from `MainActivity`) | `uiState` sharing, foreground fix collection |
-| repository singletons | `DefaultAppContainer` | the process | hold `StateFlow` state |
+| `viewModelScope` | each ViewModel | its Activity (both location ViewModels and `StatusUpdateOverlayViewModel` are Activity-scoped from `MainActivity`) | `uiState` sharing, foreground fix collection, `undoneClockOuts` collection |
+| repository and coordinator singletons | `DefaultAppContainer` | the process | hold `StateFlow` state; `StatusUpdateCoordinator` is here so a clock-out with no Activity still reaches it |
+| `DefaultAppForegroundTracker` | `EmployeeAttendanceApplication.onCreate`, before the container | the process | an `ActivityLifecycleCallbacks` counter; no coroutines |
 | unique periodic work `biweekly_report_check` | `WorkManagerReportScheduler` | until the user opts out (survives process death and reboot) | `BiweeklyReportWorker`, once a day |
 
 `LocationViewModel` and `LocationPermissionViewModel` are created in `MainActivity` and passed down,
@@ -173,10 +199,9 @@ so the Attendance and LocationDetail destinations **share one instance each**. T
 one foreground collector, one consistent permission state. If you create them per-destination
 instead, you get two competing location streams.
 
-The `CoroutineExceptionHandler` on `applicationScope` is load-bearing, not decoration. `SupervisorJob`
-stops a failing pipeline from cancelling its siblings, but it does **not** stop an unhandled throw
-from reaching the thread's default handler and killing the process — which is exactly how a refused
-foreground-service start became a fatal crash (issue #49). Do not drop it.
+`applicationScope` has no `CoroutineExceptionHandler`. `startupJob` therefore catches its own
+exceptions (rethrowing `CancellationException`) and degrades to "automatic clock in/out is off"
+instead of letting a corrupt store kill the process.
 
 `SharingStarted.WhileSubscribed(5_000)` is used for both ViewModels' `uiState`, so upstream flows
 stay warm across configuration changes but shut down 5 s after the last subscriber leaves.
@@ -197,8 +222,10 @@ ViewModel — survive switching to Attendance and back.
 
 Because `ProximityRepository` is written from both the main thread (geofences) and a background
 thread (foreground pipeline), `setState`, `onLocation`, and `reset` are all `@Synchronized`.
-`StubWorkLocationRepository`'s mutators and `LocationClockInRepository.recordClockIn` are
-`@Synchronized` for the same reason.
+`DefaultAttendanceRepository`'s mutators and `hasClockOutEvent` are `@Synchronized` for the same
+reason: a clock-out can be recorded from the auto-clock pipeline, a notification action, or the UI.
+`StatusUpdateCoordinator` guards its prompt state with `synchronized(this)` and calls
+`StatusUpdateNotifier` outside the lock.
 
 ## 7. Known stubs and follow-ups
 
@@ -207,28 +234,39 @@ These are intentional placeholders. Treat them as the natural next features.
 | Stub | File | What "real" looks like |
 | --- | --- | --- |
 | `StubWorkLocationRepository` | `location/registration/WorkLocationRepository.kt` | persisted registration flow (map search, address confirm); in-memory, resets on process death |
-| `LocationClockInRepository` | `location/registration/LocationClockInRepository.kt` | a real attendance backend; in-memory map only |
 | Map placeholder | `location/ui/WorkLocationMapCard.kt` | a `GoogleMap` composable once a Maps SDK key is provisioned |
-| Auto clock-in | `ProximityEvent.Arrived` / `Departed` are emitted but nothing consumes them | subscribe to `ProximityRepository.events` and drive the attendance record |
 | Clock-in state | `AttendanceScreen.TimeCheck` holds it in `rememberSaveable` | move into `AttendanceViewModel` / a repository |
 | Single active geofence target | `ProximityRepository` holds one global state — see the class doc | per-target membership set |
 | App bar buttons | `MainAppBar` — both `IconButton`s have empty `onClick` | profile + settings destinations |
+| `DefaultStatusUpdateRepository` | `statusupdate/StatusUpdateRepository.kt` | persisted or backend-synced Status Updates; in-memory list only, lost on process death, and nothing displays it |
 
 ## 8. Constraints the architecture depends on
 
-> Anything that reaches `startForegroundService()` must run **behind `ForegroundGate`**, never from
-> `Application.onCreate()`.
+> `EmployeeAttendanceApplication.onCreate()` only allocates. Store construction runs in
+> `startupJob` on `Dispatchers.IO`, and no ViewModel factory runs until `startupComplete` is `true`.
 
-Since Android 12 the system refuses a foreground-service start from a background process, and a
-process is still `PROCESS_STATE_CACHED_EMPTY` throughout `Application.onCreate()` — even on a
-launcher tap, roughly 600 ms before the first Activity is `STARTED`. `LocationFeatureCoordinator`
-reconciles `LocationTrackingService`, so it is registered as a `foregroundTasks` entry in
-`AppStartup` and starts only once `ProcessLifecycleOwner` reports the foreground.
+`onCreate()` runs on the main thread, and six container stores are backed by
+`EncryptedSharedPreferences` (Keystore unwrap plus file I/O). `DefaultAppContainer` is therefore
+allocation-only (every member `by lazy`), and `startupJob` does the wiring on
+`applicationScope`: it starts `AttendanceAutoClockController` and waits for `awaitSubscribed()`
+before starting `LocationFeatureCoordinator`, because proximity events are a replay-0 flow. It then
+forces `privacySettingsStore`, `userProfileStore`, and `statusUpdateSettingsStore`, which the wiring
+does not pull in. `startupComplete` flips on any terminal state of `startupJob`, failure included.
 
-The inverse also holds: work that must observe events arriving with **no screen visible** (a geofence
-broadcast waking the process) cannot be deferred behind the gate. `AttendanceAutoClockController` is
-therefore a `processCreateTasks` entry. When adding app-lifetime coordination, decide which side of
-that line it sits on. See `startup/AppStartup.kt`.
+`MainActivity` wraps its content in `StartupGate(started)`, which does not compose its content until
+`startupComplete` is `true` (issue #58). A factory reading a `by lazy` store that startup has not
+forced would construct it on the main thread after the gate opened, so **a new store-backed
+dependency reachable from any ViewModel factory must be forced in `startupJob`**. `LocationViewModel`
+reaches `statusUpdateSettingsStore` through `statusUpdateCoordinator`, which is why that store is
+forced. `GeofenceBroadcastReceiver` cannot be gated by the UI, so it calls `awaitStarted()` before
+forwarding a transition.
+
+> `DefaultAppForegroundTracker` is constructed in `onCreate()` **before** `DefaultAppContainer` and
+> passed into its constructor. It is the one dependency that is not lazy.
+
+It counts `onActivityStarted`/`onActivityStopped`. Registered after `MainActivity`'s first
+`onStart`, it would only see the matching `onStop` and `isForeground` would stay `false` for the
+process lifetime. Registration does no I/O, so it is safe on the main thread.
 
 > `ProximityRepository` keeps **one global proximity state**, not per-target state, even though
 > every event carries a `targetId`. This is only safe because `LocationFeatureCoordinator` registers

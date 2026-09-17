@@ -6,6 +6,8 @@ import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.attendance.AttendanceAutoClockController
 import com.jaustinjr.employeeattendance.attendance.AttendanceRepository
 import com.jaustinjr.employeeattendance.attendance.ClockNotifier
+import com.jaustinjr.employeeattendance.attendance.ClockOutListener
+import com.jaustinjr.employeeattendance.attendance.ClockOutSource
 import com.jaustinjr.employeeattendance.attendance.DefaultAttendanceRepository
 import com.jaustinjr.employeeattendance.attendance.SharedPrefsAttendanceLocalDataSource
 import com.jaustinjr.employeeattendance.devtools.DebugLocationPermissionRepository
@@ -50,7 +52,15 @@ import com.jaustinjr.employeeattendance.reporting.WorkManagerReportScheduler
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
 import com.jaustinjr.employeeattendance.settings.ReportSettings
 import com.jaustinjr.employeeattendance.settings.ReportSettingsStore
+import com.jaustinjr.employeeattendance.settings.StatusUpdateSettingsStore
 import com.jaustinjr.employeeattendance.settings.UserProfileStore
+import com.jaustinjr.employeeattendance.statusupdate.AppForegroundTracker
+import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateRepository
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateCoordinator
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateNotifications
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateNotifier
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRepository
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateTrigger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -79,6 +89,17 @@ interface AppContainer {
     val userProfileStore: UserProfileStore
     val locationFeatureCoordinator: LocationFeatureCoordinator
     val attendanceAutoClockController: AttendanceAutoClockController
+    val statusUpdateSettingsStore: StatusUpdateSettingsStore
+    val statusUpdateRepository: StatusUpdateRepository
+    val statusUpdateCoordinator: StatusUpdateCoordinator
+
+    /**
+     * The single [ClockOutListener] every clock-out/undo producer reports through — the auto-clock
+     * pipeline, [com.jaustinjr.employeeattendance.attendance.ClockActionReceiver]'s Confirm/Undo
+     * actions — so there is exactly one place that maps [ClockOutSource] onto
+     * [StatusUpdateTrigger] and calls [statusUpdateCoordinator].
+     */
+    val clockOutListener: ClockOutListener
 
     /** Wall clock in the device zone. Reporting reads time only through this. */
     val clock: Clock
@@ -111,7 +132,15 @@ interface AppContainer {
 }
 
 /** Default [AppContainer] wiring the real, platform-backed implementations. */
-class DefaultAppContainer(context: Context) : AppContainer {
+class DefaultAppContainer(
+    context: Context,
+    /**
+     * Passed in rather than built here: it must be registered before any Activity's first
+     * `onStart`, which [com.jaustinjr.employeeattendance.EmployeeAttendanceApplication.onCreate]
+     * guarantees by constructing it eagerly, ahead of this container. See that class for why.
+     */
+    private val appForegroundTracker: AppForegroundTracker,
+) : AppContainer {
 
     private val appContext = context.applicationContext
 
@@ -221,6 +250,7 @@ class DefaultAppContainer(context: Context) : AppContainer {
             attendanceRepository = attendanceRepository,
             notifier = clockNotifier,
             preference = clockNotificationSettingsStore.preference,
+            clockOutListener = clockOutListener,
         )
     }
 
@@ -249,6 +279,44 @@ class DefaultAppContainer(context: Context) : AppContainer {
             notifier = BiweeklyReportNotifier(appContext),
             clock = clock,
         )
+    }
+
+    override val statusUpdateSettingsStore: StatusUpdateSettingsStore by lazy {
+        StatusUpdateSettingsStore(appContext)
+    }
+
+    override val statusUpdateRepository: StatusUpdateRepository by lazy {
+        DefaultStatusUpdateRepository()
+    }
+
+    private val statusUpdateNotifier: StatusUpdateNotifications by lazy {
+        StatusUpdateNotifier(appContext)
+    }
+
+    override val statusUpdateCoordinator: StatusUpdateCoordinator by lazy {
+        StatusUpdateCoordinator(
+            enabled = statusUpdateSettingsStore.enabled,
+            foregroundTracker = appForegroundTracker,
+            notifier = statusUpdateNotifier,
+            repository = statusUpdateRepository,
+            attendanceRepository = attendanceRepository,
+        )
+    }
+
+    override val clockOutListener: ClockOutListener by lazy {
+        object : ClockOutListener {
+            override fun onClockOut(locationId: String, clockOutAtMillis: Long, source: ClockOutSource) {
+                val trigger = when (source) {
+                    ClockOutSource.AUTO -> StatusUpdateTrigger.AUTO
+                    ClockOutSource.NOTIFICATION_CONFIRMED -> StatusUpdateTrigger.NOTIFICATION_CONFIRMED
+                }
+                statusUpdateCoordinator.onClockOut(locationId, clockOutAtMillis, trigger)
+            }
+
+            override fun onClockOutUndone(locationId: String, clockOutAtMillis: Long) {
+                statusUpdateCoordinator.onClockOutUndone(locationId, clockOutAtMillis)
+            }
+        }
     }
 
     override val developerSettingsStore: DeveloperSettingsStore by lazy {

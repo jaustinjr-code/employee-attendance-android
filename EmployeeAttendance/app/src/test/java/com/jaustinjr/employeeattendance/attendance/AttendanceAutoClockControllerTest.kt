@@ -32,12 +32,14 @@ class AttendanceAutoClockControllerTest {
         attendance: AttendanceRepository,
         notifier: ClockNotifications,
         preference: StateFlow<ClockNotificationPreference>,
+        clockOutListener: ClockOutListener? = null,
     ) = AttendanceAutoClockController(
         proximityEvents = events,
         workLocationRepository = SingleWorkLocationRepository(worksite),
         attendanceRepository = attendance,
         notifier = notifier,
         preference = preference,
+        clockOutListener = clockOutListener,
     )
 
     @Test
@@ -122,5 +124,46 @@ class AttendanceAutoClockControllerTest {
         assertTrue(attendance.clockOuts.isEmpty())
         assertTrue(attendance.events.isEmpty())
         assertTrue(notifier.recorded.none { it.type == ClockType.CLOCK_OUT })
+    }
+
+    @Test
+    fun `an auto clock-out notifies the clockOutListener with AUTO`() = runTest {
+        val events = MutableSharedFlow<ProximityEvent>(extraBufferCapacity = 8)
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val clockOutListener = RecordingClockOutListener()
+        controller(
+            events, attendance, notifier,
+            MutableStateFlow(ClockNotificationPreference.SILENT),
+            clockOutListener = clockOutListener,
+        ).start(backgroundScope)
+        runCurrent()
+
+        events.emit(ProximityEvent.Arrived("site-a"))
+        events.emit(ProximityEvent.Departed("site-a"))
+        runCurrent()
+
+        assertEquals(1, clockOutListener.calls.size)
+        assertEquals("site-a", clockOutListener.calls.single().locationId)
+        assertEquals(ClockOutSource.AUTO, clockOutListener.calls.single().source)
+    }
+
+    @Test
+    fun `an auto clock-in does not notify the clockOutListener`() = runTest {
+        val events = MutableSharedFlow<ProximityEvent>(extraBufferCapacity = 8)
+        val attendance = RecordingAttendanceRepository()
+        val notifier = RecordingClockNotifier()
+        val clockOutListener = RecordingClockOutListener()
+        controller(
+            events, attendance, notifier,
+            MutableStateFlow(ClockNotificationPreference.SILENT),
+            clockOutListener = clockOutListener,
+        ).start(backgroundScope)
+        runCurrent()
+
+        events.emit(ProximityEvent.Arrived("site-a"))
+        runCurrent()
+
+        assertTrue(clockOutListener.calls.isEmpty())
     }
 }
