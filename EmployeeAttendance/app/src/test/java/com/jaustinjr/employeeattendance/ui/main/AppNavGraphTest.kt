@@ -35,6 +35,17 @@ class AppNavGraphTest {
     }
 
     @Test
+    fun `every destination resolves to the tab it lives under`() {
+        AppNavGraph.all.forEach { destination ->
+            val tab = destination.topLevelAncestor
+            assertTrue("${destination.route} maps to a non-tab", tab in AppNavGraph.topLevel)
+        }
+        assertSame(AppNavGraph.Attendance, AppNavGraph.Worksites.topLevelAncestor)
+        assertSame(AppNavGraph.Attendance, AppNavGraph.StatusUpdateEdit.topLevelAncestor)
+        assertSame(AppNavGraph.Reports, AppNavGraph.Reports.topLevelAncestor)
+    }
+
+    @Test
     fun `every parent chain terminates at a tab`() {
         // A cycle here would hang `ancestors`, and a chain ending anywhere else would mean a
         // destination the user cannot walk up out of.

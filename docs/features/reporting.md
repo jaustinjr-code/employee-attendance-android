@@ -166,7 +166,7 @@ the switch stays off and an explanation is shown.
 | `BiweeklyReportTest` | JVM | opt-in bookkeeping, delivery time, once per period, empty periods |
 | `ReportsViewModelTest` | JVM | lazy start, paging limits, type switching, cache reuse, `mapLatest` cancellation, share |
 | `ReportsScreenTest` | androidTest | rendering, active-shift card, empty and loading states, callbacks |
-| `BottomBarNavigationTest` | androidTest | home tab, tab state restore, no tab stacking, bar hidden on children |
+| `BottomBarNavigationTest` | androidTest | home tab, tab state restore, no tab stacking, bar visible on children, tab tap from a child |
 | `ReportsDeepLinkTest` | androidTest | the notification intent opens Reports on the real `MainActivity` |
 | `FileReportSharerTest` | androidTest | file written and readable via the provider, one file kept, provider scope, intent shape |
 | `BiweeklyReportPlatformTest` | androidTest | unique daily periodic work, worker wiring, the posted notification |
