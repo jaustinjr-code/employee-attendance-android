@@ -32,7 +32,7 @@ import org.junit.Test
 
 /**
  * The bottom bar as MainActivity wires it: Attendance is home, tabs keep their state across
- * switches, and child screens hide the bar.
+ * switches, and the bar stays visible on child screens.
  */
 class BottomBarNavigationTest {
 
@@ -53,16 +53,16 @@ class BottomBarNavigationTest {
             val route = entry?.destination?.route
             Scaffold(
                 bottomBar = {
-                    if (!isChildDestination(route)) {
-                        MainBottomBar(
-                            currentRoute = route,
-                            onSelect = { destination ->
-                                navController.navigateToTab(
-                                    if (destination == AppNavGraph.Reports) Reports else Attendance,
-                                )
-                            },
-                        )
-                    }
+                    MainBottomBar(
+                        currentRoute = route,
+                        onSelect = { destination ->
+                            navController.selectTab(
+                                tab = destination,
+                                route = if (destination == AppNavGraph.Reports) Reports else Attendance,
+                                currentRoute = route,
+                            )
+                        },
+                    )
                 },
             ) { padding ->
                 NavHost(navController, startDestination = Attendance, modifier = Modifier.padding(padding)) {
@@ -127,13 +127,35 @@ class BottomBarNavigationTest {
     }
 
     @Test
-    fun aChildScreenHidesTheBottomBar() {
+    fun aChildScreenKeepsTheBottomBarAndItsParentTabSelected() {
         setUp()
 
         composeRule.onNodeWithText("open-settings").performClick()
 
         composeRule.onNodeWithText("settings-content").assertIsDisplayed()
-        composeRule.onNodeWithText("Reports").assertDoesNotExist()
+        composeRule.onNode(hasText("Attendance") and hasSelectableTab()).assertIsSelected()
+        composeRule.onNodeWithText("Reports").assertIsDisplayed()
+    }
+
+    @Test
+    fun reportsIsReachableFromAChildScreen() {
+        setUp()
+
+        composeRule.onNodeWithText("open-settings").performClick()
+        composeRule.onNodeWithText("Reports").performClick()
+
+        composeRule.onNode(hasText("reports-taps-0", substring = true)).assertIsDisplayed()
+        composeRule.onNode(hasText("Reports") and hasSelectableTab()).assertIsSelected()
+    }
+
+    @Test
+    fun tappingTheCurrentTabFromAChildScreenReturnsToItsRoot() {
+        setUp()
+
+        composeRule.onNodeWithText("open-settings").performClick()
+        composeRule.onNode(hasText("Attendance") and hasSelectableTab()).performClick()
+
+        composeRule.onNodeWithText("attendance-content").assertIsDisplayed()
     }
 
     private fun hasSelectableTab() = androidx.compose.ui.test.isSelectable()

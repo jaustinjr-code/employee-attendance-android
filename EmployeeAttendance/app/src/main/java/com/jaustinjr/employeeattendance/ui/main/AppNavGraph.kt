@@ -48,6 +48,12 @@ data class AppDestination(
      */
     val ancestors: List<AppDestination>
         get() = generateSequence(parent) { it.parent }.toList()
+
+    /**
+     * The bottom bar tab this destination lives under: itself if top level, otherwise its
+     * outermost ancestor. This is the tab the bar highlights while the destination is on screen.
+     */
+    val topLevelAncestor: AppDestination get() = if (isTopLevel) this else ancestors.last()
 }
 
 /**
@@ -176,7 +182,7 @@ fun destinationOrRoot(route: String?): AppDestination =
 
 /**
  * Whether the destination at [route] sits below a top-level tab, and so shows an up button in place
- * of the account affordance and hides the bottom bar.
+ * of the account affordance. The bottom bar stays visible regardless.
  *
  * This is a pure function of the current destination rather than state a screen pushes into the
  * app bar, for the same reason [appBarTitleResFor] is: during a predictive-back gesture two

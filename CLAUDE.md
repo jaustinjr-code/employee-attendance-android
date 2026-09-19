@@ -17,6 +17,7 @@ The `docs/` tree is accurate and maintained — read it rather than re-deriving 
 | What breaks if I change file X | [docs/maintenance/change-impact-map.md](docs/maintenance/change-impact-map.md) |
 | How this repo shapes a new feature | [docs/maintenance/adding-a-feature.md](docs/maintenance/adding-a-feature.md) |
 | Which tests to write, and where | [docs/maintenance/testing.md](docs/maintenance/testing.md) |
+| How to put screenshots in a PR description | [docs/maintenance/pr-screenshots.md](docs/maintenance/pr-screenshots.md) |
 
 The single most important thing to understand is `LocationFeatureCoordinator` and the repositories
 it wires. Two invariants are load-bearing and documented in `docs/architecture/overview.md` §8 —
@@ -89,6 +90,16 @@ before concluding anything.
 Goldens are specific to the emulator config that recorded them (API level, target, ABI, density).
 The pinned CI config lives in `.github/workflows/android-tests.yml`; details and the re-recording
 workflow are in [docs/maintenance/testing.md](docs/maintenance/testing.md).
+
+## Screenshots in pull requests
+
+A PR that changes the UI/UX must show it in the description: **before and after** images for a
+UI/UX bug fix, a **preview or test image** for a new feature, a screen recording when the change is
+only visible over time. Capture from the emulator, push the images to an orphan branch named
+`pr-assets/pr-<number>` (so they stay out of the code diff), and link them with
+`blob/…?raw=true` `<img>` tags. Open the PR first — the branch name needs its number. The full
+procedure is in [docs/maintenance/pr-screenshots.md](docs/maintenance/pr-screenshots.md). Skip it for
+changes with no visual effect.
 
 ## Conventions
 

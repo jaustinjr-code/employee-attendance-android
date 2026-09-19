@@ -21,7 +21,8 @@ import com.jaustinjr.employeeattendance.R
  * The Material 3 navigation bar across the top-level destinations in [AppNavGraph.topLevel].
  *
  * [currentRoute] is derived from the back stack by the caller, like the app bar's title, so the
- * selected tab can never disagree with the destination on screen.
+ * selected tab can never disagree with the destination on screen. On a child screen the tab it sits
+ * under is the selected one, and tapping that tab returns to its root.
  */
 @Composable
 fun MainBottomBar(
@@ -32,10 +33,10 @@ fun MainBottomBar(
     val current = destinationOrRoot(currentRoute)
     NavigationBar(modifier) {
         AppNavGraph.topLevel.forEach { destination ->
-            val selected = destination == current
+            val selected = destination == current.topLevelAncestor
             NavigationBarItem(
                 selected = selected,
-                onClick = { if (!selected) onSelect(destination) },
+                onClick = { if (destination != current) onSelect(destination) },
                 icon = { Icon(iconFor(destination, selected), contentDescription = null) },
                 label = { Text(stringResource(labelFor(destination))) },
             )
@@ -53,6 +54,19 @@ fun NavController.navigateToTab(route: Any) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
+    }
+}
+
+/**
+ * Handles a tap on [tab]'s bottom bar item from [currentRoute]. Tapping the tab the user is already
+ * inside (from one of its child screens) pops back to that tab's root; any other tab is switched to
+ * with saved state, as [navigateToTab] does.
+ */
+fun NavController.selectTab(tab: AppDestination, route: Any, currentRoute: String?) {
+    if (destinationOrRoot(currentRoute).topLevelAncestor == tab) {
+        popBackStack(tab.route, inclusive = false)
+    } else {
+        navigateToTab(route)
     }
 }
 
