@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.jaustinjr.employeeattendance.R
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -60,7 +61,7 @@ import kotlin.math.sign
 import kotlinx.coroutines.launch
 
 /**
- * UI state for the Status Update card stack: the three drafts (indexed to [StatusUpdateQuestion])
+ * UI state for the Status Update card stack: the drafts (indexed to [StatusUpdateQuestion])
  * and which card is on top. Held by [StatusUpdateOverlayViewModel] so typed text survives swiping
  * away and back.
  */
@@ -81,24 +82,9 @@ data class StatusUpdateCardStackUiState(
     val isLastCard: Boolean get() = currentIndex == drafts.lastIndex
 
     companion object {
-        const val CARD_COUNT = 3
+        /** One card per [StatusUpdateQuestion]. */
+        val CARD_COUNT: Int get() = StatusUpdateQuestion.COUNT
     }
-}
-
-/** The three fixed Status Update questions, in draft-index order, each with an example answer hint. */
-enum class StatusUpdateQuestion(val questionRes: Int, val hintRes: Int) {
-    DID_TODAY(
-        R.string.status_update_question_did_today,
-        R.string.status_update_hint_did_today,
-    ),
-    PLANNED_TOMORROW(
-        R.string.status_update_question_planned_tomorrow,
-        R.string.status_update_hint_planned_tomorrow,
-    ),
-    COULD_NOT_DO(
-        R.string.status_update_question_could_not_do,
-        R.string.status_update_hint_could_not_do,
-    ),
 }
 
 /** Pixel distance a horizontal drag must cover before it counts as a swipe, not a text-field drag. */

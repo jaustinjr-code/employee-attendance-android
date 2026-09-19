@@ -7,11 +7,11 @@ import org.junit.Test
 
 class DefaultStatusUpdateRepositoryTest {
 
-    private fun update(id: String, didToday: String = "did") = StatusUpdate(
+    private fun update(id: String, did: String = "did") = StatusUpdate(
         clockOutId = id,
-        didToday = didToday,
-        plannedTomorrow = "",
-        couldNotDo = "",
+        answers = mapOf(
+            StatusUpdateQuestion.DID_TODAY to did,
+        ),
         completedAtMillis = 1_000L,
     )
 
@@ -32,11 +32,19 @@ class DefaultStatusUpdateRepositoryTest {
         repository.save(update("a@1"))
         repository.save(update("b@2"))
 
-        val updated = repository.updateAnswers("a@1", "new did", "new plan", "new blocked", 9_000L)
+        val updated = repository.updateAnswers(
+            "a@1",
+            mapOf(
+                StatusUpdateQuestion.DID_TODAY to "new did",
+                StatusUpdateQuestion.PLANNED_TOMORROW to "new plan",
+                StatusUpdateQuestion.COULD_NOT_DO to "new blocked",
+            ),
+            9_000L,
+        )
 
         assertTrue(updated)
         val edited = repository.statusUpdates.value.first()
-        assertEquals(listOf("new did", "new plan", "new blocked"), edited.answers)
+        assertEquals(listOf("new did", "new plan", "new blocked"), edited.answers.toDrafts())
         assertEquals(9_000L, edited.editedAtMillis)
         assertEquals(1_000L, edited.completedAtMillis)
         assertEquals(update("b@2"), repository.statusUpdates.value[1])
@@ -48,7 +56,7 @@ class DefaultStatusUpdateRepositoryTest {
         val repository = DefaultStatusUpdateRepository()
         repository.save(update("a@1"))
 
-        assertFalse(repository.updateAnswers("missing@9", "x", "y", "z", 9_000L))
+        assertFalse(repository.updateAnswers("missing@9", mapOf(StatusUpdateQuestion.DID_TODAY to "x"), 9_000L))
         assertEquals(listOf(update("a@1")), repository.statusUpdates.value)
     }
 

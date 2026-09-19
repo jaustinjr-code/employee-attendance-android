@@ -5,6 +5,7 @@ import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateReposito
 import com.jaustinjr.employeeattendance.statusupdate.FakeAppForegroundTracker
 import com.jaustinjr.employeeattendance.statusupdate.RecordingStatusUpdateNotifier
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateCoordinator
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRequest
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateTrigger
 import com.jaustinjr.employeeattendance.testutil.MainDispatcherRule
@@ -227,9 +228,9 @@ class StatusUpdateOverlayViewModelTest {
         assertNull(viewModel.uiState.value.deck)
         assertEquals(1, repository.statusUpdates.value.size)
         val saved = repository.statusUpdates.value.single()
-        assertEquals("did today", saved.didToday)
-        assertEquals("planned tomorrow", saved.plannedTomorrow)
-        assertEquals("could not do", saved.couldNotDo)
+        assertEquals("did today", saved.answers[StatusUpdateQuestion.DID_TODAY])
+        assertEquals("planned tomorrow", saved.answers[StatusUpdateQuestion.PLANNED_TOMORROW])
+        assertEquals("could not do", saved.answers[StatusUpdateQuestion.COULD_NOT_DO])
         assertEquals(5_000L, saved.completedAtMillis)
 
         // Submitting again without a new clock-out must not save a second time.

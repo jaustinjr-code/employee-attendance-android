@@ -15,6 +15,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.MainActivity
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateIntents
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -117,9 +118,9 @@ class StatusUpdateNotificationLaunchTest {
 
             val saved = container.statusUpdateRepository.statusUpdates.value.single()
             assertEquals(request.clockOutId, saved.clockOutId)
-            assertEquals("Wrote the report", saved.didToday)
-            assertEquals("Ship the release", saved.plannedTomorrow)
-            assertEquals("Nothing blocked", saved.couldNotDo)
+            assertEquals("Wrote the report", saved.answers[StatusUpdateQuestion.DID_TODAY])
+            assertEquals("Ship the release", saved.answers[StatusUpdateQuestion.PLANNED_TOMORROW])
+            assertEquals("Nothing blocked", saved.answers[StatusUpdateQuestion.COULD_NOT_DO])
 
             // The completed deck already closed itself; recreating (a config change) must not
             // reopen it — StatusUpdateIntents.consumeRequest stripped the extras on first read, and

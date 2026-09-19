@@ -20,6 +20,7 @@ import com.jaustinjr.employeeattendance.settings.ReportSettingsStore
 import com.jaustinjr.employeeattendance.settings.StatusUpdateSettingsStore
 import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateRepository
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdate
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -131,9 +132,11 @@ class SettingsDeleteAllDataTest {
         statusUpdates.save(
             StatusUpdate(
                 clockOutId = "site-to-delete@2000",
-                didToday = "did today",
-                plannedTomorrow = "planned tomorrow",
-                couldNotDo = "could not do",
+                answers = mapOf(
+                    StatusUpdateQuestion.DID_TODAY to "did today",
+                    StatusUpdateQuestion.PLANNED_TOMORROW to "planned tomorrow",
+                    StatusUpdateQuestion.COULD_NOT_DO to "could not do",
+                ),
                 completedAtMillis = 2_000L,
             ),
         )

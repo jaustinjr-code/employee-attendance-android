@@ -149,15 +149,11 @@ class StatusUpdateCoordinator(
      */
     fun complete(
         request: StatusUpdateRequest,
-        didToday: String,
-        plannedTomorrow: String,
-        couldNotDo: String,
+        answers: Map<StatusUpdateQuestion, String>,
     ) {
         val update = StatusUpdate(
             clockOutId = request.clockOutId,
-            didToday = didToday,
-            plannedTomorrow = plannedTomorrow,
-            couldNotDo = couldNotDo,
+            answers = answers,
             completedAtMillis = clock(),
             clockOutAtMillis = request.clockOutAtMillis,
             clockInAtMillis = attendanceRepository.clockInBefore(
