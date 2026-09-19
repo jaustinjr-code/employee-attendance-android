@@ -145,6 +145,14 @@ The gate is what matters, not who runs the command.
 The description states what changed, which agent did what, the review cycles
 used, and any Medium findings carried forward as follow-up work.
 
+If the change is visual, the description also carries screenshots: before and
+after for a UI/UX bug fix, a preview or test image for a new feature. Open the
+pull request first, then capture and publish the images by following
+`docs/maintenance/pr-screenshots.md` (an orphan `pr-assets/pr-<n>` branch, linked
+from the description) and edit them in. Look at each image before publishing.
+Mention the assets branch in your report. A change with no visual effect needs
+none.
+
 Once the pull request exists, the reviewer may post its approving review to it
 in pull request mode. That is optional, and it is the only review that gets
 published.

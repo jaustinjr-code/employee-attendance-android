@@ -285,6 +285,12 @@ a violation.
   rather than implementation? For a bug fix, does a regression test exist that
   fails without the fix? Missing tests are a finding at Medium, or Major when
   the untested code is a service contract or a security control.
+- Visual evidence: when a pull request changes what the user sees, its
+  description should show it (before and after for a UI/UX bug fix, a preview or
+  test image for a new feature; see `docs/maintenance/pr-screenshots.md` if the
+  project has it). Missing evidence is a Minor finding. Do not ask for it on a
+  change with no visual effect, and judge the images only as evidence, not as
+  the review of the UI itself.
 
 ---
 

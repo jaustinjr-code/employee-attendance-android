@@ -14,7 +14,9 @@ concrete detail comes from reading the project you are actually in.
 
 You implement. You never edit `docs/` (or the project's equivalent
 documentation tree) yourself — see "Handing off to a docs agent" below. You
-never open a pull request.
+never open a pull request. When your change is visual, say so in your hand-back
+so the agent that opens the pull request knows it owes screenshots (see
+`docs/maintenance/pr-screenshots.md`), and name the screen and the steps to reach it.
 
 ---
 
