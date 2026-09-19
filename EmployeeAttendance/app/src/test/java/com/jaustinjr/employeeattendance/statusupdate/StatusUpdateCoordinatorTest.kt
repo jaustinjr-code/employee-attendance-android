@@ -23,6 +23,7 @@ class StatusUpdateCoordinatorTest {
         repository: StatusUpdateRepository = DefaultStatusUpdateRepository(),
         attendanceRepository: AttendanceRepository = RecordingAttendanceRepository(),
         nowMillis: Long = 5_000L,
+        worksiteName: (String) -> String? = { null },
     ) = StatusUpdateCoordinator(
         enabled = MutableStateFlow(enabled),
         foregroundTracker = FakeAppForegroundTracker(foreground),
@@ -30,6 +31,7 @@ class StatusUpdateCoordinatorTest {
         repository = repository,
         attendanceRepository = attendanceRepository,
         clock = { nowMillis },
+        worksiteName = worksiteName,
     )
 
     // --- disabled: no-op for every trigger ---
@@ -239,5 +241,46 @@ class StatusUpdateCoordinatorTest {
 
         assertEquals(StatusUpdateRequest("site-b", 2_000L), coord.pendingPrompt.value)
         assertFalse(coord.pendingPrompt.value?.clockOutId == "site-a@1000")
+    }
+
+    @Test
+    fun `complete with every answer blank saves nothing`() {
+        val repository = DefaultStatusUpdateRepository()
+        val coord = coordinator(repository = repository)
+
+        coord.complete(StatusUpdateRequest("site-a", 1_000L), "", "  ", "\n")
+
+        assertTrue(repository.statusUpdates.value.isEmpty())
+    }
+
+    @Test
+    fun `complete with one answer filled saves it`() {
+        val repository = DefaultStatusUpdateRepository()
+        val coord = coordinator(repository = repository)
+
+        coord.complete(StatusUpdateRequest("site-a", 1_000L), "", "", "Van was in the shop")
+
+        assertEquals("Van was in the shop", repository.statusUpdates.value.single().couldNotDo)
+    }
+
+    @Test
+    fun `complete records the shift's clock-in, clock-out and worksite name`() {
+        val attendance = RecordingAttendanceRepository()
+        attendance.recordClockIn("site-a", 400L)
+        attendance.recordClockOut("site-a", 1_000L)
+        val repository = DefaultStatusUpdateRepository()
+        val coord = coordinator(
+            repository = repository,
+            attendanceRepository = attendance,
+            worksiteName = { if (it == "site-a") "Main office" else null },
+        )
+
+        coord.complete(StatusUpdateRequest("site-a", 1_000L), "did", "", "")
+
+        val saved = repository.statusUpdates.value.single()
+        assertEquals(400L, saved.clockInAtMillis)
+        assertEquals(1_000L, saved.clockOutAtMillis)
+        assertEquals("Main office", saved.worksiteName)
+        assertNull(saved.editedAtMillis)
     }
 }

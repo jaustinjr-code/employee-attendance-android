@@ -56,6 +56,7 @@ import com.jaustinjr.employeeattendance.settings.StatusUpdateSettingsStore
 import com.jaustinjr.employeeattendance.settings.UserProfileStore
 import com.jaustinjr.employeeattendance.statusupdate.AppForegroundTracker
 import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateRepository
+import com.jaustinjr.employeeattendance.statusupdate.SharedPrefsStatusUpdateLocalDataSource
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateCoordinator
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateNotifications
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateNotifier
@@ -286,7 +287,7 @@ class DefaultAppContainer(
     }
 
     override val statusUpdateRepository: StatusUpdateRepository by lazy {
-        DefaultStatusUpdateRepository()
+        DefaultStatusUpdateRepository(SharedPrefsStatusUpdateLocalDataSource(appContext))
     }
 
     private val statusUpdateNotifier: StatusUpdateNotifications by lazy {
@@ -300,6 +301,9 @@ class DefaultAppContainer(
             notifier = statusUpdateNotifier,
             repository = statusUpdateRepository,
             attendanceRepository = attendanceRepository,
+            worksiteName = { locationId ->
+                workLocationRepository.workLocations.value.firstOrNull { it.id == locationId }?.name
+            },
         )
     }
 

@@ -125,7 +125,7 @@ Confirm the device is up with `adb devices` before running `connectedDebugAndroi
 
 ## 6. Patterns for overlay and launch-intent tests
 
-The Status Update tests use three patterns. Reuse them for any UI that swipes, opens from a launch
+The Status Update and account tests use the patterns below. Reuse them for any UI that swipes, opens from a launch
 intent, or renders in its own window.
 
 ### Drive gestures with real swipes, then wait for idle
@@ -177,6 +177,65 @@ The container is the real app-scoped one and outlives each scenario, so reset sh
 method annotated both `@Before` and `@After` (`attendanceRepository.clearAll()`,
 `statusUpdateRepository.clearAll()`, re-enable the setting). Check configuration changes with
 `scenario.recreate()`.
+
+### Holding a press, and asserting a popup that is shown while held
+
+`AccountScreenTest.holdingAShift_peeksUntilReleased_withoutOpeningIt` holds a press with
+`performTouchInput { down(center) }`, then `composeRule.mainClock.advanceTimeBy(1_000)`.
+`detectTapGestures`' long-press timeout runs on the test clock, and a held finger sends no events that
+would advance it, so `advanceEventTime` inside `performTouchInput` is not enough. Release with
+`performTouchInput { up() }`.
+
+The peek is a non-focusable `Popup` window. While a finger is injected into the root below it, the
+framework finds its nodes but does not report them as displayed, so the test uses `assertExists()` for
+the peek and asserts it is gone after release. That the peek really draws, and that lifting the
+finger hides it without opening the shift, was checked on an emulator with
+`adb shell input swipe x y x y 4000` and `screencap` taken mid-press.
+
+### Hosting a flow that needs the real up interceptor
+
+`StatusUpdateEditFlowTest` uses `createAndroidComposeRule<ComponentActivity>()`, a real
+`rememberNavController()` `NavHost`, and `MainAppBar` wired to `ui/main/UpNavigation.kt`'s
+`performUp(interceptor, navController)` — the same function `MainActivity` calls, not a hand-copied
+`onNavigateUp` lambda, so a change to the real up-button rule is caught here too — with an
+`upInterceptor` state (typed `UpInterceptor?`) that `StatusUpdateEditScreen`'s `onInterceptUpChanged`
+sets. ViewModels are built directly with a `SavedStateHandle` holding `CLOCK_OUT_ID_ARG` and an
+in-memory repository. That exercises the discard confirmation from Cancel, `Espresso.pressBack()`,
+and the up button against the same back stack the app uses.
+
+`theAppBarUpButton_asksBeforeLeaving_evenImmediatelyAfterOpening` is the regression test for the gap
+in an earlier version of the fix: gating the interceptor's registration on the destination reaching
+`RESUMED` left a window — up to NavHost's ~700ms default enter-transition duration — right after
+opening the editor where up silently popped back instead of asking, while system back (STARTED-gated,
+via `BackHandler`) already worked. The test freezes the clock, taps Edit, advances by exactly one
+frame (just enough for the editor to compose and register — deliberately far short of 700ms), taps
+up, and asserts the discard dialog appears. Confirmed to fail against the RESUMED-gated version and
+pass against the current one, which registers on first composition instead (see
+[../features/account.md](../features/account.md#up-goes-through-an-id-checked-interceptor) for why
+that's safe against the *other* direction of the same problem, a stale registration outliving a
+screen mid-exit).
+
+`theAppBarUpButton_discard_closesTheDialogOneFrameBeforeNavigatingAway` proves the *ordering* of the
+fix for the dialog-stays-visible-behind-navigation bug, not just its settled end state. A plain
+`assertDoesNotExist()` right after the click, with `autoAdvance` left on, passes whether or not the
+fix is present: by the time the test framework returns from `performClick()`, both the dialog closing
+and the navigation away have already settled, in either ordering. The test instead sets
+`composeRule.mainClock.autoAdvance = false`, clicks Discard, steps the clock forward by exactly one
+frame with `advanceTimeByFrame()`, and asserts from inside that single-frame window: the dialog must
+already be gone, *and* the editor's app bar title ("Edit status update") must still be what's
+displayed (navigation must not have happened yet). This was arrived at empirically — logging which
+nodes existed frame by frame showed that with the fix, `onDiscardConfirmed()` flips
+`showDiscardDialog` to `false` synchronously in the click handler, which `collectAsStateWithLifecycle`
+re-emits and closes the dialog on the very next frame while the editor is still what's on screen; the
+separate `LaunchedEffect(exitConfirmed)` that performs the actual `popBackStack()` only runs a frame
+after that. Reverting `onDiscard` to the pre-fix handler (`onDiscardDialogDismissed()` then
+`onExit()`, called synchronously in the same click handler, before either state change reaches
+Compose) collapses both changes into that same first frame instead, landing directly on the read-only
+screen with no such intermediate frame — confirmed by reverting the handler and re-running the test,
+which failed as expected before the fix was restored. This ordering isn't only cosmetic: past the
+point where the popped entry drops below STARTED, `collectAsStateWithLifecycle` stops collecting
+altogether, so a `showDiscardDialog = false` emitted after `popBackStack()` (the pre-fix ordering)
+would never be delivered at all, not merely delayed a frame.
 
 ### Cross-window touch blocking cannot be proven in compose-ui-test
 

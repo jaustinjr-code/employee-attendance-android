@@ -31,6 +31,9 @@ graph TB
         LDS["LocationDetailScreen"]
         LPH["LocationPermissionHost<br/>(owns system launchers)"]
         SUOH["StatusUpdateOverlayHost<br/>(sibling over NavHost)"]
+        ACS["AccountScreen<br/>name + status update history sections"]
+        SUDS["StatusUpdateDetailScreen / StatusUpdateEditScreen"]
+        HVM["AccountViewModel, StatusUpdateHistory/Detail/EditViewModel"]
         LVM["LocationViewModel<br/>+ foreground fix collector"]
         LPVM["LocationPermissionViewModel"]
         SUOVM["StatusUpdateOverlayViewModel"]
@@ -63,13 +66,16 @@ graph TB
         GBR["GeofenceBroadcastReceiver"]
         CAR["ClockActionReceiver"]
         SUN["StatusUpdateNotifier"]
+        SUDS2["SharedPrefsStatusUpdateLocalDataSource"]
         SPS["SharedPrefsProximityStateStore"]
         SLPR["SystemLocationPermissionRepository"]
         BRW["BiweeklyReportWorker<br/>(WorkManager, daily)"]
         FRS["FileReportSharer<br/>+ ReportFileProvider"]
     end
 
-    MA --> AS & LDS & RS & SUOH
+    MA --> AS & LDS & RS & SUOH & ACS & SUDS
+    ACS & SUDS --> HVM
+    HVM --> SUR
     RS --> RVM
     RVM --> ATR & WLR & RG & FRS
     BRW --> RG & ATR
@@ -93,6 +99,7 @@ graph TB
 
     CAR -->|confirm / undo via clockOutListener| SUC
     SUC --> AFT & SUR & AR & SUN
+    SUR --> SUDS2
 
     LTC --> LTS
     LTS --> LT
@@ -138,6 +145,7 @@ Three composables are deliberate exceptions to "composables stay stateless":
 | `di` | hand-wired object graph | `AppContainer`, `DefaultAppContainer` |
 | `ui.attendance` | home screen, clock in/out, live clock | `AttendanceScreen`, `AttendanceViewModel` |
 | `ui.main` | top app bar, bottom navigation bar, destination tree, the startup loading gate | `MainAppBar`, `MainBottomBar`, `AppNavGraph`, `StartupGate`, `StartupScreen` |
+| `account.ui` | the Account screen and its display name section | `AccountScreen`, `AccountContent`, `AccountViewModel`, `displayNameSection` |
 | `ui.reports` | the Reports tab and its charts | `ReportsScreen`, `ReportsViewModel`, `ReportCharts` |
 | `reporting` | report periods, shift pairing, calculation, sharing, the biweekly notification | `ReportGenerator`, `ReportPeriod`, `FileReportSharer`, `BiweeklyReportController`, `BiweeklyReportWorker` |
 | `ui.theme` | Material 3 theme, colors, typography | `EmployeeAttendanceTheme` |
@@ -152,6 +160,8 @@ Three composables are deliberate exceptions to "composables stay stateless":
 | `settings` | persisted user settings | `ClockNotificationSettingsStore`, `PrivacySettingsStore`, `UserProfileStore`, `StatusUpdateSettingsStore` |
 | `statusupdate` | the Status Update policy, foreground tracking, its notification and launch-intent contract, completed updates | `StatusUpdateCoordinator`, `AppForegroundTracker`, `StatusUpdateNotifier`, `StatusUpdateIntents`, `StatusUpdateRepository`, `StatusUpdateTrigger`, `StatusUpdateRequest`, `StatusUpdate` |
 | `statusupdate.ui` | the Status Update overlay: prompt dialog, card deck, and their ViewModel | `StatusUpdateOverlayHost`, `StatusUpdateOverlayViewModel`, `StatusUpdatePromptDialog`, `StatusUpdateCardStack` |
+| `statusupdate.history` | status update history: grouping by day, and the history, detail and edit ViewModels | `groupStatusUpdatesByDay`, `StatusUpdateShift`, `StatusUpdateHistoryViewModel`, `StatusUpdateDetailViewModel`, `StatusUpdateEditViewModel` |
+| `statusupdate.history.ui` | the history section, hold-to-peek, and the read-only and edit screens | `statusUpdateHistorySection`, `StatusUpdateShiftRow`, `StatusUpdateDetailScreen`, `StatusUpdateEditScreen` |
 | `devtools` | **debug builds only** — state simulation, the permission override, log export | `DeveloperToolsController`, `DeveloperSettingsStore`, `DebugLocationPermissionRepository`, `DeveloperLogExporter`, `DevUnlockTapCounter` |
 | `devtools.facade` | the seam developer actions reach user data through, so a dev write is never spelled like a user write | `DevAttendanceFacade`, `DevWorksiteFacade`, `DevNotificationPreview` |
 
@@ -237,21 +247,20 @@ These are intentional placeholders. Treat them as the natural next features.
 | Map placeholder | `location/ui/WorkLocationMapCard.kt` | a `GoogleMap` composable once a Maps SDK key is provisioned |
 | Clock-in state | `AttendanceScreen.TimeCheck` holds it in `rememberSaveable` | move into `AttendanceViewModel` / a repository |
 | Single active geofence target | `ProximityRepository` holds one global state — see the class doc | per-target membership set |
-| App bar buttons | `MainAppBar` — both `IconButton`s have empty `onClick` | profile + settings destinations |
-| `DefaultStatusUpdateRepository` | `statusupdate/StatusUpdateRepository.kt` | persisted or backend-synced Status Updates; in-memory list only, lost on process death, and nothing displays it |
+| `DefaultStatusUpdateRepository` | `statusupdate/StatusUpdateRepository.kt` | backend-synced Status Updates; persisted on-device only today |
 
 ## 8. Constraints the architecture depends on
 
 > `EmployeeAttendanceApplication.onCreate()` only allocates. Store construction runs in
 > `startupJob` on `Dispatchers.IO`, and no ViewModel factory runs until `startupComplete` is `true`.
 
-`onCreate()` runs on the main thread, and six container stores are backed by
+`onCreate()` runs on the main thread, and seven container stores are backed by
 `EncryptedSharedPreferences` (Keystore unwrap plus file I/O). `DefaultAppContainer` is therefore
 allocation-only (every member `by lazy`), and `startupJob` does the wiring on
 `applicationScope`: it starts `AttendanceAutoClockController` and waits for `awaitSubscribed()`
 before starting `LocationFeatureCoordinator`, because proximity events are a replay-0 flow. It then
-forces `privacySettingsStore`, `userProfileStore`, and `statusUpdateSettingsStore`, which the wiring
-does not pull in. `startupComplete` flips on any terminal state of `startupJob`, failure included.
+forces `privacySettingsStore`, `userProfileStore`, `statusUpdateSettingsStore`, and
+`statusUpdateRepository`, which the wiring does not pull in. `startupComplete` flips on any terminal state of `startupJob`, failure included.
 
 `MainActivity` wraps its content in `StartupGate(started)`, which does not compose its content until
 `startupComplete` is `true` (issue #58). A factory reading a `by lazy` store that startup has not

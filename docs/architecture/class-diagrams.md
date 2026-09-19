@@ -624,10 +624,31 @@ classDiagram
         <<interface>>
         +statusUpdates: StateFlow~List_StatusUpdate~
         +save(update)
+        +updateAnswers(clockOutId, didToday, plannedTomorrow, couldNotDo, editedAtMillis) Boolean
         +clearAll()
     }
     class DefaultStatusUpdateRepository
-    note for DefaultStatusUpdateRepository "in-memory stub"
+    class StatusUpdateLocalDataSource {
+        <<interface>>
+        +load() List_StatusUpdate
+        +save(updates)
+    }
+    class SharedPrefsStatusUpdateLocalDataSource
+    note for SharedPrefsStatusUpdateLocalDataSource "SecurePreferences file status_updates"
+
+    class StatusUpdateHistoryViewModel {
+        +days: StateFlow~List_StatusUpdateDay~
+    }
+    class StatusUpdateDetailViewModel {
+        +shift: StateFlow~StatusUpdateShift~
+    }
+    class StatusUpdateEditViewModel {
+        +uiState: StateFlow~StatusUpdateEditUiState~
+        +onDraftChanged(index, value)
+        +onExitRequested()
+        +onDiscardDialogDismissed()
+        +save() Boolean
+    }
 
     class StatusUpdateIntents {
         <<object>>
@@ -662,11 +683,16 @@ classDiagram
     AppForegroundTracker <|.. DefaultAppForegroundTracker
     StatusUpdateNotifications <|.. StatusUpdateNotifier
     StatusUpdateRepository <|.. DefaultStatusUpdateRepository
+    StatusUpdateLocalDataSource <|.. SharedPrefsStatusUpdateLocalDataSource
+    DefaultStatusUpdateRepository o-- StatusUpdateLocalDataSource
+    StatusUpdateHistoryViewModel o-- StatusUpdateRepository
+    StatusUpdateDetailViewModel o-- StatusUpdateRepository
+    StatusUpdateEditViewModel o-- StatusUpdateRepository
     StatusUpdateCoordinator --> StatusUpdateTrigger
     StatusUpdateCoordinator o-- AppForegroundTracker
     StatusUpdateCoordinator o-- StatusUpdateNotifications
     StatusUpdateCoordinator o-- StatusUpdateRepository
-    StatusUpdateCoordinator o-- AttendanceRepository : hasClockOutEvent
+    StatusUpdateCoordinator o-- AttendanceRepository : hasClockOutEvent, clockInBefore
     StatusUpdateCoordinator --> StatusUpdateRequest
     StatusUpdateNotifier --> StatusUpdateIntents : putExtras
     StatusUpdateOverlayViewModel o-- StatusUpdateCoordinator
@@ -676,7 +702,10 @@ classDiagram
 
 `ClockOutListener` and `ClockOutSource` live in `attendance/ClockNotificationStrategy.kt`, not in
 `statusupdate`, so `attendance/` never imports `statusupdate`. The coordinator also takes
-`enabled: StateFlow<Boolean>` (from `StatusUpdateSettingsStore`) and an injectable `clock`.
+`enabled: StateFlow<Boolean>` (from `StatusUpdateSettingsStore`), an injectable `clock`, and a
+`worksiteName` lookup. The history classes are in `statusupdate.history`; the screens that use them
+(`AccountScreen`, `StatusUpdateDetailScreen`, `StatusUpdateEditScreen`) are described in
+[../features/account.md](../features/account.md).
 `StatusUpdatePromptDialog` and `StatusUpdateOverlayContent` are omitted; both are stateless.
 
 ---
@@ -700,6 +729,7 @@ graph LR
     CAR[ClockActionReceiver]
     ACC[AttendanceAutoClockController]
     SUOVM[StatusUpdateOverlayViewModel]
+    HISTVM[StatusUpdateHistory/Detail/EditViewModel]
     LT[LocationTracker]
     LTC[LocationTrackingController]
     GR[GeofenceRegistrar/GeofenceManager]
@@ -736,6 +766,7 @@ graph LR
     LVM --> AR
     LVM --> SUC
     COL --> SUC
+    HISTVM --> SUR
     CAR --> AR
     CAR --> COL
     ACC --> AR

@@ -30,7 +30,6 @@ import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
 import com.jaustinjr.employeeattendance.settings.PrivacySettingsStore
 import com.jaustinjr.employeeattendance.settings.ReportSettingsStore
 import com.jaustinjr.employeeattendance.settings.StatusUpdateSettingsStore
-import com.jaustinjr.employeeattendance.settings.UserProfileStore
 import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateRepository
 import java.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -92,7 +91,6 @@ class SettingsStatusUpdateToggleTest {
         return SettingsViewModel(
             settingsStore = ClockNotificationSettingsStore(context),
             privacySettingsStore = PrivacySettingsStore(context),
-            userProfileStore = UserProfileStore(context),
             workLocationRepository = FakeWorkLocationRepository(),
             attendanceRepository = FakeAttendanceRepository(),
             proximityUpdater = ProximityRepository(SharedPrefsProximityStateStore(context)),

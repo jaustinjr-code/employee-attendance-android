@@ -29,6 +29,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import com.jaustinjr.employeeattendance.account.ui.AccountScreen
 import com.jaustinjr.employeeattendance.devtools.DevUnlockTapCounter
 import com.jaustinjr.employeeattendance.devtools.ui.DeveloperSettingsScreen
 import com.jaustinjr.employeeattendance.location.ui.LocationDetailScreen
@@ -39,6 +41,8 @@ import com.jaustinjr.employeeattendance.location.ui.WorksiteRegistrationScreen
 import com.jaustinjr.employeeattendance.location.ui.WorksitesScreen
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateIntents
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRequest
+import com.jaustinjr.employeeattendance.statusupdate.history.ui.StatusUpdateDetailScreen
+import com.jaustinjr.employeeattendance.statusupdate.history.ui.StatusUpdateEditScreen
 import com.jaustinjr.employeeattendance.statusupdate.ui.StatusUpdateOverlayHost
 import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
 import com.jaustinjr.employeeattendance.ui.main.AppNavGraph
@@ -50,6 +54,9 @@ import com.jaustinjr.employeeattendance.ui.reports.ReportsScreen
 import com.jaustinjr.employeeattendance.ui.main.StartupGate
 import com.jaustinjr.employeeattendance.ui.main.appBarTitleResFor
 import com.jaustinjr.employeeattendance.ui.main.isChildDestination
+import com.jaustinjr.employeeattendance.ui.main.UpInterceptor
+import com.jaustinjr.employeeattendance.ui.main.performUp
+import com.jaustinjr.employeeattendance.ui.main.updateInterceptor
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 import kotlinx.serialization.Serializable
 
@@ -70,6 +77,18 @@ object WorksiteRegistration
 
 @Serializable
 object Settings
+
+/** The user's account: their display name and past status updates. */
+@Serializable
+object Account
+
+/** One past status update, read-only. [clockOutId] names the shift it belongs to. */
+@Serializable
+data class StatusUpdateDetail(val clockOutId: String)
+
+/** Editing one past status update. [clockOutId] names the shift it belongs to. */
+@Serializable
+data class StatusUpdateEdit(val clockOutId: String)
 
 /**
  * Developer settings. Registered as a destination only in debug builds, and reachable only through
@@ -184,6 +203,20 @@ class MainActivity : ComponentActivity() {
                     // Consumed once, and saved so a rotation before it runs does not lose it.
                     var pendingOpenReports by rememberSaveable { mutableStateOf(openReportsOnStart) }
 
+                    // Up normally pops the back stack directly. The status update editor is the one
+                    // screen that needs to confirm before leaving, so it registers an
+                    // UpInterceptor here as soon as it composes and clears it again on dispose.
+                    // performUp checks the interceptor's own entryId against the current back
+                    // stack entry before invoking it, so a registration left behind by a screen
+                    // that's mid-exit (still composed, no longer current) is ignored rather than
+                    // acted on. Writes go through updateInterceptor rather than a raw assignment,
+                    // for the same reason on the write side: without it, a departing editor's
+                    // delayed onDispose(null) could overwrite a freshly reopened editor's own
+                    // registration if the two windows overlap (reopen within the first editor's
+                    // ~700ms exit transition) — see UpNavigation.kt's doc on both functions. Every
+                    // other screen leaves this null and falls through to a plain pop.
+                    var upInterceptor by remember { mutableStateOf<UpInterceptor?>(null) }
+
                     // Scoped to the Activity so the attendance and detail destinations share one
                     // instance each — a single foreground collector and consistent permission
                     // state.
@@ -201,11 +234,17 @@ class MainActivity : ComponentActivity() {
                                 MainAppBar(
                                     title = appBarTitle,
                                     showUpButton = showUpButton,
-                                    // A plain pop, so up goes to the destination the user came from
-                                    // rather than jumping to the root.
-                                    onNavigateUp = { navController.popBackStack() },
-                                    // launchSingleTop: the overflow menu is on every destination, so
-                                    // picking the one already on screen would otherwise push a
+                                    // Falls through to a direct pop unless the current screen has
+                                    // registered an interceptor (see `upInterceptor` above) — only
+                                    // the status update editor does, to show its discard
+                                    // confirmation. See performUp's doc: this rule is shared with
+                                    // the instrumented test that hosts this same app bar.
+                                    onNavigateUp = { performUp(upInterceptor, navController) },
+                                    onOpenAccount = {
+                                        navController.navigate(Account) { launchSingleTop = true }
+                                    },
+                                    // launchSingleTop: the overflow menu is on every destination,
+                                    // so picking the one already on screen would otherwise push a
                                     // duplicate that up has to be pressed twice to get past.
                                     onOpenWorksites = {
                                         navController.navigate(Worksites) { launchSingleTop = true }
@@ -276,6 +315,29 @@ class MainActivity : ComponentActivity() {
                                 }
                                 composable<Settings> {
                                     SettingsScreen()
+                                }
+                                composable<Account> {
+                                    AccountScreen(
+                                        onOpenStatusUpdate = { clockOutId ->
+                                            navController.navigate(StatusUpdateDetail(clockOutId))
+                                        },
+                                    )
+                                }
+                                composable<StatusUpdateDetail> { entry ->
+                                    val clockOutId = entry.toRoute<StatusUpdateDetail>().clockOutId
+                                    StatusUpdateDetailScreen(
+                                        onEdit = { navController.navigate(StatusUpdateEdit(clockOutId)) },
+                                    )
+                                }
+                                composable<StatusUpdateEdit> { backStackEntry ->
+                                    StatusUpdateEditScreen(
+                                        onSaved = { navController.popBackStack() },
+                                        onExit = { navController.popBackStack() },
+                                        onInterceptUpChanged = { entryId, onUp ->
+                                            upInterceptor = updateInterceptor(upInterceptor, entryId, onUp)
+                                        },
+                                        upEntryId = backStackEntry.id,
+                                    )
                                 }
                                 if (BuildConfig.DEBUG) {
                                     composable<DeveloperSettings> {

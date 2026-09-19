@@ -19,7 +19,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -51,8 +50,7 @@ object SettingsTestTags {
 }
 
 /**
- * Settings screen. Hosts the account display name (temporarily — see
- * [SettingsViewModel.displayName]), the auto clock-in behavior chooser — the user-switchable
+ * Settings screen. Hosts the auto clock-in behavior chooser — the user-switchable
  * selection between the silent / notify-with-undo / confirm strategies — and the privacy and data
  * controls.
  */
@@ -63,7 +61,6 @@ fun SettingsScreen(
 ) {
     val preference by viewModel.preference.collectAsStateWithLifecycle()
     val reverseGeocodeEnabled by viewModel.reverseGeocodeEnabled.collectAsStateWithLifecycle()
-    val displayName by viewModel.displayName.collectAsStateWithLifecycle()
     val statusUpdateEnabled by viewModel.statusUpdateEnabled.collectAsStateWithLifecycle()
     val biweeklyReportEnabled by viewModel.biweeklyReportEnabled.collectAsStateWithLifecycle()
 
@@ -93,8 +90,6 @@ fun SettingsScreen(
     SettingsContent(
         selected = preference,
         onSelect = viewModel::onPreferenceSelected,
-        displayName = displayName,
-        onDisplayNameChanged = viewModel::onDisplayNameChanged,
         reverseGeocodeEnabled = reverseGeocodeEnabled,
         onReverseGeocodeChanged = viewModel::onReverseGeocodeEnabledChanged,
         statusUpdateEnabled = statusUpdateEnabled,
@@ -136,8 +131,6 @@ private val behaviorOptions = listOf(
 fun SettingsContent(
     selected: ClockNotificationPreference,
     onSelect: (ClockNotificationPreference) -> Unit,
-    displayName: String,
-    onDisplayNameChanged: (String) -> Unit,
     reverseGeocodeEnabled: Boolean,
     onReverseGeocodeChanged: (Boolean) -> Unit,
     statusUpdateEnabled: Boolean,
@@ -169,13 +162,6 @@ fun SettingsContent(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        AccountSection(
-            displayName = displayName,
-            onDisplayNameChanged = onDisplayNameChanged,
-        )
-
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
         Text(
             text = stringResource(R.string.settings_clock_behavior_title),
             style = MaterialTheme.typography.titleMedium,
@@ -261,41 +247,6 @@ fun SettingsContent(
         ) {
             Text(stringResource(R.string.settings_data_delete_all))
         }
-    }
-}
-
-/**
- * The account display name. Writes straight through on every keystroke — the store updates its
- * StateFlow synchronously, so the field never lags behind what was typed, and there is no draft
- * state to lose when the screen leaves composition. The text is stored as typed; the greeting
- * trims it and falls back to a default when it is blank.
- */
-@Composable
-private fun AccountSection(
-    displayName: String,
-    onDisplayNameChanged: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = stringResource(R.string.settings_account_title),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            text = stringResource(
-                R.string.settings_account_name_desc,
-                stringResource(R.string.greeting_default_name),
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        OutlinedTextField(
-            value = displayName,
-            onValueChange = onDisplayNameChanged,
-            label = { Text(stringResource(R.string.settings_account_name_label)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
@@ -393,8 +344,6 @@ private fun SettingsPreview() {
         SettingsContent(
             selected = ClockNotificationPreference.NOTIFY_UNDO,
             onSelect = {},
-            displayName = "Jordan",
-            onDisplayNameChanged = {},
             reverseGeocodeEnabled = true,
             onReverseGeocodeChanged = {},
             statusUpdateEnabled = true,

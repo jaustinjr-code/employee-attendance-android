@@ -137,11 +137,11 @@
     <string name="settings_behavior_confirm">Ask me to confirm</string>
     <string name="settings_behavior_confirm_desc">Sends a notification and records only after you confirm.</string>
 
-    <!-- Settings: account. Temporary home for the account settings until the app bar's account
-         entry point exists; see MainAppBar. -->
-    <string name="settings_account_title">Account</string>
-    <string name="settings_account_name_label">Display name</string>
-    <string name="settings_account_name_desc">Used to greet you on the attendance screen. Leave blank to be greeted as \"%1$s\".</string>
+    <!-- Account -->
+    <string name="account_title">Account</string>
+    <string name="account_name_title">Name</string>
+    <string name="account_name_label">Display name</string>
+    <string name="account_name_desc">Used to greet you on the attendance screen. Leave blank to be greeted as \"%1$s\".</string>
 
     <!-- Settings: privacy -->
     <string name="settings_privacy_title">Privacy</string>
@@ -263,6 +263,34 @@
     <string name="status_update_back">Back</string>
     <string name="status_update_next">Next</string>
     <string name="status_update_done">Done</string>
+
+    <!-- Status Update history (account screen) and the detail / edit screens -->
+    <string name="status_update_history_title">Status updates</string>
+    <string name="status_update_history_subtitle">Tap a shift to open it, or press and hold to peek.</string>
+    <string name="status_update_history_empty">Status updates you fill in after clocking out appear here.</string>
+    <string name="status_update_history_today">Today</string>
+    <string name="status_update_history_yesterday">Yesterday</string>
+    <string name="status_update_history_time_range">%1$s – %2$s</string>
+    <string name="status_update_history_clocked_out_at">Clocked out %1$s</string>
+    <string name="status_update_history_general_timeclock">General timeclock</string>
+    <string name="status_update_history_action_open">Open status update</string>
+    <string name="status_update_history_action_peek">Peek at status update</string>
+    <plurals name="status_update_history_more_answers">
+        <item quantity="one">+%d more answer</item>
+        <item quantity="other">+%d more answers</item>
+    </plurals>
+    <string name="status_update_detail_title">Status update</string>
+    <string name="status_update_detail_missing">This status update no longer exists.</string>
+    <string name="status_update_detail_edit">Edit</string>
+    <string name="status_update_edited_at">Edited %1$s</string>
+    <string name="status_update_edit_title">Edit status update</string>
+    <string name="status_update_edit_save">Save</string>
+    <string name="status_update_edit_cancel">Cancel</string>
+    <string name="status_update_edit_needs_answer">Fill in at least one answer to save.</string>
+    <string name="status_update_discard_title">Discard changes?</string>
+    <string name="status_update_discard_message">Your edits to this status update will be lost.</string>
+    <string name="status_update_discard_confirm">Discard</string>
+    <string name="status_update_discard_keep_editing">Keep editing</string>
 
     <!-- Status Update: notification posted when StatusUpdateCoordinator decides a clock-out should
          surface as a notification rather than the in-app prompt (app backgrounded, or the clock-out

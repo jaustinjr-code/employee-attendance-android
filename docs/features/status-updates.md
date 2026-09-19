@@ -5,8 +5,8 @@ you do today?", "What's planned for tomorrow?", "What couldn't be done?") entere
 deck. It is on by default and switched off from Settings. A clock-out that is not surfaced, or a
 prompt the user dismisses, is skipped for good: nothing re-prompts, badges, or re-notifies.
 
-Completed updates are held in memory only, and nothing in the app displays them yet. See
-[Known gaps](#known-gaps).
+An update with every answer blank is not saved. Saved updates are kept on-device in encrypted
+storage and are shown, and can be edited, from the Account screen; see [account.md](account.md).
 
 ---
 
@@ -18,17 +18,17 @@ All paths are under `EmployeeAttendance/app/src/main/java/com/jaustinjr/employee
 | --- | --- |
 | `attendance/ClockNotificationStrategy.kt` | declares `ClockOutListener` and `ClockOutSource { AUTO, NOTIFICATION_CONFIRMED }`; `GuardedClockStrategy.record` reports auto clock-outs |
 | `attendance/ClockActionReceiver.kt` | `ClockActionHandler.confirm` reports confirmed clock-outs; `ClockActionHandler.undo` reports undone ones |
-| `attendance/AttendanceRepository.kt` | `hasClockOutEvent(locationId, epochMillis)`, the read-only check used to validate notification extras |
+| `attendance/AttendanceRepository.kt` | `hasClockOutEvent(locationId, epochMillis)`, the read-only check used to validate notification extras; `clockInBefore` for the shift start saved with an update |
 | `location/ui/LocationViewModel.kt` | `onClockOut()` records a manual clock-out and calls the coordinator with `StatusUpdateTrigger.MANUAL` |
 | `di/AppContainer.kt` | `clockOutListener` maps `ClockOutSource` to `StatusUpdateTrigger`; binds the store, repository, notifier and coordinator |
-| `EmployeeAttendanceApplication.kt` | builds `DefaultAppForegroundTracker` before the container; forces `statusUpdateSettingsStore` in `startupJob` |
+| `EmployeeAttendanceApplication.kt` | builds `DefaultAppForegroundTracker` before the container; forces `statusUpdateSettingsStore` and `statusUpdateRepository` in `startupJob` |
 | `settings/StatusUpdateSettingsStore.kt` | persisted `enabled: StateFlow<Boolean>`, default `true`, prefs file `status_update_settings` |
-| `statusupdate/StatusUpdateModels.kt` | `StatusUpdateTrigger`, `StatusUpdateRequest` (with derived `clockOutId`), `StatusUpdate` |
+| `statusupdate/StatusUpdateModels.kt` | `StatusUpdateTrigger`, `StatusUpdateRequest` (with derived `clockOutId`), `@Serializable StatusUpdate` (answers plus the shift's clock-in, clock-out, worksite name and edit time) |
 | `statusupdate/StatusUpdateCoordinator.kt` | the policy: which surface, prompt state, notification claim, undo, completion |
 | `statusupdate/AppForegroundTracker.kt` | interface + `DefaultAppForegroundTracker`, an `ActivityLifecycleCallbacks` started-activity counter |
 | `statusupdate/StatusUpdateNotifier.kt` | interface `StatusUpdateNotifications` + `StatusUpdateNotifier`, channel `status_update` |
 | `statusupdate/StatusUpdateIntents.kt` | the launch-intent extras contract and `consumeRequest` |
-| `statusupdate/StatusUpdateRepository.kt` | interface + in-memory `DefaultStatusUpdateRepository` |
+| `statusupdate/StatusUpdateRepository.kt` | interface, `StatusUpdateLocalDataSource` + `SharedPrefsStatusUpdateLocalDataSource` (file `status_updates`), and `DefaultStatusUpdateRepository` |
 | `statusupdate/ui/StatusUpdateOverlayHost.kt` | `StatusUpdateOverlayHost` (Activity-level) and stateless `StatusUpdateOverlayContent` |
 | `statusupdate/ui/StatusUpdateOverlayViewModel.kt` | `StatusUpdateOverlayUiState`, drafts, card index, the `Factory` |
 | `statusupdate/ui/StatusUpdatePromptDialog.kt` | the "Start status update?" `AlertDialog` |
@@ -181,7 +181,7 @@ Deck behavior:
 | On/off switch | Settings, "Status updates" section, "Ask after clock-out" | `SettingsViewModel.onStatusUpdateEnabledChanged` writes `StatusUpdateSettingsStore.setEnabled` |
 | Persistence of the switch | `StatusUpdateSettingsStore` | `SecurePreferences` file `status_update_settings`; excluded in `backup_rules.xml` and both sections of `data_extraction_rules.xml` |
 | Startup | `EmployeeAttendanceApplication.startupJob` | forces `container.statusUpdateSettingsStore` so `LocationViewModel.Factory` and `SettingsViewModel.Factory` never construct it on main after `StartupGate` opens (#58) |
-| Completed updates | `DefaultStatusUpdateRepository` | in-memory, lost on process death |
+| Completed updates | `DefaultStatusUpdateRepository` | persisted as JSON in `SecurePreferences` file `status_updates` (backup-excluded, forced in `startupJob`); all-blank updates are not saved; displayed and edited from [Account](account.md) |
 | "Delete all data" | `SettingsViewModel.onDeleteAllData` | calls `statusUpdateRepository.clearAll()` |
 
 A new store-backed dependency of the coordinator must also be forced in `startupJob`. See
@@ -206,6 +206,7 @@ A new store-backed dependency of the coordinator must also be forced in `startup
 | `AppForegroundTrackerTest` | androidTest | the started-activity counter |
 | `StatusUpdateSettingsStoreTest`, `SettingsStatusUpdateToggleTest` | androidTest | default on, persistence, the Settings switch |
 | `SettingsDeleteAllDataTest` | androidTest | "Delete all data" clears saved updates |
+| `DefaultStatusUpdateRepositoryTest`, `SharedPrefsStatusUpdateLocalDataSourceTest` | JVM, androidTest | persistence; history and editing tests are listed in [account.md](account.md#tests) |
 
 The test patterns specific to this feature are in [testing.md §6](../maintenance/testing.md#6-patterns-for-overlay-and-launch-intent-tests).
 
@@ -215,7 +216,6 @@ The test patterns specific to this feature are in [testing.md §6](../maintenanc
 
 | Gap | Where | Notes |
 | --- | --- | --- |
-| Completed updates are not persisted or sent anywhere | `DefaultStatusUpdateRepository` | in-memory stub; listed in [overview §7](../architecture/overview.md#7-known-stubs-and-follow-ups) |
-| Nothing displays completed updates | no consumer of `StatusUpdateRepository.statusUpdates` besides `claimNotificationRequest` | |
+| Completed updates stay on the device | `DefaultStatusUpdateRepository` | no backend sync; listed in [overview §7](../architecture/overview.md#7-known-stubs-and-follow-ups) |
 | A notification that cannot be posted is lost | `StatusUpdateNotifier.post` | with notifications disabled or `POST_NOTIFICATIONS` denied the post is skipped, and no prompt is created in its place, so that clock-out's update is skipped |
 | System back on the deck is not covered end to end | `StatusUpdateNotificationLaunchTest` KDoc | covered at composable level by `StatusUpdateCardStackTest.systemBack_dismissesTheDeck` |
