@@ -9,6 +9,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateCoordinator
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRequest
+import com.jaustinjr.employeeattendance.statusupdate.emptyDrafts
+import com.jaustinjr.employeeattendance.statusupdate.toAnswers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -117,9 +119,7 @@ class StatusUpdateOverlayViewModel(
             val drafts = _drafts.value
             coordinator.complete(
                 request = request,
-                didToday = drafts[0],
-                plannedTomorrow = drafts[1],
-                couldNotDo = drafts[2],
+                answers = drafts.toAnswers(),
             )
             closeDeck()
         } else {
@@ -152,8 +152,6 @@ class StatusUpdateOverlayViewModel(
     }
 
     companion object {
-        private fun emptyDrafts() = List(StatusUpdateCardStackUiState.CARD_COUNT) { "" }
-
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val container = (this[APPLICATION_KEY] as EmployeeAttendanceApplication).container

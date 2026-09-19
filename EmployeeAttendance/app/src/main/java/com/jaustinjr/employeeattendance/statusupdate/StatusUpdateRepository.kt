@@ -7,6 +7,7 @@ import com.jaustinjr.employeeattendance.storage.SecurePreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -30,9 +31,7 @@ interface StatusUpdateRepository {
      */
     fun updateAnswers(
         clockOutId: String,
-        didToday: String,
-        plannedTomorrow: String,
-        couldNotDo: String,
+        answers: Map<StatusUpdateQuestion, String>,
         editedAtMillis: Long,
     ): Boolean
 
@@ -49,6 +48,62 @@ interface StatusUpdateLocalDataSource {
     fun save(updates: List<StatusUpdate>)
 }
 
+/**
+ * The on-disk shape of a [StatusUpdate]. Answers are keyed by [StatusUpdateQuestion.id]. The
+ * nullable `didToday` / `plannedTomorrow` / `couldNotDo` fields are what releases before the
+ * question-keyed format wrote; they are read as a fallback when [answers] is empty and are never
+ * written (they encode as absent because they stay null).
+ */
+@Serializable
+internal data class StoredStatusUpdate(
+    val clockOutId: String,
+    val answers: Map<String, String> = emptyMap(),
+    val didToday: String? = null,
+    val plannedTomorrow: String? = null,
+    val couldNotDo: String? = null,
+    val completedAtMillis: Long,
+    val clockOutAtMillis: Long = completedAtMillis,
+    val clockInAtMillis: Long? = null,
+    val worksiteName: String? = null,
+    val editedAtMillis: Long? = null,
+) {
+    /** Unknown question ids are ignored; legacy fields are used only when [answers] is empty. */
+    fun toDomain(): StatusUpdate {
+        val mapped: Map<StatusUpdateQuestion, String> = if (answers.isNotEmpty()) {
+            buildMap {
+                answers.forEach { (id, text) ->
+                    StatusUpdateQuestion.fromId(id)?.let { put(it, text) }
+                }
+            }
+        } else {
+            buildMap {
+                didToday?.let { put(StatusUpdateQuestion.DID_TODAY, it) }
+                plannedTomorrow?.let { put(StatusUpdateQuestion.PLANNED_TOMORROW, it) }
+                couldNotDo?.let { put(StatusUpdateQuestion.COULD_NOT_DO, it) }
+            }
+        }
+        return StatusUpdate(
+            clockOutId = clockOutId,
+            answers = mapped,
+            completedAtMillis = completedAtMillis,
+            clockOutAtMillis = clockOutAtMillis,
+            clockInAtMillis = clockInAtMillis,
+            worksiteName = worksiteName,
+            editedAtMillis = editedAtMillis,
+        )
+    }
+}
+
+internal fun StatusUpdate.toStored(): StoredStatusUpdate = StoredStatusUpdate(
+    clockOutId = clockOutId,
+    answers = answers.mapKeys { (question, _) -> question.id },
+    completedAtMillis = completedAtMillis,
+    clockOutAtMillis = clockOutAtMillis,
+    clockInAtMillis = clockInAtMillis,
+    worksiteName = worksiteName,
+    editedAtMillis = editedAtMillis,
+)
+
 /** [StatusUpdateLocalDataSource] in encrypted SharedPreferences, as JSON. */
 class SharedPrefsStatusUpdateLocalDataSource(
     context: Context,
@@ -59,14 +114,14 @@ class SharedPrefsStatusUpdateLocalDataSource(
 
     override fun load(): List<StatusUpdate> {
         val raw = prefs.getString(KEY_UPDATES, null) ?: return emptyList()
-        return runCatching { json.decodeFromString<List<StatusUpdate>>(raw) }
+        return runCatching { json.decodeFromString<List<StoredStatusUpdate>>(raw).map { it.toDomain() } }
             .onFailure { Log.w(TAG, "Failed to decode status updates; ignoring", it) }
             .getOrDefault(emptyList())
     }
 
     override fun save(updates: List<StatusUpdate>) {
         Log.v(TAG, "save: ${updates.size} status update(s)")
-        prefs.edit { putString(KEY_UPDATES, json.encodeToString(updates)) }
+        prefs.edit { putString(KEY_UPDATES, json.encodeToString(updates.map { it.toStored() })) }
     }
 
     private companion object {
@@ -105,18 +160,14 @@ class DefaultStatusUpdateRepository(
     @Synchronized
     override fun updateAnswers(
         clockOutId: String,
-        didToday: String,
-        plannedTomorrow: String,
-        couldNotDo: String,
+        answers: Map<StatusUpdateQuestion, String>,
         editedAtMillis: Long,
     ): Boolean {
         val current = _statusUpdates.value
         val index = current.indexOfFirst { it.clockOutId == clockOutId }
         if (index < 0) return false
         val edited = current[index].copy(
-            didToday = didToday,
-            plannedTomorrow = plannedTomorrow,
-            couldNotDo = couldNotDo,
+            answers = answers,
             editedAtMillis = editedAtMillis,
         )
         publish(current.toMutableList().also { it[index] = edited })

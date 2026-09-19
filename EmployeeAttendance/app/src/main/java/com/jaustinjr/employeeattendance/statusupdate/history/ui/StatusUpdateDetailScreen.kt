@@ -24,7 +24,7 @@ import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.statusupdate.history.AnsweredQuestion
 import com.jaustinjr.employeeattendance.statusupdate.history.StatusUpdateDetailViewModel
 import com.jaustinjr.employeeattendance.statusupdate.history.StatusUpdateShift
-import com.jaustinjr.employeeattendance.statusupdate.ui.StatusUpdateQuestion
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 
 /** Read-only view of one past status update, with a way into editing it. */

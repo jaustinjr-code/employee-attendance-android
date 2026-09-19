@@ -10,7 +10,10 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRepository
-import com.jaustinjr.employeeattendance.statusupdate.ui.StatusUpdateQuestion
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
+import com.jaustinjr.employeeattendance.statusupdate.emptyDrafts
+import com.jaustinjr.employeeattendance.statusupdate.toAnswers
+import com.jaustinjr.employeeattendance.statusupdate.toDrafts
 import java.util.TimeZone
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -79,7 +82,7 @@ class StatusUpdateDetailViewModel(
 /**
  * UI state for editing a status update.
  *
- * @param drafts the three answers being edited, in [StatusUpdateQuestion] order.
+ * @param drafts the answers being edited, in [StatusUpdateQuestion] order.
  * @param found false when no status update exists for the requested shift.
  */
 data class StatusUpdateEditUiState(
@@ -107,7 +110,7 @@ class StatusUpdateEditViewModel(
     private val original = repository.statusUpdates.value.firstOrNull { it.clockOutId == clockOutId }
 
     private val draftsFlow: StateFlow<List<String>> =
-        savedStateHandle.getStateFlow(KEY_DRAFTS, ArrayList(original?.answers ?: List(3) { "" }))
+        savedStateHandle.getStateFlow(KEY_DRAFTS, ArrayList(original?.answers?.toDrafts() ?: emptyDrafts()))
     private val discardDialogFlow: StateFlow<Boolean> =
         savedStateHandle.getStateFlow(KEY_DISCARD_DIALOG, false)
 
@@ -167,8 +170,7 @@ class StatusUpdateEditViewModel(
     fun save(): Boolean {
         val state = uiState.value
         if (!state.canSave) return false
-        val (didToday, plannedTomorrow, couldNotDo) = state.drafts
-        return repository.updateAnswers(clockOutId, didToday, plannedTomorrow, couldNotDo, clock())
+        return repository.updateAnswers(clockOutId, state.drafts.toAnswers(), clock())
     }
 
     companion object {

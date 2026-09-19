@@ -1,7 +1,7 @@
 package com.jaustinjr.employeeattendance.statusupdate.history
 
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdate
-import com.jaustinjr.employeeattendance.statusupdate.ui.StatusUpdateQuestion
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -15,14 +15,10 @@ class StatusUpdateHistoryTest {
     private fun update(
         id: String,
         clockOutAt: Long,
-        didToday: String = "did",
-        plannedTomorrow: String = "",
-        couldNotDo: String = "",
+        answers: Map<StatusUpdateQuestion, String> = mapOf(StatusUpdateQuestion.DID_TODAY to "did"),
     ) = StatusUpdate(
         clockOutId = id,
-        didToday = didToday,
-        plannedTomorrow = plannedTomorrow,
-        couldNotDo = couldNotDo,
+        answers = answers,
         completedAtMillis = clockOutAt + 60_000L,
         clockOutAtMillis = clockOutAt,
     )
@@ -57,7 +53,7 @@ class StatusUpdateHistoryTest {
 
     @Test
     fun `updates with no answer are left out`() {
-        val blank = update("blank", clockOutAt = day, didToday = " ")
+        val blank = update("blank", clockOutAt = day, answers = mapOf(StatusUpdateQuestion.DID_TODAY to " "))
 
         assertEquals(emptyList<StatusUpdateDay>(), groupStatusUpdatesByDay(listOf(blank), utc))
     }
@@ -67,9 +63,10 @@ class StatusUpdateHistoryTest {
         val shift = update(
             "a",
             clockOutAt = day,
-            didToday = "",
-            plannedTomorrow = "  Restock shelves ",
-            couldNotDo = "Deliveries",
+            answers = mapOf(
+                StatusUpdateQuestion.PLANNED_TOMORROW to "  Restock shelves ",
+                StatusUpdateQuestion.COULD_NOT_DO to "Deliveries",
+            ),
         ).toShift()
 
         assertEquals(
@@ -80,5 +77,20 @@ class StatusUpdateHistoryTest {
             shift.answers,
         )
         assertEquals("Restock shelves", shift.previewText)
+    }
+
+    @Test
+    fun `history follows every question in the enum, in declaration order`() {
+        val all = StatusUpdateQuestion.entries.associateWith { "answer ${it.id}" }
+        val shift = StatusUpdate(
+            clockOutId = "a",
+            answers = all,
+            completedAtMillis = 1L,
+        ).toShift()
+
+        assertEquals(
+            StatusUpdateQuestion.entries.map { AnsweredQuestion(it, "answer ${it.id}") },
+            shift.answers,
+        )
     }
 }

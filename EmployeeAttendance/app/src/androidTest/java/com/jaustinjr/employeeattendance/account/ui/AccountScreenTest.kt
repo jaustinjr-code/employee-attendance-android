@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.espresso.Espresso
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdate
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
 import com.jaustinjr.employeeattendance.statusupdate.history.StatusUpdateDay
 import com.jaustinjr.employeeattendance.statusupdate.history.groupStatusUpdatesByDay
 import com.jaustinjr.employeeattendance.statusupdate.history.ui.StatusUpdateHistoryTestTags
@@ -37,9 +38,10 @@ class AccountScreenTest {
     private val updates = listOf(
         StatusUpdate(
             clockOutId = "site-a@1000",
-            didToday = "Finished the inventory count",
-            plannedTomorrow = "Restock the front shelves",
-            couldNotDo = "",
+            answers = mapOf(
+                StatusUpdateQuestion.DID_TODAY to "Finished the inventory count",
+                StatusUpdateQuestion.PLANNED_TOMORROW to "Restock the front shelves",
+            ),
             completedAtMillis = 1_757_896_300_000,
             clockOutAtMillis = 1_757_896_260_000,
             clockInAtMillis = 1_757_866_920_000,

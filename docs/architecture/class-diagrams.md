@@ -604,7 +604,7 @@ classDiagram
         +dismissPrompt()
         +claimNotificationRequest(request) StatusUpdateRequest?
         +onClockOutUndone(locationId, clockOutAtMillis)
-        +complete(request, didToday, plannedTomorrow, couldNotDo)
+        +complete(request, answers: Map_StatusUpdateQuestion_String)
     }
 
     class AppForegroundTracker {
@@ -624,7 +624,7 @@ classDiagram
         <<interface>>
         +statusUpdates: StateFlow~List_StatusUpdate~
         +save(update)
-        +updateAnswers(clockOutId, didToday, plannedTomorrow, couldNotDo, editedAtMillis) Boolean
+        +updateAnswers(clockOutId, answers: Map_StatusUpdateQuestion_String, editedAtMillis) Boolean
         +clearAll()
     }
     class DefaultStatusUpdateRepository
@@ -661,6 +661,35 @@ classDiagram
         +clockOutAtMillis: Long
         +clockOutId: String
     }
+
+    class StatusUpdateQuestion {
+        <<enumeration>>
+        DID_TODAY
+        PLANNED_TOMORROW
+        COULD_NOT_DO
+        +id: String
+        +questionRes: Int
+        +hintRes: Int
+    }
+    note for StatusUpdateQuestion "declaration order is display order; id is persisted, never rename or reuse"
+
+    class StatusUpdate {
+        +clockOutId: String
+        +answers: Map_StatusUpdateQuestion_String
+        +completedAtMillis: Long
+        +hasAnyAnswer: Boolean
+    }
+    StatusUpdate o-- StatusUpdateQuestion : answers keys
+
+    class StoredStatusUpdate {
+        <<serializable>>
+        +answers: Map_String_String
+        +didToday: String? legacy read only
+        +plannedTomorrow: String? legacy read only
+        +couldNotDo: String? legacy read only
+        +toDomain() StatusUpdate
+    }
+    SharedPrefsStatusUpdateLocalDataSource ..> StoredStatusUpdate : encodes and decodes
 
     class StatusUpdateOverlayViewModel {
         +uiState: StateFlow~StatusUpdateOverlayUiState~
