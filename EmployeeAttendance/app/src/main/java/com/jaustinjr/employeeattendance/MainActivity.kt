@@ -50,6 +50,7 @@ import com.jaustinjr.employeeattendance.ui.main.MainAppBar
 import com.jaustinjr.employeeattendance.ui.main.MainBottomBar
 import com.jaustinjr.employeeattendance.ui.main.destinationOrRoot
 import com.jaustinjr.employeeattendance.ui.main.navigateToTab
+import com.jaustinjr.employeeattendance.ui.main.selectTab
 import com.jaustinjr.employeeattendance.ui.reports.ReportsScreen
 import com.jaustinjr.employeeattendance.ui.main.StartupGate
 import com.jaustinjr.employeeattendance.ui.main.appBarTitleResFor
@@ -256,18 +257,28 @@ class MainActivity : ComponentActivity() {
                                 )
                             },
                             bottomBar = {
-                                // Tabs only: a child screen is a drill-in with an up button, and a
-                                // bottom bar there would offer a second, conflicting way out.
-                                if (!showUpButton) {
-                                    MainBottomBar(
-                                        currentRoute = currentRoute,
-                                        onSelect = { destination ->
-                                            navController.navigateToTab(
-                                                if (destination == AppNavGraph.Reports) Reports else Attendance,
+                                // Always shown: Attendance and Reports are both home screens, and
+                                // a drill-in must not strand the user away from the other one.
+                                MainBottomBar(
+                                    currentRoute = currentRoute,
+                                    onSelect = { destination ->
+                                        // The status update editor confirms before discarding
+                                        // edits; a tab tap must not skip that, so it takes the
+                                        // same path as up. The user taps the tab again after.
+                                        val interceptor = upInterceptor
+                                        if (interceptor != null &&
+                                            interceptor.entryId == navController.currentBackStackEntry?.id
+                                        ) {
+                                            interceptor.onUp()
+                                        } else {
+                                            navController.selectTab(
+                                                tab = destination,
+                                                route = if (destination == AppNavGraph.Reports) Reports else Attendance,
+                                                currentRoute = currentRoute,
                                             )
-                                        },
-                                    )
-                                }
+                                        }
+                                    },
+                                )
                             },
                         ) { padding ->
                             NavHost(
