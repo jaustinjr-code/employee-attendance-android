@@ -1,14 +1,30 @@
 # Feature: Status Update
 
-After every real clock-out, the app offers a short Status Update: three free-text answers ("What did
-you do today?", "What's planned for tomorrow?", "What couldn't be done?") entered on a three-card
-deck. It is on by default and switched off from Settings. A clock-out that is not surfaced, or a
+After every real clock-out, the app offers a short Status Update: free-text answers to a fixed set of questions ("What did
+you do today?", "What's planned for tomorrow?", "What couldn't be done?") entered on a deck with one card per question
+(`StatusUpdateQuestion`; currently three). It is on by default and switched off from Settings. A clock-out that is not surfaced, or a
 prompt the user dismisses, is skipped for good: nothing re-prompts, badges, or re-notifies.
 
 An update with every answer blank is not saved. Saved updates are kept on-device in encrypted
 storage and are shown, and can be edited, from the Account screen; see [account.md](account.md).
 
 ---
+
+## Questions and persisted answers
+
+`StatusUpdateQuestion` is the only definition of the question set. The card deck, edit screen,
+history and detail all derive from `StatusUpdateQuestion.entries`; **declaration order is the display
+order**. Adding a question means adding an enum entry (with a new `id` and its two strings); nothing
+else lists or counts questions. Drafts are `List<String>` in `entries` order (Bundle-friendly for
+`SavedStateHandle`) and are converted to and from the answers map only by `toAnswers` / `toDrafts`.
+
+`StatusUpdate.answers` is a `Map<StatusUpdateQuestion, String>`; a missing key means unanswered.
+On disk, `StoredStatusUpdate` keys answers by `StatusUpdateQuestion.id` (`did_today`,
+`planned_tomorrow`, `could_not_do`). **Never rename or reuse an id.** Unknown ids are ignored on load,
+so a retired question does not break old data. Updates saved by earlier releases (fields `didToday`,
+`plannedTomorrow`, `couldNotDo`) are read through nullable legacy fields when `answers` is empty; the
+legacy fields are never written. Covered by `StoredStatusUpdateTest` (JVM) and
+`SharedPrefsStatusUpdateLocalDataSourceTest` (androidTest).
 
 ## Code map
 
@@ -23,16 +39,17 @@ All paths are under `EmployeeAttendance/app/src/main/java/com/jaustinjr/employee
 | `di/AppContainer.kt` | `clockOutListener` maps `ClockOutSource` to `StatusUpdateTrigger`; binds the store, repository, notifier and coordinator |
 | `EmployeeAttendanceApplication.kt` | builds `DefaultAppForegroundTracker` before the container; forces `statusUpdateSettingsStore` and `statusUpdateRepository` in `startupJob` |
 | `settings/StatusUpdateSettingsStore.kt` | persisted `enabled: StateFlow<Boolean>`, default `true`, prefs file `status_update_settings` |
-| `statusupdate/StatusUpdateModels.kt` | `StatusUpdateTrigger`, `StatusUpdateRequest` (with derived `clockOutId`), `@Serializable StatusUpdate` (answers plus the shift's clock-in, clock-out, worksite name and edit time) |
+| `statusupdate/StatusUpdateModels.kt` | `StatusUpdateTrigger`, `StatusUpdateRequest` (with derived `clockOutId`), `StatusUpdate` (`answers: Map<StatusUpdateQuestion, String>` plus the shift's clock-in, clock-out, worksite name and edit time) |
 | `statusupdate/StatusUpdateCoordinator.kt` | the policy: which surface, prompt state, notification claim, undo, completion |
 | `statusupdate/AppForegroundTracker.kt` | interface + `DefaultAppForegroundTracker`, an `ActivityLifecycleCallbacks` started-activity counter |
 | `statusupdate/StatusUpdateNotifier.kt` | interface `StatusUpdateNotifications` + `StatusUpdateNotifier`, channel `status_update` |
 | `statusupdate/StatusUpdateIntents.kt` | the launch-intent extras contract and `consumeRequest` |
-| `statusupdate/StatusUpdateRepository.kt` | interface, `StatusUpdateLocalDataSource` + `SharedPrefsStatusUpdateLocalDataSource` (file `status_updates`), and `DefaultStatusUpdateRepository` |
+| `statusupdate/StatusUpdateQuestion.kt` | `StatusUpdateQuestion` (the single definition of the question set: persisted `id`, strings), and the `toAnswers` / `toDrafts` / `emptyDrafts` helpers, the only place drafts are mapped to questions by position |
+| `statusupdate/StatusUpdateRepository.kt` | interface, `StatusUpdateLocalDataSource` + `SharedPrefsStatusUpdateLocalDataSource` (file `status_updates`), the internal `@Serializable StoredStatusUpdate` storage type, and `DefaultStatusUpdateRepository` |
 | `statusupdate/ui/StatusUpdateOverlayHost.kt` | `StatusUpdateOverlayHost` (Activity-level) and stateless `StatusUpdateOverlayContent` |
 | `statusupdate/ui/StatusUpdateOverlayViewModel.kt` | `StatusUpdateOverlayUiState`, drafts, card index, the `Factory` |
 | `statusupdate/ui/StatusUpdatePromptDialog.kt` | the "Start status update?" `AlertDialog` |
-| `statusupdate/ui/StatusUpdateCardStack.kt` | stateless deck, `StatusUpdateCardStackUiState`, `StatusUpdateQuestion`, `StatusUpdateTestTags` |
+| `statusupdate/ui/StatusUpdateCardStack.kt` | stateless deck, `StatusUpdateCardStackUiState` (`CARD_COUNT` derived from `StatusUpdateQuestion.entries`), `StatusUpdateTestTags` |
 | `location/ui/SettingsScreen.kt`, `SettingsViewModel.kt` | the "Ask after clock-out" switch; "Delete all data" calls `statusUpdateRepository.clearAll()` |
 | `MainActivity.kt` | `launchMode="singleTop"` in the manifest, `onNewIntent`, mounts `StatusUpdateOverlayHost` |
 

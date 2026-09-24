@@ -30,9 +30,10 @@ class SharedPrefsStatusUpdateLocalDataSourceTest {
     fun savedUpdatesSurviveANewInstance() {
         val update = StatusUpdate(
             clockOutId = "site-a@1000",
-            didToday = "Wrote the report",
-            plannedTomorrow = "",
-            couldNotDo = "Deliveries",
+            answers = mapOf(
+                StatusUpdateQuestion.DID_TODAY to "Wrote the report",
+                StatusUpdateQuestion.COULD_NOT_DO to "Deliveries",
+            ),
             completedAtMillis = 2_000L,
             clockOutAtMillis = 1_000L,
             clockInAtMillis = 500L,
@@ -45,5 +46,23 @@ class SharedPrefsStatusUpdateLocalDataSourceTest {
         val reloaded = DefaultStatusUpdateRepository(SharedPrefsStatusUpdateLocalDataSource(context))
 
         assertEquals(listOf(update), reloaded.statusUpdates.value)
+    }
+
+    @Test
+    fun legacyJsonWrittenByThePreviousReleaseStillLoads() {
+        // Exactly the shape the release before the question-keyed format persisted.
+        val legacy = """[{"clockOutId":"site-a@1000","didToday":"Wrote the report",""" +
+            """"plannedTomorrow":"","couldNotDo":"Deliveries","completedAtMillis":2000,""" +
+            """"clockOutAtMillis":1000,"clockInAtMillis":500,"worksiteName":"Main office",""" +
+            """"editedAtMillis":3000}]"""
+        SecurePreferences.create(context, "status_updates").edit().putString("updates", legacy).commit()
+
+        val loaded = SharedPrefsStatusUpdateLocalDataSource(context).load().single()
+
+        assertEquals("site-a@1000", loaded.clockOutId)
+        assertEquals("Wrote the report", loaded.answers[StatusUpdateQuestion.DID_TODAY])
+        assertEquals("Deliveries", loaded.answers[StatusUpdateQuestion.COULD_NOT_DO])
+        assertEquals("Main office", loaded.worksiteName)
+        assertEquals(3_000L, loaded.editedAtMillis)
     }
 }

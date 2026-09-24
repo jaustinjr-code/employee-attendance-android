@@ -16,6 +16,8 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class StatusUpdateCoordinatorTest {
 
+    private fun answers(vararg drafts: String) = drafts.toList().toAnswers()
+
     private fun coordinator(
         enabled: Boolean = true,
         foreground: Boolean = false,
@@ -170,7 +172,7 @@ class StatusUpdateCoordinatorTest {
         val repository = DefaultStatusUpdateRepository()
         val coord = coordinator(attendanceRepository = attendance, repository = repository)
         val request = StatusUpdateRequest("site-a", 1_000L)
-        coord.complete(request, "a", "b", "c")
+        coord.complete(request, answers("a", "b", "c"))
 
         val claimed = coord.claimNotificationRequest(request)
 
@@ -222,13 +224,13 @@ class StatusUpdateCoordinatorTest {
         val coord = coordinator(repository = repository, nowMillis = 9_999L)
         val request = StatusUpdateRequest("site-a", 1_000L)
 
-        coord.complete(request, "did today", "planned tomorrow", "could not do")
+        coord.complete(request, answers("did today", "planned tomorrow", "could not do"))
 
         val saved = repository.statusUpdates.value.single()
         assertEquals("site-a@1000", saved.clockOutId)
-        assertEquals("did today", saved.didToday)
-        assertEquals("planned tomorrow", saved.plannedTomorrow)
-        assertEquals("could not do", saved.couldNotDo)
+        assertEquals("did today", saved.answers[StatusUpdateQuestion.DID_TODAY])
+        assertEquals("planned tomorrow", saved.answers[StatusUpdateQuestion.PLANNED_TOMORROW])
+        assertEquals("could not do", saved.answers[StatusUpdateQuestion.COULD_NOT_DO])
         assertEquals(9_999L, saved.completedAtMillis)
     }
 
@@ -248,7 +250,7 @@ class StatusUpdateCoordinatorTest {
         val repository = DefaultStatusUpdateRepository()
         val coord = coordinator(repository = repository)
 
-        coord.complete(StatusUpdateRequest("site-a", 1_000L), "", "  ", "\n")
+        coord.complete(StatusUpdateRequest("site-a", 1_000L), answers("", "  ", "\n"))
 
         assertTrue(repository.statusUpdates.value.isEmpty())
     }
@@ -258,9 +260,9 @@ class StatusUpdateCoordinatorTest {
         val repository = DefaultStatusUpdateRepository()
         val coord = coordinator(repository = repository)
 
-        coord.complete(StatusUpdateRequest("site-a", 1_000L), "", "", "Van was in the shop")
+        coord.complete(StatusUpdateRequest("site-a", 1_000L), answers("", "", "Van was in the shop"))
 
-        assertEquals("Van was in the shop", repository.statusUpdates.value.single().couldNotDo)
+        assertEquals("Van was in the shop", repository.statusUpdates.value.single().answers[StatusUpdateQuestion.COULD_NOT_DO])
     }
 
     @Test
@@ -275,7 +277,7 @@ class StatusUpdateCoordinatorTest {
             worksiteName = { if (it == "site-a") "Main office" else null },
         )
 
-        coord.complete(StatusUpdateRequest("site-a", 1_000L), "did", "", "")
+        coord.complete(StatusUpdateRequest("site-a", 1_000L), answers("did", "", ""))
 
         val saved = repository.statusUpdates.value.single()
         assertEquals(400L, saved.clockInAtMillis)

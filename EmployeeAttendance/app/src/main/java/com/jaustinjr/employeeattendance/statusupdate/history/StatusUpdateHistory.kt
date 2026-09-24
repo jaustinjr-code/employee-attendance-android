@@ -1,7 +1,7 @@
 package com.jaustinjr.employeeattendance.statusupdate.history
 
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdate
-import com.jaustinjr.employeeattendance.statusupdate.ui.StatusUpdateQuestion
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
 import java.util.Calendar
 import java.util.TimeZone
 
@@ -30,9 +30,9 @@ fun StatusUpdate.toShift(): StatusUpdateShift = StatusUpdateShift(
     worksiteName = worksiteName,
     clockInAtMillis = clockInAtMillis,
     clockOutAtMillis = clockOutAtMillis,
-    answers = StatusUpdateQuestion.entries.zip(answers)
-        .filter { (_, answer) -> answer.isNotBlank() }
-        .map { (question, answer) -> AnsweredQuestion(question, answer.trim()) },
+    answers = StatusUpdateQuestion.entries.mapNotNull { question ->
+        answers[question]?.takeIf { it.isNotBlank() }?.let { AnsweredQuestion(question, it.trim()) }
+    },
     editedAtMillis = editedAtMillis,
 )
 

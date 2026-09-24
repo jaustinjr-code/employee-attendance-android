@@ -30,6 +30,7 @@ import com.jaustinjr.employeeattendance.StatusUpdateDetail
 import com.jaustinjr.employeeattendance.StatusUpdateEdit
 import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateRepository
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdate
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
 import com.jaustinjr.employeeattendance.statusupdate.history.CLOCK_OUT_ID_ARG
 import com.jaustinjr.employeeattendance.statusupdate.history.StatusUpdateDetailViewModel
 import com.jaustinjr.employeeattendance.statusupdate.history.StatusUpdateEditViewModel
@@ -60,9 +61,9 @@ class StatusUpdateEditFlowTest {
         save(
             StatusUpdate(
                 clockOutId = id,
-                didToday = "Wrote the report",
-                plannedTomorrow = "",
-                couldNotDo = "",
+                answers = mapOf(
+                    StatusUpdateQuestion.DID_TODAY to "Wrote the report",
+                ),
                 completedAtMillis = 2_000L,
                 clockOutAtMillis = 1_000L,
             ),
@@ -273,7 +274,7 @@ class StatusUpdateEditFlowTest {
         composeRule.onNodeWithText("Status update").assertIsDisplayed()
         composeRule.onNodeWithText("Wrote the report").assertIsDisplayed()
         composeRule.onNodeWithText("Discard changes?").assertDoesNotExist()
-        assertEquals("Wrote the report", repository.statusUpdates.value.single().didToday)
+        assertEquals("Wrote the report", repository.statusUpdates.value.single().answers[StatusUpdateQuestion.DID_TODAY])
     }
 
     @Test

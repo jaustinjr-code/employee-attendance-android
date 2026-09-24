@@ -34,7 +34,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.statusupdate.history.StatusUpdateEditUiState
 import com.jaustinjr.employeeattendance.statusupdate.history.StatusUpdateEditViewModel
-import com.jaustinjr.employeeattendance.statusupdate.ui.StatusUpdateQuestion
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 
 /**

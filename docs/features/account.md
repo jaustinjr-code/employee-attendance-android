@@ -91,12 +91,12 @@ and the ripple). Add new gestures there rather than stacking another `pointerInp
 `StatusUpdateDetailScreen` is read-only: the day, time range, worksite, an "Edited" line once edited,
 then each answered question. The Edit button navigates to `StatusUpdateEdit(clockOutId)`.
 
-`StatusUpdateEditScreen` shows all three questions, including unanswered ones, as text fields.
+`StatusUpdateEditScreen` shows every `StatusUpdateQuestion`, including unanswered ones, as text fields.
 
 - **Entering edit mode counts as having changes.** Cancel, system back, and the app bar's up button
   all open "Discard changes?", even when no text changed. "Keep editing" (or tapping outside the
   dialog) stays; "Discard" pops back to the read-only screen, and the edits are lost.
-- **Save** calls `StatusUpdateRepository.updateAnswers` (stamping `editedAtMillis`) and pops back.
+- **Save** calls `StatusUpdateRepository.updateAnswers` with the drafts converted by `toAnswers()` (stamping `editedAtMillis`) and pops back.
   The read-only screen observes the repository, so it shows the new text immediately.
 - Save is disabled while every answer is blank, with a message beside the buttons, because history
   keeps only filled-in updates.
@@ -137,7 +137,7 @@ editor's registration, or the id check, would let up skip the discard confirmati
 | --- | --- | --- |
 | Display name | `UserProfileStore` | unchanged; only the screen that edits it moved from Settings to Account |
 | Status updates | `DefaultStatusUpdateRepository` over `SharedPrefsStatusUpdateLocalDataSource` | JSON in `SecurePreferences` file `status_updates`; excluded in `backup_rules.xml` and both sections of `data_extraction_rules.xml`; forced in `startupJob` |
-| Old updates | `StatusUpdate` new fields have defaults | `clockOutAtMillis` defaults to `completedAtMillis`, the rest to null |
+| Old updates | `StoredStatusUpdate` defaults and legacy fields | `clockOutAtMillis` defaults to `completedAtMillis`, the rest to null; answers saved as `didToday` / `plannedTomorrow` / `couldNotDo` are still read and mapped to the question-keyed answers |
 | "Delete all data" | `SettingsViewModel.onDeleteAllData` | `statusUpdateRepository.clearAll()` empties history |
 
 ---

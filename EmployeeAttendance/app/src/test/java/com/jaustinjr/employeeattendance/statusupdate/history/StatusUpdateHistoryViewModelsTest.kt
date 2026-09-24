@@ -3,6 +3,8 @@ package com.jaustinjr.employeeattendance.statusupdate.history
 import androidx.lifecycle.SavedStateHandle
 import com.jaustinjr.employeeattendance.statusupdate.DefaultStatusUpdateRepository
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdate
+import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateQuestion
+import com.jaustinjr.employeeattendance.statusupdate.toDrafts
 import com.jaustinjr.employeeattendance.testutil.MainDispatcherRule
 import java.util.TimeZone
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,9 +28,10 @@ class StatusUpdateHistoryViewModelsTest {
         save(
             StatusUpdate(
                 clockOutId = "site-a@1000",
-                didToday = "Wrote the report",
-                plannedTomorrow = "",
-                couldNotDo = "Deliveries",
+                answers = mapOf(
+                    StatusUpdateQuestion.DID_TODAY to "Wrote the report",
+                    StatusUpdateQuestion.COULD_NOT_DO to "Deliveries",
+                ),
                 completedAtMillis = 2_000L,
                 clockOutAtMillis = 1_000L,
             ),
@@ -64,7 +67,7 @@ class StatusUpdateHistoryViewModelsTest {
         runCurrent()
         assertEquals("Wrote the report", viewModel.shift.value?.previewText)
 
-        repository.updateAnswers("site-a@1000", "Rewrote the report", "", "", 5_000L)
+        repository.updateAnswers("site-a@1000", mapOf(StatusUpdateQuestion.DID_TODAY to "Rewrote the report"), 5_000L)
         runCurrent()
 
         assertEquals("Rewrote the report", viewModel.shift.value?.previewText)
@@ -96,7 +99,7 @@ class StatusUpdateHistoryViewModelsTest {
         assertTrue(viewModel.save())
 
         val saved = repository.statusUpdates.value.single()
-        assertEquals(listOf("Wrote the report", "Restock shelves", "Deliveries"), saved.answers)
+        assertEquals(listOf("Wrote the report", "Restock shelves", "Deliveries"), saved.answers.toDrafts())
         assertEquals(7_000L, saved.editedAtMillis)
     }
 
@@ -108,7 +111,7 @@ class StatusUpdateHistoryViewModelsTest {
 
         assertFalse(viewModel.uiState.value.canSave)
         assertFalse(viewModel.save())
-        assertEquals("Wrote the report", repository.statusUpdates.value.single().didToday)
+        assertEquals("Wrote the report", repository.statusUpdates.value.single().answers[StatusUpdateQuestion.DID_TODAY])
     }
 
     @Test
@@ -159,7 +162,7 @@ class StatusUpdateHistoryViewModelsTest {
 
         assertEquals("Unsaved draft", recreated.drafts[0])
         assertTrue(recreated.showDiscardDialog)
-        assertEquals("Wrote the report", repository.statusUpdates.value.single().didToday)
+        assertEquals("Wrote the report", repository.statusUpdates.value.single().answers[StatusUpdateQuestion.DID_TODAY])
     }
 
     @Test
