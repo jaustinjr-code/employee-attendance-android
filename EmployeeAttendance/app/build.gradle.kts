@@ -62,6 +62,10 @@ tasks.withType<Test>().configureEach {
     inputs.file(layout.projectDirectory.file("src/main/AndroidManifest.xml"))
         .withPropertyName("mainManifest")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    // LegalDocumentTest reads the shipped legal text off the filesystem for the same reason.
+    inputs.dir(layout.projectDirectory.dir("src/main/assets/legal"))
+        .withPropertyName("legalDocuments")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 dependencies {

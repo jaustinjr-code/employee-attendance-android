@@ -113,7 +113,7 @@ class SettingsStatusUpdateToggleTest {
     @Test
     fun toggleIsShownAndOnByDefault() {
         composeRule.setContent {
-            SettingsScreen(viewModel = viewModel())
+            SettingsScreen(onOpenLegal = {}, viewModel = viewModel())
         }
 
         composeRule.onNodeWithText("Status updates").performScrollTo().assertIsDisplayed()
@@ -124,7 +124,7 @@ class SettingsStatusUpdateToggleTest {
     @Test
     fun toggling_persistsThroughTheStore() {
         composeRule.setContent {
-            SettingsScreen(viewModel = viewModel())
+            SettingsScreen(onOpenLegal = {}, viewModel = viewModel())
         }
 
         statusUpdateSwitch().performScrollTo().performClick()
@@ -138,7 +138,7 @@ class SettingsStatusUpdateToggleTest {
     fun shortViewport_scrollsToLastRowsWithoutOverlap() {
         composeRule.setContent {
             Box(Modifier.height(480.dp)) {
-                SettingsScreen(viewModel = viewModel())
+                SettingsScreen(onOpenLegal = {}, viewModel = viewModel())
             }
         }
 

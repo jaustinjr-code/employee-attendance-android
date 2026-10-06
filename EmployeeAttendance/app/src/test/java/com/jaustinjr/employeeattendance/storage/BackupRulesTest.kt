@@ -1,5 +1,6 @@
 package com.jaustinjr.employeeattendance.storage
 
+import com.jaustinjr.employeeattendance.testutil.findAppModuleDir
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
@@ -24,7 +25,7 @@ import org.w3c.dom.Element
  */
 class BackupRulesTest {
 
-    private val moduleDir: File = findModuleDir()
+    private val moduleDir: File = findAppModuleDir()
 
     private val xmlDir = File(moduleDir, "src/main/res/xml")
 
@@ -181,21 +182,5 @@ class BackupRulesTest {
                 ?.substringAfter('=')
                 ?.trim()
                 .orEmpty()
-
-        /**
-         * Unit tests run with the Gradle module directory as the working directory, but resolve by
-         * walking up so the test also works from the repo or project root.
-         */
-        fun findModuleDir(): File {
-            var dir: File? = File("").absoluteFile
-            while (dir != null) {
-                val candidate = File(dir, "src/main/res/xml/backup_rules.xml")
-                if (candidate.isFile) return dir
-                val nested = File(dir, "app/src/main/res/xml/backup_rules.xml")
-                if (nested.isFile) return File(dir, "app")
-                dir = dir.parentFile
-            }
-            throw AssertionError("could not locate the app module from ${File("").absolutePath}")
-        }
     }
 }

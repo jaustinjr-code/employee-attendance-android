@@ -164,4 +164,19 @@ class AppNavGraphTest {
         )
         assertTrue(isChildDestination("${StatusUpdateEditRoute}/{clockOutId}"))
     }
+
+    @Test
+    fun `legal screens nest under settings`() {
+        // Up from a document returns to the list, then to Settings, the list's only entry point.
+        assertEquals(
+            listOf(AppNavGraph.Legal, AppNavGraph.Settings, AppNavGraph.Attendance),
+            AppNavGraph.LegalDocumentDetail.ancestors,
+        )
+        assertSame(
+            AppNavGraph.LegalDocumentDetail,
+            AppNavGraph.destinationFor("${LegalDocumentDetailRoute}/{documentId}"),
+        )
+        assertEquals("com.jaustinjr.employeeattendance.Legal", LegalRoute)
+        assertEquals("com.jaustinjr.employeeattendance.LegalDocumentDetail", LegalDocumentDetailRoute)
+    }
 }

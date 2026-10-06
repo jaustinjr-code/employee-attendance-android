@@ -40,6 +40,8 @@ touch.
 - [features/attendance.md](features/attendance.md) — the home screen, clock in/out, live clock.
 - [features/account.md](features/account.md) — the Account screen: display name and status update
   history, the hold-to-peek gesture, and the read-only/edit screens.
+- [features/legal.md](features/legal.md) — the privacy policy text, the Legal screen under
+  Settings, and how to add another legal document.
 - [features/location-permissions.md](features/location-permissions.md) — the runtime permission
   ladder and rationale dialogs.
 - [features/location-tracking.md](features/location-tracking.md) — location fixes, the foreground
