@@ -360,4 +360,21 @@
     <string name="settings_biweekly_report_title">Biweekly report notification</string>
     <string name="settings_biweekly_report_desc">Every other Sunday, get a notification summarizing the previous two weeks. Shifts still in progress aren\'t counted.</string>
     <string name="settings_biweekly_report_denied">Notifications are turned off for this app, so the biweekly report can\'t be shown.</string>
+
+    <!-- Onboarding: first-launch carousel -->
+    <string name="onboarding_attendance_feature">Attendance</string>
+    <string name="onboarding_attendance_title">Clock in &amp; out</string>
+    <string name="onboarding_attendance_body">Track when you clock in and clock out.</string>
+    <string name="onboarding_attendance_supporting">A live clock is always on, so you never miss a second.</string>
+    <string name="onboarding_worksite_feature">Worksites</string>
+    <string name="onboarding_worksite_title">Add your worksites</string>
+    <string name="onboarding_worksite_body">Use location services to register the different worksites you clock in at.</string>
+    <string name="onboarding_worksite_supporting">Opt in to location tracking to clock in automatically.</string>
+    <string name="onboarding_reporting_feature">Reporting</string>
+    <string name="onboarding_reporting_title">Status reports</string>
+    <string name="onboarding_reporting_body">At the end of each day, submit an optional status report.</string>
+    <string name="onboarding_reporting_supporting">Biweekly report summaries highlight when you were most productive.</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_get_started">Get started</string>
+    <string name="onboarding_page_indicator">Page %1$d of %2$d</string>
 </resources>

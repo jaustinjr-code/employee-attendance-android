@@ -24,7 +24,9 @@ one of them is a source of coupling you need to know about:
 ```mermaid
 graph TB
     subgraph Presentation["Presentation — Compose + ViewModels"]
-        MA["MainActivity<br/>StartupGate + NavHost + bottom bar: Attendance | Reports"]
+        MA["MainActivity<br/>StartupGate + OnboardingGate + NavHost + bottom bar: Attendance | Reports"]
+        OBS["OnboardingScreen<br/>(first launch only)"]
+        OBVM["OnboardingViewModel"]
         RS["ReportsScreen"]
         RVM["ReportsViewModel"]
         AS["AttendanceScreen"]
@@ -73,7 +75,8 @@ graph TB
         FRS["FileReportSharer<br/>+ ReportFileProvider"]
     end
 
-    MA --> AS & LDS & RS & SUOH & ACS & SUDS
+    MA --> OBS & AS & LDS & RS & SUOH & ACS & SUDS
+    MA --> OBVM
     ACS & SUDS --> HVM
     HVM --> SUR
     RS --> RVM
@@ -254,16 +257,19 @@ These are intentional placeholders. Treat them as the natural next features.
 > `EmployeeAttendanceApplication.onCreate()` only allocates. Store construction runs in
 > `startupJob` on `Dispatchers.IO`, and no ViewModel factory runs until `startupComplete` is `true`.
 
-`onCreate()` runs on the main thread, and seven container stores are backed by
+`onCreate()` runs on the main thread, and most container stores are backed by
 `EncryptedSharedPreferences` (Keystore unwrap plus file I/O). `DefaultAppContainer` is therefore
 allocation-only (every member `by lazy`), and `startupJob` does the wiring on
 `applicationScope`: it starts `AttendanceAutoClockController` and waits for `awaitSubscribed()`
 before starting `LocationFeatureCoordinator`, because proximity events are a replay-0 flow. It then
-forces `privacySettingsStore`, `userProfileStore`, `statusUpdateSettingsStore`, and
-`statusUpdateRepository`, which the wiring does not pull in. `startupComplete` flips on any terminal state of `startupJob`, failure included.
+forces `privacySettingsStore`, `userProfileStore`, `statusUpdateSettingsStore`,
+`statusUpdateRepository`, and `onboardingStore`, which the wiring does not pull in.
+`startupComplete` flips on any terminal state of `startupJob`, failure included.
 
 `MainActivity` wraps its content in `StartupGate(started)`, which does not compose its content until
-`startupComplete` is `true` (issue #58). A factory reading a `by lazy` store that startup has not
+`startupComplete` is `true` (issue #58). Inside it, `OnboardingGate` likewise does not compose the
+app (`MainContent`) while first-launch onboarding is showing — see
+[features/onboarding.md](../features/onboarding.md). A factory reading a `by lazy` store that startup has not
 forced would construct it on the main thread after the gate opened, so **a new store-backed
 dependency reachable from any ViewModel factory must be forced in `startupJob`**. `LocationViewModel`
 reaches `statusUpdateSettingsStore` through `statusUpdateCoordinator`, which is why that store is

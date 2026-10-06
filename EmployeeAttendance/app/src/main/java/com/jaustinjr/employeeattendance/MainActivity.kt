@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +40,8 @@ import com.jaustinjr.employeeattendance.location.ui.LocationViewModel
 import com.jaustinjr.employeeattendance.location.ui.SettingsScreen
 import com.jaustinjr.employeeattendance.location.ui.WorksiteRegistrationScreen
 import com.jaustinjr.employeeattendance.location.ui.WorksitesScreen
+import com.jaustinjr.employeeattendance.onboarding.ui.OnboardingScreen
+import com.jaustinjr.employeeattendance.onboarding.ui.OnboardingViewModel
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateIntents
 import com.jaustinjr.employeeattendance.statusupdate.StatusUpdateRequest
 import com.jaustinjr.employeeattendance.statusupdate.history.ui.StatusUpdateDetailScreen
@@ -50,6 +53,7 @@ import com.jaustinjr.employeeattendance.ui.main.MainAppBar
 import com.jaustinjr.employeeattendance.ui.main.MainBottomBar
 import com.jaustinjr.employeeattendance.ui.main.destinationOrRoot
 import com.jaustinjr.employeeattendance.ui.main.navigateToTab
+import com.jaustinjr.employeeattendance.ui.main.OnboardingGate
 import com.jaustinjr.employeeattendance.ui.main.selectTab
 import com.jaustinjr.employeeattendance.ui.reports.ReportsScreen
 import com.jaustinjr.employeeattendance.ui.main.StartupGate
@@ -109,7 +113,6 @@ class MainActivity : ComponentActivity() {
     // stays at its default `null`.
     private var pendingStatusUpdateRequest by mutableStateOf<StatusUpdateRequest?>(null)
 
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -137,234 +140,261 @@ class MainActivity : ComponentActivity() {
                 // so this cannot strand the user on a loading screen.
                 val started by application.startupComplete.collectAsStateWithLifecycle()
                 StartupGate(started) {
-                    val navController = rememberNavController()
-
-                    // The title is derived from the back stack, not pushed by each screen. See
-                    // appBarTitleResFor: the app bar sits outside the NavHost, and predictive back
-                    // keeps two destinations composed at once, so a push-based title depends on the
-                    // ordering of two screens' side effects and can end up showing the screen the
-                    // user just left.
-                    val currentEntry by navController.currentBackStackEntryAsState()
-                    val currentRoute = currentEntry?.destination?.route
-                    val appBarTitle = stringResource(appBarTitleResFor(currentRoute))
-
-                    // Attendance is the root; every other destination is a child of it. The app bar
-                    // shows an up button on children and the account affordance on the root, from
-                    // the same single source of truth as the title.
-                    val showUpButton = isChildDestination(currentRoute)
-
-                    // The developer-settings unlock. Offered only on the attendance destination —
-                    // the root, which is no longer the only destination without an up button now
-                    // that Reports is a tab — and only in a debug build. In release `onTitleClick`
-                    // stays null and the title is an ordinary, non-interactive label.
-                    val onAttendance = destinationOrRoot(currentRoute) == AppNavGraph.root
-                    //
-                    // The countdown toast is not decoration: without it the gesture gives no sign
-                    // it is working, so someone tapping deliberately pauses between taps, silently
-                    // restarts the run, and concludes the feature is broken. See
-                    // DevUnlockTapCounter's note on the window.
-                    val devTapCounter = remember { DevUnlockTapCounter() }
-                    val context = LocalContext.current
-                    // Resolved in composition rather than in the click lambda: reading resources
-                    // off LocalContext there survives lint but not a configuration change, so the
-                    // strings would go stale after a locale switch.
-                    val unlockedMessage = stringResource(R.string.dev_unlock_opened)
-                    val progressMessages =
-                        (1..DevUnlockTapCounter.FEEDBACK_THRESHOLD_TAPS).map { taps ->
-                            pluralStringResource(R.plurals.dev_unlock_progress, taps, taps)
-                        }
-                    val onTitleClick: (() -> Unit)? =
-                        if (BuildConfig.DEBUG && onAttendance) {
-                            {
-                                // elapsedRealtime, not wall clock: the run must not be broken (or
-                                // spuriously extended) by a clock change mid-gesture.
-                                if (devTapCounter.onTap(SystemClock.elapsedRealtime())) {
-                                    Toast.makeText(context, unlockedMessage, Toast.LENGTH_SHORT)
-                                        .show()
-                                    navController.navigate(DeveloperSettings)
-                                } else if (devTapCounter.shouldShowProgress) {
-                                    val remaining = devTapCounter.remainingTaps
-                                    Toast.makeText(
-                                        context,
-                                        progressMessages[remaining - 1],
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                                }
-                            }
-                        } else {
-                            null
-                        }
-
-                    // Leaving the attendance screen abandons a half-finished run, so taps from an
-                    // earlier visit can't combine with later ones into an accidental unlock.
-                    LaunchedEffect(onAttendance) {
-                        if (!onAttendance) devTapCounter.reset()
-                    }
-
-                    // Consumed once, and saved so a rotation before it runs does not lose it.
-                    var pendingOpenReports by rememberSaveable { mutableStateOf(openReportsOnStart) }
-
-                    // Up normally pops the back stack directly. The status update editor is the one
-                    // screen that needs to confirm before leaving, so it registers an
-                    // UpInterceptor here as soon as it composes and clears it again on dispose.
-                    // performUp checks the interceptor's own entryId against the current back
-                    // stack entry before invoking it, so a registration left behind by a screen
-                    // that's mid-exit (still composed, no longer current) is ignored rather than
-                    // acted on. Writes go through updateInterceptor rather than a raw assignment,
-                    // for the same reason on the write side: without it, a departing editor's
-                    // delayed onDispose(null) could overwrite a freshly reopened editor's own
-                    // registration if the two windows overlap (reopen within the first editor's
-                    // ~700ms exit transition) — see UpNavigation.kt's doc on both functions. Every
-                    // other screen leaves this null and falls through to a plain pop.
-                    var upInterceptor by remember { mutableStateOf<UpInterceptor?>(null) }
-
-                    // Scoped to the Activity so the attendance and detail destinations share one
-                    // instance each — a single foreground collector and consistent permission
-                    // state.
-                    val locationViewModel: LocationViewModel =
-                        viewModel(factory = LocationViewModel.Factory)
-                    val locationPermissionViewModel: LocationPermissionViewModel =
-                        viewModel(factory = LocationPermissionViewModel.Factory)
-
-                    // The Status Update overlay is a sibling of the Scaffold, not part of the
-                    // NavHost: it must render over whatever destination is current without
-                    // navigating to or disturbing it. See StatusUpdateOverlayHost's doc.
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Scaffold(
-                            topBar = {
-                                MainAppBar(
-                                    title = appBarTitle,
-                                    showUpButton = showUpButton,
-                                    // Falls through to a direct pop unless the current screen has
-                                    // registered an interceptor (see `upInterceptor` above) — only
-                                    // the status update editor does, to show its discard
-                                    // confirmation. See performUp's doc: this rule is shared with
-                                    // the instrumented test that hosts this same app bar.
-                                    onNavigateUp = { performUp(upInterceptor, navController) },
-                                    onOpenAccount = {
-                                        navController.navigate(Account) { launchSingleTop = true }
-                                    },
-                                    // launchSingleTop: the overflow menu is on every destination,
-                                    // so picking the one already on screen would otherwise push a
-                                    // duplicate that up has to be pressed twice to get past.
-                                    onOpenWorksites = {
-                                        navController.navigate(Worksites) { launchSingleTop = true }
-                                    },
-                                    onOpenSettings = {
-                                        navController.navigate(Settings) { launchSingleTop = true }
-                                    },
-                                    onTitleClick = onTitleClick,
-                                )
-                            },
-                            bottomBar = {
-                                // Always shown: Attendance and Reports are both home screens, and
-                                // a drill-in must not strand the user away from the other one.
-                                MainBottomBar(
-                                    currentRoute = currentRoute,
-                                    onSelect = { destination ->
-                                        // The status update editor confirms before discarding
-                                        // edits; a tab tap must not skip that, so it takes the
-                                        // same path as up. The user taps the tab again after.
-                                        val interceptor = upInterceptor
-                                        if (interceptor != null &&
-                                            interceptor.entryId == navController.currentBackStackEntry?.id
-                                        ) {
-                                            interceptor.onUp()
-                                        } else {
-                                            navController.selectTab(
-                                                tab = destination,
-                                                route = if (destination == AppNavGraph.Reports) Reports else Attendance,
-                                                currentRoute = currentRoute,
-                                            )
-                                        }
-                                    },
-                                )
-                            },
-                        ) { padding ->
-                            NavHost(
-                                navController,
-                                startDestination = Attendance,
-                                modifier = Modifier.padding(padding),
-                            ) {
-                                composable<Attendance> {
-                                    // Navigating from here rather than from an effect beside the
-                                    // Scaffold: the NavHost is subcomposed after that effect runs, so
-                                    // its graph would not be set yet. Attendance is the start
-                                    // destination, so this is the first place navigation is legal,
-                                    // and it leaves Attendance beneath Reports for back.
-                                    if (pendingOpenReports) {
-                                        LaunchedEffect(Unit) {
-                                            pendingOpenReports = false
-                                            navController.navigateToTab(Reports)
-                                        }
-                                    }
-                                    AttendanceScreen(
-                                        onOpenLocationDetail = { navController.navigate(LocationDetail) },
-                                        onAddWorksite = { navController.navigate(WorksiteRegistration) },
-                                        locationViewModel = locationViewModel,
-                                        locationPermissionViewModel = locationPermissionViewModel,
-                                    )
-                                }
-                                composable<Reports> {
-                                    ReportsScreen()
-                                }
-                                composable<LocationDetail> {
-                                    LocationDetailScreen(
-                                        viewModel = locationViewModel,
-                                        onManageWorksites = { navController.navigate(Worksites) },
-                                    )
-                                }
-                                composable<Worksites> {
-                                    WorksitesScreen(
-                                        onAddWorksite = { navController.navigate(WorksiteRegistration) },
-                                    )
-                                }
-                                composable<WorksiteRegistration> {
-                                    WorksiteRegistrationScreen(
-                                        onSaved = { navController.popBackStack() },
-                                    )
-                                }
-                                composable<Settings> {
-                                    SettingsScreen()
-                                }
-                                composable<Account> {
-                                    AccountScreen(
-                                        onOpenStatusUpdate = { clockOutId ->
-                                            navController.navigate(StatusUpdateDetail(clockOutId))
-                                        },
-                                    )
-                                }
-                                composable<StatusUpdateDetail> { entry ->
-                                    val clockOutId = entry.toRoute<StatusUpdateDetail>().clockOutId
-                                    StatusUpdateDetailScreen(
-                                        onEdit = { navController.navigate(StatusUpdateEdit(clockOutId)) },
-                                    )
-                                }
-                                composable<StatusUpdateEdit> { backStackEntry ->
-                                    StatusUpdateEditScreen(
-                                        onSaved = { navController.popBackStack() },
-                                        onExit = { navController.popBackStack() },
-                                        onInterceptUpChanged = { entryId, onUp ->
-                                            upInterceptor = updateInterceptor(upInterceptor, entryId, onUp)
-                                        },
-                                        upEntryId = backStackEntry.id,
-                                    )
-                                }
-                                if (BuildConfig.DEBUG) {
-                                    composable<DeveloperSettings> {
-                                        DeveloperSettingsScreen()
-                                    }
-                                }
-                            }
-                        }
-
-                        StatusUpdateOverlayHost(
-                            pendingNotificationRequest = pendingStatusUpdateRequest,
-                            onNotificationRequestConsumed = { pendingStatusUpdateRequest = null },
-                        )
+                    // First launch shows the onboarding carousel in place of the app. Built inside
+                    // the startup gate like every other factory: OnboardingViewModel.Factory reads
+                    // an EncryptedSharedPreferences-backed store that startup forces beforehand.
+                    val onboardingViewModel: OnboardingViewModel =
+                        viewModel(factory = OnboardingViewModel.Factory)
+                    val showOnboarding by
+                        onboardingViewModel.showOnboarding.collectAsStateWithLifecycle()
+                    OnboardingGate(
+                        showOnboarding = showOnboarding,
+                        onboarding = {
+                            OnboardingScreen(onFinished = onboardingViewModel::complete)
+                        },
+                    ) {
+                        MainContent(openReportsOnStart)
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * The app itself: chrome, navigation, and the Status Update overlay. Composed only once both
+     * [StartupGate] and [OnboardingGate] have opened — so not at all while the onboarding
+     * carousel is showing, which keeps the location ViewModels and the attendance screen's
+     * location-permission prompt from starting behind it. A notification deep link is not lost
+     * meanwhile: [openReportsOnStart] and [pendingStatusUpdateRequest] are only read from here.
+     */
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun MainContent(openReportsOnStart: Boolean) {
+        val navController = rememberNavController()
+
+        // The title is derived from the back stack, not pushed by each screen. See
+        // appBarTitleResFor: the app bar sits outside the NavHost, and predictive back
+        // keeps two destinations composed at once, so a push-based title depends on the
+        // ordering of two screens' side effects and can end up showing the screen the
+        // user just left.
+        val currentEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = currentEntry?.destination?.route
+        val appBarTitle = stringResource(appBarTitleResFor(currentRoute))
+
+        // Attendance is the root; every other destination is a child of it. The app bar
+        // shows an up button on children and the account affordance on the root, from
+        // the same single source of truth as the title.
+        val showUpButton = isChildDestination(currentRoute)
+
+        // The developer-settings unlock. Offered only on the attendance destination —
+        // the root, which is no longer the only destination without an up button now
+        // that Reports is a tab — and only in a debug build. In release `onTitleClick`
+        // stays null and the title is an ordinary, non-interactive label.
+        val onAttendance = destinationOrRoot(currentRoute) == AppNavGraph.root
+        //
+        // The countdown toast is not decoration: without it the gesture gives no sign
+        // it is working, so someone tapping deliberately pauses between taps, silently
+        // restarts the run, and concludes the feature is broken. See
+        // DevUnlockTapCounter's note on the window.
+        val devTapCounter = remember { DevUnlockTapCounter() }
+        val context = LocalContext.current
+        // Resolved in composition rather than in the click lambda: reading resources
+        // off LocalContext there survives lint but not a configuration change, so the
+        // strings would go stale after a locale switch.
+        val unlockedMessage = stringResource(R.string.dev_unlock_opened)
+        val progressMessages =
+            (1..DevUnlockTapCounter.FEEDBACK_THRESHOLD_TAPS).map { taps ->
+                pluralStringResource(R.plurals.dev_unlock_progress, taps, taps)
+            }
+        val onTitleClick: (() -> Unit)? =
+            if (BuildConfig.DEBUG && onAttendance) {
+                {
+                    // elapsedRealtime, not wall clock: the run must not be broken (or
+                    // spuriously extended) by a clock change mid-gesture.
+                    if (devTapCounter.onTap(SystemClock.elapsedRealtime())) {
+                        Toast.makeText(context, unlockedMessage, Toast.LENGTH_SHORT)
+                            .show()
+                        navController.navigate(DeveloperSettings)
+                    } else if (devTapCounter.shouldShowProgress) {
+                        val remaining = devTapCounter.remainingTaps
+                        Toast.makeText(
+                            context,
+                            progressMessages[remaining - 1],
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }
+            } else {
+                null
+            }
+
+        // Leaving the attendance screen abandons a half-finished run, so taps from an
+        // earlier visit can't combine with later ones into an accidental unlock.
+        LaunchedEffect(onAttendance) {
+            if (!onAttendance) devTapCounter.reset()
+        }
+
+        // Consumed once, and saved so a rotation before it runs does not lose it.
+        var pendingOpenReports by rememberSaveable { mutableStateOf(openReportsOnStart) }
+
+        // Up normally pops the back stack directly. The status update editor is the one
+        // screen that needs to confirm before leaving, so it registers an
+        // UpInterceptor here as soon as it composes and clears it again on dispose.
+        // performUp checks the interceptor's own entryId against the current back
+        // stack entry before invoking it, so a registration left behind by a screen
+        // that's mid-exit (still composed, no longer current) is ignored rather than
+        // acted on. Writes go through updateInterceptor rather than a raw assignment,
+        // for the same reason on the write side: without it, a departing editor's
+        // delayed onDispose(null) could overwrite a freshly reopened editor's own
+        // registration if the two windows overlap (reopen within the first editor's
+        // ~700ms exit transition) — see UpNavigation.kt's doc on both functions. Every
+        // other screen leaves this null and falls through to a plain pop.
+        var upInterceptor by remember { mutableStateOf<UpInterceptor?>(null) }
+
+        // Scoped to the Activity so the attendance and detail destinations share one
+        // instance each — a single foreground collector and consistent permission
+        // state.
+        val locationViewModel: LocationViewModel =
+            viewModel(factory = LocationViewModel.Factory)
+        val locationPermissionViewModel: LocationPermissionViewModel =
+            viewModel(factory = LocationPermissionViewModel.Factory)
+
+        // The Status Update overlay is a sibling of the Scaffold, not part of the
+        // NavHost: it must render over whatever destination is current without
+        // navigating to or disturbing it. See StatusUpdateOverlayHost's doc.
+        Box(modifier = Modifier.fillMaxSize()) {
+            Scaffold(
+                topBar = {
+                    MainAppBar(
+                        title = appBarTitle,
+                        showUpButton = showUpButton,
+                        // Falls through to a direct pop unless the current screen has
+                        // registered an interceptor (see `upInterceptor` above) — only
+                        // the status update editor does, to show its discard
+                        // confirmation. See performUp's doc: this rule is shared with
+                        // the instrumented test that hosts this same app bar.
+                        onNavigateUp = { performUp(upInterceptor, navController) },
+                        onOpenAccount = {
+                            navController.navigate(Account) { launchSingleTop = true }
+                        },
+                        // launchSingleTop: the overflow menu is on every destination,
+                        // so picking the one already on screen would otherwise push a
+                        // duplicate that up has to be pressed twice to get past.
+                        onOpenWorksites = {
+                            navController.navigate(Worksites) { launchSingleTop = true }
+                        },
+                        onOpenSettings = {
+                            navController.navigate(Settings) { launchSingleTop = true }
+                        },
+                        onTitleClick = onTitleClick,
+                    )
+                },
+                bottomBar = {
+                    // Always shown: Attendance and Reports are both home screens, and
+                    // a drill-in must not strand the user away from the other one.
+                    MainBottomBar(
+                        currentRoute = currentRoute,
+                        onSelect = { destination ->
+                            // The status update editor confirms before discarding
+                            // edits; a tab tap must not skip that, so it takes the
+                            // same path as up. The user taps the tab again after.
+                            val interceptor = upInterceptor
+                            if (interceptor != null &&
+                                interceptor.entryId == navController.currentBackStackEntry?.id
+                            ) {
+                                interceptor.onUp()
+                            } else {
+                                navController.selectTab(
+                                    tab = destination,
+                                    route = if (destination == AppNavGraph.Reports) Reports else Attendance,
+                                    currentRoute = currentRoute,
+                                )
+                            }
+                        },
+                    )
+                },
+            ) { padding ->
+                NavHost(
+                    navController,
+                    startDestination = Attendance,
+                    modifier = Modifier.padding(padding),
+                ) {
+                    composable<Attendance> {
+                        // Navigating from here rather than from an effect beside the
+                        // Scaffold: the NavHost is subcomposed after that effect runs, so
+                        // its graph would not be set yet. Attendance is the start
+                        // destination, so this is the first place navigation is legal,
+                        // and it leaves Attendance beneath Reports for back.
+                        if (pendingOpenReports) {
+                            LaunchedEffect(Unit) {
+                                pendingOpenReports = false
+                                navController.navigateToTab(Reports)
+                            }
+                        }
+                        AttendanceScreen(
+                            onOpenLocationDetail = { navController.navigate(LocationDetail) },
+                            onAddWorksite = { navController.navigate(WorksiteRegistration) },
+                            locationViewModel = locationViewModel,
+                            locationPermissionViewModel = locationPermissionViewModel,
+                        )
+                    }
+                    composable<Reports> {
+                        ReportsScreen()
+                    }
+                    composable<LocationDetail> {
+                        LocationDetailScreen(
+                            viewModel = locationViewModel,
+                            onManageWorksites = { navController.navigate(Worksites) },
+                        )
+                    }
+                    composable<Worksites> {
+                        WorksitesScreen(
+                            onAddWorksite = { navController.navigate(WorksiteRegistration) },
+                        )
+                    }
+                    composable<WorksiteRegistration> {
+                        WorksiteRegistrationScreen(
+                            onSaved = { navController.popBackStack() },
+                        )
+                    }
+                    composable<Settings> {
+                        SettingsScreen()
+                    }
+                    composable<Account> {
+                        AccountScreen(
+                            onOpenStatusUpdate = { clockOutId ->
+                                navController.navigate(StatusUpdateDetail(clockOutId))
+                            },
+                        )
+                    }
+                    composable<StatusUpdateDetail> { entry ->
+                        val clockOutId = entry.toRoute<StatusUpdateDetail>().clockOutId
+                        StatusUpdateDetailScreen(
+                            onEdit = { navController.navigate(StatusUpdateEdit(clockOutId)) },
+                        )
+                    }
+                    composable<StatusUpdateEdit> { backStackEntry ->
+                        StatusUpdateEditScreen(
+                            onSaved = { navController.popBackStack() },
+                            onExit = { navController.popBackStack() },
+                            onInterceptUpChanged = { entryId, onUp ->
+                                upInterceptor = updateInterceptor(upInterceptor, entryId, onUp)
+                            },
+                            upEntryId = backStackEntry.id,
+                        )
+                    }
+                    if (BuildConfig.DEBUG) {
+                        composable<DeveloperSettings> {
+                            DeveloperSettingsScreen()
+                        }
+                    }
+                }
+            }
+
+            StatusUpdateOverlayHost(
+                pendingNotificationRequest = pendingStatusUpdateRequest,
+                onNotificationRequestConsumed = { pendingStatusUpdateRequest = null },
+            )
         }
     }
 
