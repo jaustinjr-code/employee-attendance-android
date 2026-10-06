@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.onboarding
 
 import android.content.Context
 import android.util.Log
+import androidx.core.content.edit
 import com.jaustinjr.employeeattendance.storage.SecurePreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,7 +37,7 @@ class SharedPrefsOnboardingStore(context: Context) : OnboardingStore {
     override fun markCompleted() {
         Log.d(TAG, "markCompleted")
         _completed.value = true
-        prefs.edit().putBoolean(KEY_COMPLETED, true).apply()
+        prefs.edit { putBoolean(KEY_COMPLETED, true) }
     }
 
     private companion object {
