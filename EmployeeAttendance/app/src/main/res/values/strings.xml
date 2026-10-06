@@ -234,6 +234,12 @@
     <string name="dev_log_export_empty">The log is empty — nothing to export.</string>
     <string name="dev_log_export_failed">Log export failed: %1$s</string>
 
+    <string name="dev_section_onboarding">Onboarding</string>
+    <string name="dev_onboarding_hint">Shows the first-launch onboarding again the next time the app starts. Nothing changes until then: close the app from Recents and reopen it.</string>
+    <string name="dev_onboarding_reset">Show onboarding on next launch</string>
+    <string name="dev_onboarding_restart_needed">Onboarding is reset. Restart the app to see it.</string>
+    <string name="dev_onboarding_reset_done">Onboarding reset. Restart the app to see it.</string>
+
     <string name="dev_section_reset">Developer reset</string>
     <string name="dev_reset_hint">Clears every developer override and the simulated state they produced. Your worksites and attendance history are left alone; remove those with the buttons above.</string>
     <string name="dev_reset_action">Reset developer configuration</string>

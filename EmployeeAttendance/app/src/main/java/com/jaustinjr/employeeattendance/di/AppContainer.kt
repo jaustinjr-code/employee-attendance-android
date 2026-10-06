@@ -367,6 +367,7 @@ class DefaultAppContainer(
             worksites = devWorksiteFacade,
             attendance = devAttendanceFacade,
             notificationPreview = devNotificationPreview,
+            onboardingStore = onboardingStore,
             logExporter = developerLogExporter,
             buildDescription = "${BuildConfig.BUILD_TYPE} ${BuildConfig.VERSION_NAME} " +
                 "(${BuildConfig.VERSION_CODE})",

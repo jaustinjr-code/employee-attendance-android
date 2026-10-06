@@ -42,4 +42,31 @@ class SharedPrefsOnboardingStoreTest {
         // A fresh instance (as after process death) must not show onboarding again.
         assertTrue(newStore().completed.value)
     }
+
+    @Test
+    fun resetForNextLaunchShowsOnboardingOnTheNextLaunchOnly() {
+        val running = newStore()
+        running.markCompleted()
+
+        running.resetForNextLaunch()
+
+        // The running app keeps its state, so it isn't swapped into the carousel mid-session...
+        assertTrue(running.completed.value)
+        assertTrue(running.resetPending.value)
+        // ...while a fresh instance, as after a restart, shows onboarding again.
+        val nextLaunch = newStore()
+        assertFalse(nextLaunch.completed.value)
+        assertFalse(nextLaunch.resetPending.value)
+    }
+
+    @Test
+    fun completingAgainClearsAPendingReset() {
+        val store = newStore()
+        store.resetForNextLaunch()
+
+        store.markCompleted()
+
+        assertFalse(store.resetPending.value)
+        assertTrue(newStore().completed.value)
+    }
 }

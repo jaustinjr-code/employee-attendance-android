@@ -27,6 +27,7 @@ build.
 | `devtools/facade/DevWorksiteFacade.kt` | interface + `RepositoryDevWorksiteFacade`; owns the dev sample worksite's id and name |
 | `devtools/facade/DevNotificationPreview.kt` | interface + `SandboxedDevNotificationPreview`; posts previews whose action buttons are defused |
 | `devtools/ApplicationLogSource.kt` | interface + `LogcatApplicationLogSource` reading this app's own log back |
+| `onboarding/OnboardingStore.kt` | `resetForNextLaunch()` and `resetPending`, behind **Show onboarding on next launch** — see [onboarding.md](onboarding.md#replaying-it) |
 | `devtools/DeveloperLogExporter.kt` | interface + `EmailDeveloperLogExporter`; writes the attachment and opens a chooser |
 | `devtools/ui/DeveloperSettingsViewModel.kt` | `DeveloperSettingsUiState`, `DevMessage`, the `Factory` |
 | `devtools/ui/DeveloperSettingsScreen.kt` | stateful wrapper + stateless content + preview |
@@ -227,11 +228,27 @@ attached, and the developer sends it from their own mail app. The file contains 
 worksite ids and timestamps, so that stays under explicit human control — and the app needs no
 network permission or mail credentials.
 
+## Replaying onboarding
+
+**Show onboarding on next launch** calls `DeveloperToolsController.resetOnboarding()`, which calls
+`OnboardingStore.resetForNextLaunch()`. That clears only the *persisted* flag. The running app's
+`completed` stays `true`, so nothing changes until the app restarts: close it from Recents and
+reopen it. Clearing the live flag instead would make `OnboardingGate` swap the carousel in at once,
+tearing down `MainContent`, and this screen with it.
+
+While a reset is pending, the section shows a "Restart the app" line (`resetPending`). It goes away
+after the restart, or if onboarding is completed again first.
+
+The store is used directly rather than through a facade. The flag is app state, not user data, and
+finishing onboarding again sets it back.
+
 ## What reset does and does not touch
 
 `resetDeveloperConfiguration()` clears the persisted overrides *and* the simulated runtime state
 they produced: permission override off, log recipient forgotten, proximity `UNKNOWN`, tracking
 `STOPPED`, and the real grant re-read.
+
+It also leaves a pending onboarding replay alone; that only takes effect on the next launch anyway.
 
 It deliberately leaves **worksites and attendance history** alone. Those are the user's data, not
 developer configuration, and destroying them is a different decision — so they have their own
@@ -245,13 +262,14 @@ only), and the destructive `Remove all worksites` / `Clear attendance history`.
 | `test/.../devtools/DevUnlockTapCounterTest` | the tap window, restart-on-gap, unlock-once semantics |
 | `test/.../devtools/PermissionOverrideTest` | the state mapping, persisted-name round-trip, and that every `LocationAccessLevel` stays reachable |
 | `test/.../devtools/DebugLocationPermissionRepositoryTest` | override precedence, pass-through, eager seeding, `refresh()` still re-reading the delegate |
-| `test/.../devtools/DeveloperToolsControllerTest` | every action, including that a simulated arrival really emits `Arrived`, that forced clocks are tagged `SIMULATED`, that `clearSimulatedData` spares genuine history, and that reset spares user data |
+| `test/.../devtools/DeveloperToolsControllerTest` | every action, including that resetting onboarding clears the persisted flag but not the running app's, and that a simulated arrival really emits `Arrived`, that forced clocks are tagged `SIMULATED`, that `clearSimulatedData` spares genuine history, and that reset spares user data |
 | `test/.../devtools/facade/DevAttendanceFacadeTest` | the `SIMULATED` tag, selective clearing, that a simulated clock-out is not "manual", and that no undo is exposed |
 | `test/.../devtools/facade/DevWorksiteFacadeTest` | that seeding/removal can reach only the dev sample, never a user's worksite |
 | `test/.../devtools/facade/DevNotificationPreviewTest` | the sandbox: a preview's Undo/Confirm leaves a pre-existing real record untouched, and the card still renders the genuine name |
 | `test/.../attendance/DefaultAttendanceRepositoryTest` | `clearBySource` deleting only that source, and `SIMULATED` not flagging as manual |
 | `test/.../devtools/DevGeoTest` | the offset math, which `ProximityCalculator` cannot verify on the JVM |
 | `test/.../devtools/ui/DeveloperSettingsViewModelTest` | ui-state composition, gating, and the message mapping |
+| `androidTest/.../onboarding/SharedPrefsOnboardingStoreTest` | that `resetForNextLaunch()` shows onboarding to a fresh instance (a restart) but not to the running one |
 | `androidTest/.../devtools/SharedPrefsDeveloperSettingsStoreTest` | persistence across instances (process death) |
 | `androidTest/.../devtools/EmailDeveloperLogExporterTest` | the written attachment, cache supersession, empty/failing log handling |
 | `androidTest/.../devtools/LogcatApplicationLogSourceTest` | that the app really reads its own log lines back |

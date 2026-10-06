@@ -22,7 +22,7 @@ All paths are under `EmployeeAttendance/app/src/main/java/com/jaustinjr/employee
 
 | File | Role |
 | --- | --- |
-| `onboarding/OnboardingStore.kt` | `OnboardingStore` (seam) and `SharedPrefsOnboardingStore`: the `completed` flag, `SecurePreferences` file `onboarding` |
+| `onboarding/OnboardingStore.kt` | `OnboardingStore` (seam) and `SharedPrefsOnboardingStore`: the `completed` flag, `SecurePreferences` file `onboarding`; `resetForNextLaunch()` and `resetPending` for the developer replay |
 | `onboarding/OnboardingPage.kt` | `OnboardingPage` (page order and copy), `OnboardingAction`, and the pure `onboardingActionFor(currentPage, pageCount)` |
 | `onboarding/ui/OnboardingViewModel.kt` | `showOnboarding`, seeded synchronously from the store; `complete()`; the `Factory` |
 | `onboarding/ui/OnboardingScreen.kt` | `OnboardingScreen` (owns the `PagerState` and `BackHandler`), stateless `OnboardingContent`, `OnboardingPrimaryButton`, `ONBOARDING_PAGER_TAG` |
@@ -84,13 +84,33 @@ dynamic colour and dark theme both work.
 - **Exit:** the carousel fades out while scaling up to 1.08 (300 ms). After a 120 ms delay the home
   screen fades in from a 0.92 scale (450 ms).
 
+## How it knows not to show again
+
+Tapping **Get started** calls `OnboardingViewModel.complete()` → `OnboardingStore.markCompleted()`.
+That sets `completed = true` in the encrypted `onboarding` prefs file. On every later launch, the
+store reads the flag when `startupJob` constructs it. `OnboardingViewModel.showOnboarding` is
+`!completed`, so `OnboardingGate` goes straight to the app.
+
+## Replaying it
+
+In a debug build: Developer Settings (tap the Attendance title five times) → **Onboarding** →
+**Show onboarding on next launch**, then close the app from Recents and reopen it.
+
+The button calls `OnboardingStore.resetForNextLaunch()`. It clears the persisted flag but **not**
+the running process's `completed`, so the current session carries on. Flipping the live flag would
+make `OnboardingGate` swap the carousel in immediately and dispose of the developer screen that
+asked for it. `resetPending` reports that a reset is waiting for a restart, and the developer screen
+shows it. Outside the developer tools, `adb shell pm clear com.jaustinjr.employeeattendance` gets the
+same result, wiping all app data.
+
 ## Changing it
 
 - **Add, remove, or reorder a page:** edit `OnboardingPage` and its strings, and add the page's
   icons in `OnboardingComponents`. Update `OnboardingActionTest`'s order assertion and
   `OnboardingScreenTest`'s walkthrough.
-- **Show onboarding again** (for example, after a major release): add a reset to `OnboardingStore`.
-  Don't delete the prefs file, because the store's `StateFlow` is cached for the life of the process.
+- **Show onboarding again to everyone** (for example, after a major release): call
+  `resetForNextLaunch()` from a migration, or bump the key. Don't delete the prefs file, because the
+  store's `StateFlow` is cached for the life of the process.
 - **Tests that launch the real `MainActivity`** must call `container.onboardingStore.markCompleted()`
   first, as `ReportsDeepLinkTest` and `StatusUpdateNotificationLaunchTest` do. Otherwise they land
   on the carousel.
@@ -101,7 +121,7 @@ dynamic colour and dark theme both work.
 | --- | --- | --- |
 | `OnboardingActionTest` | JVM | `onboardingActionFor`; page order |
 | `OnboardingViewModelTest` | JVM | synchronous seed for first-launch and returning users; `complete()` |
-| `SharedPrefsOnboardingStoreTest` | androidTest | default, immediate update, persistence across instances |
+| `SharedPrefsOnboardingStoreTest` | androidTest | default, immediate update, persistence across instances, reset-for-next-launch affecting only a fresh instance |
 | `OnboardingScreenTest` | androidTest | Next walks every page, Get started finishes, swiping advances without finishing |
 | `OnboardingGateTest` | androidTest | the app is not composed behind onboarding; the transition composes the app once and removes the carousel |
 | `BackupRulesTest` | JVM | `onboarding` is excluded from backup and device transfer |

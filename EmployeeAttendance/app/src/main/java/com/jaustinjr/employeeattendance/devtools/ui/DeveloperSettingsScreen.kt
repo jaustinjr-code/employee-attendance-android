@@ -98,6 +98,7 @@ fun DeveloperSettingsScreen(
                 onPostNotification = viewModel::onPostNotification,
                 onLogRecipientChanged = viewModel::onLogRecipientChanged,
                 onExportLog = viewModel::onExportLog,
+                onResetOnboarding = viewModel::onResetOnboarding,
                 onResetDeveloperConfiguration = viewModel::onResetDeveloperConfiguration,
             ),
             modifier = Modifier.weight(1f),
@@ -127,6 +128,7 @@ data class DeveloperSettingsActions(
     val onPostNotification: (ClockType, Boolean, Boolean) -> Unit = { _, _, _ -> },
     val onLogRecipientChanged: (String) -> Unit = {},
     val onExportLog: () -> Unit = {},
+    val onResetOnboarding: () -> Unit = {},
     val onResetDeveloperConfiguration: () -> Unit = {},
 )
 
@@ -260,6 +262,19 @@ fun DeveloperSettingsContent(
             if (state.isExportingLog) {
                 CircularProgressIndicator(Modifier.size(20.dp))
             }
+        }
+
+        DevSection(R.string.dev_section_onboarding)
+        DevSectionHint(R.string.dev_onboarding_hint)
+        DevActionRow {
+            DevButton(R.string.dev_onboarding_reset, onClick = actions.onResetOnboarding)
+        }
+        if (state.onboardingResetPending) {
+            Text(
+                text = stringResource(R.string.dev_onboarding_restart_needed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -433,6 +448,7 @@ private fun DeveloperSettingsPreview() {
                 trackingStatus = TrackingStatus.BACKGROUND_ACTIVE,
                 activeWorksiteName = "Downtown Office",
                 isClockedIn = true,
+                onboardingResetPending = true,
             ),
             actions = DeveloperSettingsActions(),
         )

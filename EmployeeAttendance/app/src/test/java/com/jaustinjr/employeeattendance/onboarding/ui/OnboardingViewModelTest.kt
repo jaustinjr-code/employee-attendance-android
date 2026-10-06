@@ -20,12 +20,15 @@ class OnboardingViewModelTest {
     private class FakeOnboardingStore(completed: Boolean) : OnboardingStore {
         private val _completed = MutableStateFlow(completed)
         override val completed: StateFlow<Boolean> = _completed
+        override val resetPending: StateFlow<Boolean> = MutableStateFlow(false)
         var markCompletedCalls = 0
 
         override fun markCompleted() {
             markCompletedCalls++
             _completed.value = true
         }
+
+        override fun resetForNextLaunch() = Unit
     }
 
     @Test

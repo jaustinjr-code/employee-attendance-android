@@ -14,10 +14,27 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 interface OnboardingStore {
 
-    /** True once the user has reached the end of onboarding. Never flips back on its own. */
+    /**
+     * True once the user has reached the end of onboarding, as seen by **this process**. Never flips
+     * back on its own, and [resetForNextLaunch] deliberately does not flip it either.
+     */
     val completed: StateFlow<Boolean>
 
+    /**
+     * True after [resetForNextLaunch] in this process: the persisted flag is cleared, so the next
+     * launch will show onboarding, while [completed] still reads true for the app that is running.
+     */
+    val resetPending: StateFlow<Boolean>
+
     fun markCompleted()
+
+    /**
+     * Makes onboarding show again on the **next** app launch. Only the persisted flag is cleared;
+     * [completed] is left alone so the running app is not pulled into the carousel mid-session
+     * (which would also tear down whatever screen called this). A developer action — see
+     * `DeveloperToolsController.resetOnboarding`.
+     */
+    fun resetForNextLaunch()
 }
 
 /**
@@ -34,10 +51,22 @@ class SharedPrefsOnboardingStore(context: Context) : OnboardingStore {
 
     override val completed: StateFlow<Boolean> = _completed.asStateFlow()
 
+    // Always false in a fresh process: by then the cleared flag has been read into [completed].
+    private val _resetPending = MutableStateFlow(false)
+
+    override val resetPending: StateFlow<Boolean> = _resetPending.asStateFlow()
+
     override fun markCompleted() {
         Log.d(TAG, "markCompleted")
         _completed.value = true
+        _resetPending.value = false
         prefs.edit { putBoolean(KEY_COMPLETED, true) }
+    }
+
+    override fun resetForNextLaunch() {
+        Log.d(TAG, "resetForNextLaunch")
+        _resetPending.value = true
+        prefs.edit { putBoolean(KEY_COMPLETED, false) }
     }
 
     private companion object {
