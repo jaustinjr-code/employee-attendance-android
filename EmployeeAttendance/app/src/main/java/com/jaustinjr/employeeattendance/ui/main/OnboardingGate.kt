@@ -7,11 +7,14 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 
 /**
  * Shows [onboarding] on first launch and [content] — the app itself — once it is finished, with a
@@ -33,6 +36,12 @@ fun OnboardingGate(
 ) {
     AnimatedContent(
         targetState = showOnboarding,
+        // Painted behind both screens: the window's own background is the platform default (white,
+        // even in dark theme), and any frame where neither screen fully covers the window would
+        // otherwise flash it.
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
         transitionSpec = { onboardingExitTransition() },
         label = "onboardingGate",
     ) { show ->
@@ -41,25 +50,32 @@ fun OnboardingGate(
 }
 
 /**
- * The carousel recedes — fading while it grows slightly, as if the user is stepping through it —
- * and the home screen settles in from just below full size. The enter is delayed a beat so the two
- * never read as a muddy cross-fade.
+ * The home screen fades in **on top of** the carousel while settling from just below full size;
+ * the carousel stays fully opaque underneath, growing slightly as if the user is stepping through
+ * it, and is removed once the home screen has covered it.
+ *
+ * The outgoing screen deliberately does not fade. An earlier version cross-faded the two with a
+ * delayed enter, and in the gap — carousel mostly gone, home screen not yet visible — the window
+ * background showed through as a white flash. With one screen always opaque there is no such frame.
  */
 private fun AnimatedContentTransitionScope<Boolean>.onboardingExitTransition(): ContentTransform =
     (
-        fadeIn(tween(ENTER_MILLIS, delayMillis = ENTER_DELAY_MILLIS, easing = LinearOutSlowInEasing)) +
+        fadeIn(tween(ENTER_MILLIS, easing = LinearOutSlowInEasing)) +
             scaleIn(
-                animationSpec = tween(ENTER_MILLIS, delayMillis = ENTER_DELAY_MILLIS, easing = FastOutSlowInEasing),
-                initialScale = 0.92f,
+                animationSpec = tween(ENTER_MILLIS, easing = FastOutSlowInEasing),
+                initialScale = ENTER_INITIAL_SCALE,
             )
-        ) togetherWith (
-        fadeOut(tween(EXIT_MILLIS, easing = FastOutSlowInEasing)) +
-            scaleOut(
-                animationSpec = tween(EXIT_MILLIS, easing = FastOutSlowInEasing),
-                targetScale = 1.08f,
-            )
-        )
+        ).togetherWith(
+        scaleOut(
+            animationSpec = tween(ENTER_MILLIS, easing = FastOutSlowInEasing),
+            targetScale = EXIT_TARGET_SCALE,
+        ),
+    ).apply {
+        // Explicit rather than relying on composition order: the incoming screen must draw above
+        // the opaque outgoing one, or it would fade in behind it and never be seen until the swap.
+        targetContentZIndex = 1f
+    }
 
-private const val EXIT_MILLIS = 300
-private const val ENTER_DELAY_MILLIS = 120
 private const val ENTER_MILLIS = 450
+private const val ENTER_INITIAL_SCALE = 0.94f
+private const val EXIT_TARGET_SCALE = 1.04f

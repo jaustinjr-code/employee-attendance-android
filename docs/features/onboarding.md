@@ -81,8 +81,12 @@ dynamic colour and dark theme both work.
   TalkBack reads it once as "Page x of y".
 - **Pager:** pages fade and shrink slightly as they slide away (`getOffsetDistanceInPages`, read
   in `graphicsLayer` so scrolling doesn't recompose).
-- **Exit:** the carousel fades out while scaling up to 1.08 (300 ms). After a 120 ms delay the home
-  screen fades in from a 0.92 scale (450 ms).
+- **Exit:** the home screen fades in **on top of** the carousel while settling from a 0.94 scale
+  (450 ms). The carousel stays fully opaque underneath, growing to 1.04, and is removed once
+  covered. `OnboardingGate` also paints `colorScheme.background` behind both screens.
+  - Why not a cross-fade: the first version faded the carousel out and the home screen in after a
+    delay. In the gap neither covered the window, whose background is the platform default white
+    even in dark theme, so it flashed for about 200 ms. Keep one screen opaque at every frame.
 
 ## How it knows not to show again
 
@@ -123,5 +127,5 @@ same result, wiping all app data.
 | `OnboardingViewModelTest` | JVM | synchronous seed for first-launch and returning users; `complete()` |
 | `SharedPrefsOnboardingStoreTest` | androidTest | default, immediate update, persistence across instances, reset-for-next-launch affecting only a fresh instance |
 | `OnboardingScreenTest` | androidTest | Next walks every page, Get started finishes, swiping advances without finishing |
-| `OnboardingGateTest` | androidTest | the app is not composed behind onboarding; the transition composes the app once and removes the carousel |
+| `OnboardingGateTest` | androidTest | the app is not composed behind onboarding; the transition composes the app once and removes the carousel; no frame of the transition shows the window behind it |
 | `BackupRulesTest` | JVM | `onboarding` is excluded from backup and device transfer |
