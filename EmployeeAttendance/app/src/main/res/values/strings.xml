@@ -159,6 +159,15 @@
     <string name="settings_data_delete_confirm_title">Delete all data?</string>
     <string name="settings_data_delete_confirm_message">This permanently removes every worksite and all attendance history from this device. This can\'t be undone.</string>
 
+    <!-- Settings: legal -->
+    <string name="settings_legal_title">Legal</string>
+
+    <!-- Legal documents. Each LegalDocument entry is a row in Settings\' Legal section. -->
+    <string name="legal_title">Legal</string>
+    <string name="legal_privacy_policy_title">Privacy Policy</string>
+    <string name="legal_privacy_policy_summary">How the app uses your location and attendance data, where it\'s stored, and the choices you have.</string>
+    <string name="legal_document_unavailable">This document couldn\'t be loaded.</string>
+
     <!-- Shown while startup wiring completes; see EmployeeAttendanceApplication.startupComplete. -->
     <string name="cd_startup_loading">Starting\u2026</string>
     <!--

@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +18,10 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
@@ -41,21 +45,26 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.R
+import com.jaustinjr.employeeattendance.legal.LegalDocument
 import com.jaustinjr.employeeattendance.settings.ClockNotificationPreference
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 
 /** Test tags for the androidTest layer; not user-visible. */
 object SettingsTestTags {
     const val STATUS_UPDATE_SWITCH = "settings_status_update_switch"
+
+    /** The row opening [document] in the Legal section. */
+    fun legalRow(document: LegalDocument) = "settings_legal_row_${document.id}"
 }
 
 /**
  * Settings screen. Hosts the auto clock-in behavior chooser — the user-switchable
- * selection between the silent / notify-with-undo / confirm strategies — and the privacy and data
- * controls.
+ * selection between the silent / notify-with-undo / confirm strategies — the privacy and data
+ * controls, and one row per shipped legal document.
  */
 @Composable
 fun SettingsScreen(
+    onOpenLegalDocument: (LegalDocument) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory),
 ) {
@@ -98,6 +107,7 @@ fun SettingsScreen(
         biweeklyReportEnabled = biweeklyReportEnabled,
         onBiweeklyReportChanged = onBiweeklyReportChanged,
         biweeklyReportDenied = notificationsDenied,
+        onOpenLegalDocument = onOpenLegalDocument,
         modifier = modifier,
     )
 }
@@ -140,6 +150,8 @@ fun SettingsContent(
     biweeklyReportEnabled: Boolean = false,
     onBiweeklyReportChanged: (Boolean) -> Unit = {},
     biweeklyReportDenied: Boolean = false,
+    onOpenLegalDocument: (LegalDocument) -> Unit = {},
+    legalDocuments: List<LegalDocument> = LegalDocument.entries,
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     if (showDeleteConfirm) {
@@ -247,6 +259,51 @@ fun SettingsContent(
         ) {
             Text(stringResource(R.string.settings_data_delete_all))
         }
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        Text(
+            text = stringResource(R.string.settings_legal_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        // The registry is the list: a document added to LegalDocument gets its row here for free.
+        legalDocuments.forEach { document ->
+            NavigationRow(
+                titleRes = document.titleRes,
+                descriptionRes = document.summaryRes,
+                onClick = { onOpenLegalDocument(document) },
+                modifier = Modifier.testTag(SettingsTestTags.legalRow(document)),
+            )
+        }
+    }
+}
+
+/** A row that opens another screen: title, description and a trailing chevron. */
+@Composable
+private fun NavigationRow(
+    titleRes: Int,
+    descriptionRes: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    androidx.compose.foundation.layout.Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(text = stringResource(titleRes), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = stringResource(descriptionRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        // Decorative: the row's text and button role already announce what it opens.
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
     }
 }
 

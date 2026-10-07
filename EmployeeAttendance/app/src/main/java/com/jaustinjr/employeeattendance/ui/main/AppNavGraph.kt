@@ -5,6 +5,7 @@ import com.jaustinjr.employeeattendance.Account
 import com.jaustinjr.employeeattendance.Attendance
 import com.jaustinjr.employeeattendance.BuildConfig
 import com.jaustinjr.employeeattendance.DeveloperSettings
+import com.jaustinjr.employeeattendance.LegalDocumentDetail
 import com.jaustinjr.employeeattendance.LocationDetail
 import com.jaustinjr.employeeattendance.R
 import com.jaustinjr.employeeattendance.Reports
@@ -61,7 +62,7 @@ data class AppDestination(
  *
  * Attendance and Reports are the top-level tabs; Attendance is the root, the start destination and
  * home. Most other screens hang directly off Attendance; the status update screens nest under
- * Account instead (history → one update → editing it). It is expressed as parent links rather than as a flat set of "child
+ * Account instead (history → one update → editing it), and legal documents under Settings. It is expressed as parent links rather than as a flat set of "child
  * routes" so that it stays the single description of the hierarchy as the graph grows: to nest a
  * screen, give it a different [AppDestination.parent] and nothing else in the app bar changes.
  *
@@ -104,6 +105,17 @@ object AppNavGraph {
         route = SettingsRoute,
         titleRes = R.string.settings_title,
         parent = Attendance,
+    )
+
+    /**
+     * One legal document, opened from the Legal section of Settings. The app bar keeps the generic
+     * legal title because titles are per destination, not per argument; the document's own title
+     * heads its content.
+     */
+    val LegalDocumentDetail = AppDestination(
+        route = LegalDocumentDetailRoute,
+        titleRes = R.string.legal_title,
+        parent = Settings,
     )
 
     val Account = AppDestination(
@@ -151,6 +163,7 @@ object AppNavGraph {
         add(Worksites)
         add(WorksiteRegistration)
         add(Settings)
+        add(LegalDocumentDetail)
         add(Account)
         add(StatusUpdateDetail)
         add(StatusUpdateEdit)
@@ -202,6 +215,7 @@ internal val LocationDetailRoute: String = routeOf<LocationDetail>()
 internal val WorksitesRoute: String = routeOf<Worksites>()
 internal val WorksiteRegistrationRoute: String = routeOf<WorksiteRegistration>()
 internal val SettingsRoute: String = routeOf<Settings>()
+internal val LegalDocumentDetailRoute: String = routeOf<LegalDocumentDetail>()
 internal val AccountRoute: String = routeOf<Account>()
 internal val StatusUpdateDetailRoute: String = routeOf<StatusUpdateDetail>()
 internal val StatusUpdateEditRoute: String = routeOf<StatusUpdateEdit>()
