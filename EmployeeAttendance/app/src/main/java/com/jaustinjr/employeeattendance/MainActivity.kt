@@ -49,6 +49,7 @@ import com.jaustinjr.employeeattendance.statusupdate.history.ui.StatusUpdateEdit
 import com.jaustinjr.employeeattendance.statusupdate.ui.StatusUpdateOverlayHost
 import com.jaustinjr.employeeattendance.ui.attendance.AttendanceScreen
 import com.jaustinjr.employeeattendance.ui.main.AppNavGraph
+import com.jaustinjr.employeeattendance.ui.main.AppNavTransitions
 import com.jaustinjr.employeeattendance.ui.main.MainAppBar
 import com.jaustinjr.employeeattendance.ui.main.MainBottomBar
 import com.jaustinjr.employeeattendance.ui.main.destinationOrRoot
@@ -321,6 +322,11 @@ class MainActivity : ComponentActivity() {
                     // is a one-line change there.
                     startDestination = AppNavGraph.root.route,
                     modifier = Modifier.padding(padding),
+                    // The library defaults, spelled out so onboarding's hand-off to home
+                    // (OnboardingGate) is guaranteed to animate the same way. Pop transitions
+                    // default to these too.
+                    enterTransition = { AppNavTransitions.enter() },
+                    exitTransition = { AppNavTransitions.exit() },
                 ) {
                     composable<Attendance> {
                         // Navigating from here rather than from an effect beside the

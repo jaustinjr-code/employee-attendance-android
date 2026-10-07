@@ -101,8 +101,8 @@ class OnboardingGateTest {
 
     @Test
     fun noFrameOfTheTransitionShowsWhatIsBehindIt() {
-        // Regression: the first version cross-faded the two screens with a delayed enter, and for
-        // ~200 ms neither covered the window, so its (white) background flashed through. Both
+        // Regression: the first version cross-faded the two screens with nothing painted behind
+        // them, so for ~200 ms the window's (white) background flashed through. Both
         // stand-ins here are dark; a frame where anything light shows means something is uncovered.
         // Sampled at the centre and at the edge, where a scaling-in screen leaves a margin.
         var showOnboarding by mutableStateOf(true)
@@ -137,7 +137,8 @@ class OnboardingGateTest {
     }
 
     private companion object {
-        const val TRANSITION_SAMPLE_MILLIS = 600
+        /** The whole cross-fade, plus a little after it. */
+        const val TRANSITION_SAMPLE_MILLIS = AppNavTransitions.DURATION_MILLIS + 100
         const val SAMPLE_STEP_MILLIS = 25
         const val EDGE_INSET_PX = 4
 

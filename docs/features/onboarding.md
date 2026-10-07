@@ -28,7 +28,8 @@ All paths are under `EmployeeAttendance/app/src/main/java/com/jaustinjr/employee
 | `onboarding/ui/OnboardingViewModel.kt` | `showOnboarding`, seeded synchronously from the store; `complete()`; the `Factory` |
 | `onboarding/ui/OnboardingScreen.kt` | `OnboardingScreen` (owns the `PagerState` and `BackHandler`), stateless `OnboardingContent`, `OnboardingPrimaryButton`, `ONBOARDING_PAGER_TAG` |
 | `onboarding/ui/OnboardingComponents.kt` | `OnboardingPageContent`, `OnboardingIllustration` (tonal disc plus badge), `OnboardingPageIndicator` |
-| `ui/main/OnboardingGate.kt` | `OnboardingGate`: chooses carousel or app and owns the transition between them |
+| `ui/main/OnboardingGate.kt` | `OnboardingGate`: chooses carousel or app, cross-fading between them with the app's navigation transition |
+| `ui/main/AppNavTransitions.kt` | the navigation cross-fade shared by the `NavHost` and `OnboardingGate` |
 | `MainActivity.kt` | builds `OnboardingViewModel` inside `StartupGate`; the app body is `MainContent`, composed only through `OnboardingGate` |
 
 ---
@@ -87,12 +88,13 @@ dynamic colour and dark theme both work.
   TalkBack reads it once as "Page x of y".
 - **Pager:** pages fade and shrink slightly as they slide away (`getOffsetDistanceInPages`, read
   in `graphicsLayer` so scrolling doesn't recompose).
-- **Exit:** the home screen fades in **on top of** the carousel while settling from a 0.94 scale
-  (450 ms). The carousel stays fully opaque underneath, growing to 1.04, and is removed once
-  covered. `OnboardingGate` also paints `colorScheme.background` behind both screens.
-  - Why not a cross-fade: the first version faded the carousel out and the home screen in after a
-    delay. In the gap neither covered the window, whose background is the platform default white
-    even in dark theme, so it flashed for about 200 ms. Keep one screen opaque at every frame.
+- **Exit:** the same transition as every other navigation in the app, a 700 ms cross-fade
+  (`AppNavTransitions`, which the `NavHost` also uses). `OnboardingGate` paints
+  `colorScheme.background` behind both screens, doing the job the `Scaffold` does behind the
+  `NavHost`'s cross-fades.
+  - Why the painted background matters: mid-fade neither screen is opaque. The first version had
+    nothing behind the two, so the window background (platform default white, even in dark theme)
+    flashed through for about 200 ms. Don't remove the background.
 
 ## How it knows not to show again
 
