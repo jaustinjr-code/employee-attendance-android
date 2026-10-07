@@ -34,7 +34,6 @@ import com.jaustinjr.employeeattendance.account.ui.AccountScreen
 import com.jaustinjr.employeeattendance.devtools.DevUnlockTapCounter
 import com.jaustinjr.employeeattendance.devtools.ui.DeveloperSettingsScreen
 import com.jaustinjr.employeeattendance.legal.ui.LegalDocumentScreen
-import com.jaustinjr.employeeattendance.legal.ui.LegalScreen
 import com.jaustinjr.employeeattendance.location.ui.LocationDetailScreen
 import com.jaustinjr.employeeattendance.location.ui.LocationPermissionViewModel
 import com.jaustinjr.employeeattendance.location.ui.LocationViewModel
@@ -92,10 +91,6 @@ data class StatusUpdateDetail(val clockOutId: String)
 /** Editing one past status update. [clockOutId] names the shift it belongs to. */
 @Serializable
 data class StatusUpdateEdit(val clockOutId: String)
-
-/** The list of legal documents, opened from Settings. */
-@Serializable
-object Legal
 
 /** One legal document. [documentId] is a [com.jaustinjr.employeeattendance.legal.LegalDocument.id]. */
 @Serializable
@@ -336,15 +331,10 @@ class MainActivity : ComponentActivity() {
                                 }
                                 composable<Settings> {
                                     SettingsScreen(
-                                        onOpenLegal = {
-                                            navController.navigate(Legal) { launchSingleTop = true }
-                                        },
-                                    )
-                                }
-                                composable<Legal> {
-                                    LegalScreen(
-                                        onOpenDocument = { document ->
-                                            navController.navigate(LegalDocumentDetail(document.id))
+                                        onOpenLegalDocument = { document ->
+                                            navController.navigate(LegalDocumentDetail(document.id)) {
+                                                launchSingleTop = true
+                                            }
                                         },
                                     )
                                 }

@@ -45,23 +45,26 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jaustinjr.employeeattendance.R
+import com.jaustinjr.employeeattendance.legal.LegalDocument
 import com.jaustinjr.employeeattendance.settings.ClockNotificationPreference
 import com.jaustinjr.employeeattendance.ui.theme.EmployeeAttendanceTheme
 
 /** Test tags for the androidTest layer; not user-visible. */
 object SettingsTestTags {
     const val STATUS_UPDATE_SWITCH = "settings_status_update_switch"
-    const val LEGAL_ROW = "settings_legal_row"
+
+    /** The row opening [document] in the Legal section. */
+    fun legalRow(document: LegalDocument) = "settings_legal_row_${document.id}"
 }
 
 /**
  * Settings screen. Hosts the auto clock-in behavior chooser — the user-switchable
  * selection between the silent / notify-with-undo / confirm strategies — the privacy and data
- * controls, and the entry point to the legal documents.
+ * controls, and one row per shipped legal document.
  */
 @Composable
 fun SettingsScreen(
-    onOpenLegal: () -> Unit,
+    onOpenLegalDocument: (LegalDocument) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory),
 ) {
@@ -104,7 +107,7 @@ fun SettingsScreen(
         biweeklyReportEnabled = biweeklyReportEnabled,
         onBiweeklyReportChanged = onBiweeklyReportChanged,
         biweeklyReportDenied = notificationsDenied,
-        onOpenLegal = onOpenLegal,
+        onOpenLegalDocument = onOpenLegalDocument,
         modifier = modifier,
     )
 }
@@ -147,7 +150,8 @@ fun SettingsContent(
     biweeklyReportEnabled: Boolean = false,
     onBiweeklyReportChanged: (Boolean) -> Unit = {},
     biweeklyReportDenied: Boolean = false,
-    onOpenLegal: () -> Unit = {},
+    onOpenLegalDocument: (LegalDocument) -> Unit = {},
+    legalDocuments: List<LegalDocument> = LegalDocument.entries,
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     if (showDeleteConfirm) {
@@ -262,12 +266,15 @@ fun SettingsContent(
             text = stringResource(R.string.settings_legal_title),
             style = MaterialTheme.typography.titleMedium,
         )
-        NavigationRow(
-            titleRes = R.string.settings_legal_open,
-            descriptionRes = R.string.settings_legal_open_desc,
-            onClick = onOpenLegal,
-            modifier = Modifier.testTag(SettingsTestTags.LEGAL_ROW),
-        )
+        // The registry is the list: a document added to LegalDocument gets its row here for free.
+        legalDocuments.forEach { document ->
+            NavigationRow(
+                titleRes = document.titleRes,
+                descriptionRes = document.summaryRes,
+                onClick = { onOpenLegalDocument(document) },
+                modifier = Modifier.testTag(SettingsTestTags.legalRow(document)),
+            )
+        }
     }
 }
 

@@ -166,17 +166,16 @@ class AppNavGraphTest {
     }
 
     @Test
-    fun `legal screens nest under settings`() {
-        // Up from a document returns to the list, then to Settings, the list's only entry point.
+    fun `legal documents nest under settings`() {
+        // Settings' Legal section is the only entry point, so up from a document returns there.
         assertEquals(
-            listOf(AppNavGraph.Legal, AppNavGraph.Settings, AppNavGraph.Attendance),
+            listOf(AppNavGraph.Settings, AppNavGraph.Attendance),
             AppNavGraph.LegalDocumentDetail.ancestors,
         )
         assertSame(
             AppNavGraph.LegalDocumentDetail,
             AppNavGraph.destinationFor("${LegalDocumentDetailRoute}/{documentId}"),
         )
-        assertEquals("com.jaustinjr.employeeattendance.Legal", LegalRoute)
         assertEquals("com.jaustinjr.employeeattendance.LegalDocumentDetail", LegalDocumentDetailRoute)
     }
 }

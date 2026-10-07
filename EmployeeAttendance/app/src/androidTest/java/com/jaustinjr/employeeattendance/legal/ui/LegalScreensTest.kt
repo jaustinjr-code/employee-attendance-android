@@ -2,6 +2,7 @@ package com.jaustinjr.employeeattendance.legal.ui
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -24,8 +25,8 @@ import org.junit.Test
 
 /**
  * Device-level tests for the legal screens: the shipped asset is actually readable from the APK
- * (the JVM layer only sees the source tree), it renders, and the Settings and list entry points
- * route to the right document.
+ * (the JVM layer only sees the source tree), it renders, and Settings' Legal section offers every
+ * document and routes to the one tapped.
  */
 class LegalScreensTest {
 
@@ -73,23 +74,8 @@ class LegalScreensTest {
     }
 
     @Test
-    fun legalListOpensTheTappedDocument() {
+    fun settingsLegalSectionListsAndOpensEveryDocument() {
         val opened = mutableListOf<LegalDocument>()
-        composeRule.setContent {
-            EmployeeAttendanceTheme {
-                LegalScreen(onOpenDocument = { opened += it })
-            }
-        }
-
-        composeRule.onNodeWithText(context.getString(R.string.legal_privacy_policy_title))
-            .performClick()
-
-        assertEquals(listOf(LegalDocument.PRIVACY_POLICY), opened)
-    }
-
-    @Test
-    fun settingsLegalRowOpensTheLegalScreen() {
-        var openedLegal = 0
         composeRule.setContent {
             EmployeeAttendanceTheme {
                 SettingsContent(
@@ -100,13 +86,18 @@ class LegalScreensTest {
                     statusUpdateEnabled = true,
                     onStatusUpdateEnabledChanged = {},
                     onDeleteAllData = {},
-                    onOpenLegal = { openedLegal++ },
+                    onOpenLegalDocument = { opened += it },
                 )
             }
         }
 
-        composeRule.onNodeWithTag(SettingsTestTags.LEGAL_ROW).performScrollTo().performClick()
+        LegalDocument.entries.forEach { document ->
+            composeRule.onNodeWithTag(SettingsTestTags.legalRow(document))
+                .performScrollTo()
+                .assertTextContains(context.getString(document.titleRes))
+                .performClick()
+        }
 
-        assertEquals(1, openedLegal)
+        assertEquals(LegalDocument.entries, opened)
     }
 }

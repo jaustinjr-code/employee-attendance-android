@@ -161,13 +161,11 @@
 
     <!-- Settings: legal -->
     <string name="settings_legal_title">Legal</string>
-    <string name="settings_legal_open">Privacy policy &amp; legal</string>
-    <string name="settings_legal_open_desc">How the app handles your information, and other legal documents.</string>
 
-    <!-- Legal -->
+    <!-- Legal documents. Each LegalDocument entry is a row in Settings\' Legal section. -->
     <string name="legal_title">Legal</string>
-    <string name="legal_privacy_policy_title">Privacy policy</string>
-    <string name="legal_privacy_policy_summary">What the app collects, where it\'s stored, and your choices.</string>
+    <string name="legal_privacy_policy_title">Privacy Policy</string>
+    <string name="legal_privacy_policy_summary">How the app uses your location and attendance data, where it\'s stored, and the choices you have.</string>
     <string name="legal_document_unavailable">This document couldn\'t be loaded.</string>
 
     <!-- Shown while startup wiring completes; see EmployeeAttendanceApplication.startupComplete. -->
