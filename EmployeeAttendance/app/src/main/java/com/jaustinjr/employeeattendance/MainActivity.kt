@@ -316,15 +316,19 @@ class MainActivity : ComponentActivity() {
             ) { padding ->
                 NavHost(
                     navController,
-                    startDestination = Attendance,
+                    // The designated home, not a hard-coded screen: AppNavGraph.root is also what the
+                    // app bar, the dev unlock and onboarding's hand-off treat as home, so moving home
+                    // is a one-line change there.
+                    startDestination = AppNavGraph.root.route,
                     modifier = Modifier.padding(padding),
                 ) {
                     composable<Attendance> {
                         // Navigating from here rather than from an effect beside the
                         // Scaffold: the NavHost is subcomposed after that effect runs, so
                         // its graph would not be set yet. Attendance is the start
-                        // destination, so this is the first place navigation is legal,
-                        // and it leaves Attendance beneath Reports for back.
+                        // destination (AppNavGraph.root), so this is the first place
+                        // navigation is legal, and it leaves Attendance beneath Reports
+                        // for back. If root ever moves, this moves with it.
                         if (pendingOpenReports) {
                             LaunchedEffect(Unit) {
                                 pendingOpenReports = false

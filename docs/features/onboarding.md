@@ -10,8 +10,8 @@ covers one feature area:
 | 3 | Reporting | Status reports: the end-of-day status update and the biweekly summary |
 
 The user can swipe between pages or press **Next**. On the last page the button reads **Get
-started**. Pressing it records completion and moves to the Attendance home screen with an animated
-transition. Onboarding never shows again after that. Swiping alone never finishes the flow. System
+started**. Pressing it records completion and opens the app on its designated home screen
+(`AppNavGraph.root`, currently Attendance), with no transition animation. Onboarding never shows again after that. Swiping alone never finishes the flow. System
 back goes to the previous page; on the first page it leaves the app, as it would anywhere else.
 
 ---
@@ -27,7 +27,7 @@ All paths are under `EmployeeAttendance/app/src/main/java/com/jaustinjr/employee
 | `onboarding/ui/OnboardingViewModel.kt` | `showOnboarding`, seeded synchronously from the store; `complete()`; the `Factory` |
 | `onboarding/ui/OnboardingScreen.kt` | `OnboardingScreen` (owns the `PagerState` and `BackHandler`), stateless `OnboardingContent`, `OnboardingPrimaryButton`, `ONBOARDING_PAGER_TAG` |
 | `onboarding/ui/OnboardingComponents.kt` | `OnboardingPageContent`, `OnboardingIllustration` (tonal disc plus badge), `OnboardingPageIndicator` |
-| `ui/main/OnboardingGate.kt` | `OnboardingGate`: chooses carousel or app and owns the transition between them |
+| `ui/main/OnboardingGate.kt` | `OnboardingGate`: chooses carousel or app, switching between them without animation |
 | `MainActivity.kt` | builds `OnboardingViewModel` inside `StartupGate`; the app body is `MainContent`, composed only through `OnboardingGate` |
 
 ---
@@ -56,8 +56,13 @@ carousel or the app.
   `MainContent`. A notification tap that cold-starts a fresh install lands after onboarding and
   isn't dropped.
 - **No flash for returning users.** `showOnboarding`'s initial value is read synchronously from
-  `store.completed.value`, so the gate's first frame is already right. `AnimatedContent` doesn't
-  animate its initial state, so a returning user goes straight to Attendance.
+  `store.completed.value`, so the gate's first frame is already right, and a returning user goes
+  straight to the home screen.
+- **Home is whatever `AppNavGraph.root` names.** The app's `NavHost` takes its `startDestination`
+  from `AppNavGraph.root.route` rather than naming a screen. Finishing onboarding composes the app,
+  which opens on that destination exactly like a normal launch. Neither the gate nor onboarding
+  names a screen, so moving home is a change to `AppNavGraph.root` alone (plus the Reports deep
+  link, which navigates from inside the root's `composable` block).
 - **The store is forced in `startupJob`.** `OnboardingViewModel.Factory` is the first factory to run
   after `StartupGate` opens, and the store is backed by `EncryptedSharedPreferences`. See
   [overview §8](../architecture/overview.md#8-constraints-the-architecture-depends-on).
@@ -81,12 +86,12 @@ dynamic colour and dark theme both work.
   TalkBack reads it once as "Page x of y".
 - **Pager:** pages fade and shrink slightly as they slide away (`getOffsetDistanceInPages`, read
   in `graphicsLayer` so scrolling doesn't recompose).
-- **Exit:** the home screen fades in **on top of** the carousel while settling from a 0.94 scale
-  (450 ms). The carousel stays fully opaque underneath, growing to 1.04, and is removed once
-  covered. `OnboardingGate` also paints `colorScheme.background` behind both screens.
-  - Why not a cross-fade: the first version faded the carousel out and the home screen in after a
-    delay. In the gap neither covered the window, whose background is the platform default white
-    even in dark theme, so it flashed for about 200 ms. Keep one screen opaque at every frame.
+- **Exit:** none. The frame after **Get started** is the home screen; `NavHost` draws its start
+  destination fully on its first frame.
+  - Why no animation: two animated hand-offs were tried (a cross-fade, then the home screen fading
+    in over the carousel). Both showed a white flash on device, because the window background is
+    the platform default white even in dark theme. Don't reintroduce one without checking every
+    frame on a device.
 
 ## How it knows not to show again
 
@@ -127,5 +132,5 @@ same result, wiping all app data.
 | `OnboardingViewModelTest` | JVM | synchronous seed for first-launch and returning users; `complete()` |
 | `SharedPrefsOnboardingStoreTest` | androidTest | default, immediate update, persistence across instances, reset-for-next-launch affecting only a fresh instance |
 | `OnboardingScreenTest` | androidTest | Next walks every page, Get started finishes, swiping advances without finishing |
-| `OnboardingGateTest` | androidTest | the app is not composed behind onboarding; the transition composes the app once and removes the carousel; no frame of the transition shows the window behind it |
+| `OnboardingGateTest` | androidTest | the app is not composed behind onboarding; finishing switches to the app on the very next frame, composing it once and removing the carousel |
 | `BackupRulesTest` | JVM | `onboarding` is excluded from backup and device transfer |
