@@ -51,6 +51,9 @@
         <!-- status_updates: the user's saved status update answers -->
         <exclude domain="sharedpref" path="status_updates.xml"/>
         <exclude domain="sharedpref" path="status_updates_secure.xml"/>
+        <!-- onboarding: whether the first-launch carousel has been completed -->
+        <exclude domain="sharedpref" path="onboarding.xml"/>
+        <exclude domain="sharedpref" path="onboarding_secure.xml"/>
     </cloud-backup>
     <device-transfer>
         <!-- attendance_events: clock-in/out history -->
@@ -83,5 +86,8 @@
         <!-- status_updates: the user's saved status update answers -->
         <exclude domain="sharedpref" path="status_updates.xml"/>
         <exclude domain="sharedpref" path="status_updates_secure.xml"/>
+        <!-- onboarding: whether the first-launch carousel has been completed -->
+        <exclude domain="sharedpref" path="onboarding.xml"/>
+        <exclude domain="sharedpref" path="onboarding_secure.xml"/>
     </device-transfer>
 </data-extraction-rules>

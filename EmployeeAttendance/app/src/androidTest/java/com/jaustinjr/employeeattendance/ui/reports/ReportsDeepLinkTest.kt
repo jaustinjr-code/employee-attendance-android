@@ -11,7 +11,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
+import com.jaustinjr.employeeattendance.EmployeeAttendanceApplication
 import com.jaustinjr.employeeattendance.MainActivity
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
@@ -22,6 +24,13 @@ class ReportsDeepLinkTest {
     val composeRule = createEmptyComposeRule()
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
+
+    @Before
+    fun skipOnboarding() {
+        // The tabs are not composed behind first-launch onboarding; this test is about the deep
+        // link, not the carousel.
+        (context as EmployeeAttendanceApplication).container.onboardingStore.markCompleted()
+    }
 
     @Test
     fun theNotificationIntentOpensTheReportsTab() {

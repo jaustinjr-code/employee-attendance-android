@@ -50,6 +50,7 @@ class DeveloperToolsControllerTest {
     private val notificationPreview = RecordingDevNotificationPreview()
     private val notifier = notificationPreview.notifications
     private val logExporter = FakeDeveloperLogExporter()
+    private val onboardingStore = FakeOnboardingStore(completed = true)
 
     private val now = 1_716_552_000_000L
 
@@ -61,6 +62,7 @@ class DeveloperToolsControllerTest {
         worksites = worksiteFacade,
         attendance = attendanceFacade,
         notificationPreview = notificationPreview,
+        onboardingStore = onboardingStore,
         logExporter = logExporter,
         buildDescription = "debug 1.0 (1)",
         clock = { now },
@@ -437,5 +439,25 @@ class DeveloperToolsControllerTest {
 
     private companion object {
         const val METERS_PER_DEGREE_LAT = 111_320.0
+    }
+
+    // ------------------------------------------------------------------ onboarding
+
+    @Test
+    fun `resetting onboarding clears it for the next launch only`() {
+        val outcome = controller.resetOnboarding()
+
+        assertEquals(DevActionOutcome.Done, outcome)
+        assertFalse("the next launch must show onboarding", onboardingStore.persistedCompleted)
+        assertTrue(onboardingStore.resetPending.value)
+        // The running app must not be swapped into the carousel underneath the developer screen.
+        assertTrue(onboardingStore.completed.value)
+    }
+
+    @Test
+    fun `the state header reports the onboarding reset`() {
+        controller.resetOnboarding()
+
+        assertTrue(controller.describeCurrentState().contains("onboarding: completed=true resetPending=true"))
     }
 }

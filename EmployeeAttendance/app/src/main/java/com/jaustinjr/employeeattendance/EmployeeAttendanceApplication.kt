@@ -63,16 +63,17 @@ import kotlinx.coroutines.launch
  * observes [startupComplete] and renders a loading state until the wiring settles, constructing no
  * ViewModel before then. The main thread stays free to render instead of blocking.
  *
- * The guarantee only holds for stores [startupJob] actually forces, so it forces **all seven**
- * `EncryptedSharedPreferences`-backed ones. Four come in transitively via the wiring above
- * (`attendanceRepository`, `workLocationRepository`, `proximityRepository`,
+ * The guarantee only holds for stores [startupJob] actually forces, so it forces **every**
+ * `EncryptedSharedPreferences`-backed one a ViewModel factory can reach. Four come in transitively
+ * via the wiring above (`attendanceRepository`, `workLocationRepository`, `proximityRepository`,
  * `clockNotificationSettingsStore`); `privacySettingsStore`, `userProfileStore`,
- * `statusUpdateSettingsStore` and `statusUpdateRepository` do not, and are forced explicitly — without that,
- * `SettingsViewModel.Factory`, `WorksiteRegistrationViewModel.Factory` and `LocationViewModel.Factory`
- * (which now also reads `statusUpdateCoordinator`, transitively touching
- * `statusUpdateSettingsStore`) would still construct it on the main thread during a navigation
- * transition, after the gate had opened. The container's remaining dependencies (`locationTracker`,
- * `addressGeocoder`, `addressAutocomplete`) touch no disk and need no warm-up.
+ * `statusUpdateSettingsStore`, `statusUpdateRepository` and `onboardingStore` do not, and are
+ * forced explicitly — without that, `OnboardingViewModel.Factory` (the first factory to run once
+ * the gate opens), `SettingsViewModel.Factory`, `WorksiteRegistrationViewModel.Factory` and
+ * `LocationViewModel.Factory` (which now also reads `statusUpdateCoordinator`, transitively
+ * touching `statusUpdateSettingsStore`) would still construct it on the main thread during a
+ * navigation transition, after the gate had opened. The container's remaining dependencies
+ * (`locationTracker`, `addressGeocoder`, `addressAutocomplete`) touch no disk and need no warm-up.
  */
 class EmployeeAttendanceApplication : Application(), Configuration.Provider {
 
@@ -156,6 +157,9 @@ class EmployeeAttendanceApplication : Application(), Configuration.Provider {
                 container.userProfileStore
                 container.statusUpdateSettingsStore
                 container.statusUpdateRepository
+                // OnboardingViewModel.Factory reads this the moment the gate opens, before any
+                // other screen composes.
+                container.onboardingStore
                 // Also the first WorkManager call in the process: on-demand initialization (its
                 // startup provider is removed in the manifest) opens its database here on IO
                 // instead of on the main thread before the first frame.

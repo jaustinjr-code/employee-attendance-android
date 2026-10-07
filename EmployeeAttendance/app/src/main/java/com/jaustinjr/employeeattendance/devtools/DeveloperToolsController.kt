@@ -13,6 +13,7 @@ import com.jaustinjr.employeeattendance.location.proximity.ProximityState
 import com.jaustinjr.employeeattendance.location.tracking.LocationSample
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.TrackingStatus
+import com.jaustinjr.employeeattendance.onboarding.OnboardingStore
 
 /** The outcome of a developer action, mapped to user-facing text by the UI layer. */
 sealed interface DevActionOutcome {
@@ -70,6 +71,7 @@ class DeveloperToolsController(
     private val worksites: DevWorksiteFacade,
     private val attendance: DevAttendanceFacade,
     private val notificationPreview: DevNotificationPreview,
+    private val onboardingStore: OnboardingStore,
     private val logExporter: DeveloperLogExporter,
     private val buildDescription: String,
     private val clock: () -> Long = System::currentTimeMillis,
@@ -253,6 +255,22 @@ class DeveloperToolsController(
         return DevActionOutcome.Done
     }
 
+    // ---------------------------------------------------------------- onboarding
+
+    /**
+     * Makes the first-launch onboarding show again the next time the app starts. It takes effect
+     * only after a restart, by design: the running app keeps going rather than being swapped into
+     * the carousel underneath this screen. See [OnboardingStore.resetForNextLaunch].
+     *
+     * Used directly rather than through a facade: the flag is app state, not the user's data, and
+     * clearing it destroys nothing — finishing onboarding again sets it back.
+     */
+    fun resetOnboarding(): DevActionOutcome {
+        Log.d(TAG, "onboarding will show on next launch")
+        onboardingStore.resetForNextLaunch()
+        return DevActionOutcome.Done
+    }
+
     // ---------------------------------------------------------------- log export
 
     /** Emails the application log, pre-addressed to the developer's configured recipient. */
@@ -279,6 +297,10 @@ class DeveloperToolsController(
             appendLine("proximity: ${proximityRepository.proximity.value}")
             appendLine("worksites: ${worksites.registeredCount}, active=${active?.id}")
             appendLine("last fix: ${locationStateRepository.latestLocation.value?.timestampEpochMillis}")
+            appendLine(
+                "onboarding: completed=${onboardingStore.completed.value} " +
+                    "resetPending=${onboardingStore.resetPending.value}",
+            )
             append("clocked in: ${active?.let { attendance.isClockedIn(it.id) } ?: false}")
         }
     }

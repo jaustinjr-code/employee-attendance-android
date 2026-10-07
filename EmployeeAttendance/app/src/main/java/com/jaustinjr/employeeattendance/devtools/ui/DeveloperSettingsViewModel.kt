@@ -23,6 +23,7 @@ import com.jaustinjr.employeeattendance.location.proximity.ProximityState
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.TrackingStatus
+import com.jaustinjr.employeeattendance.onboarding.OnboardingStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +54,8 @@ data class DeveloperSettingsUiState(
     val activeWorksiteName: String? = null,
     val isClockedIn: Boolean = false,
     val isExportingLog: Boolean = false,
+    /** True once a reset has cleared onboarding for the next launch; the app must be restarted. */
+    val onboardingResetPending: Boolean = false,
 ) {
     /** Simulations that need somewhere to arrive at are disabled until a worksite is active. */
     val canSimulateWorksiteEvents: Boolean get() = activeWorksiteName != null
@@ -76,6 +79,7 @@ class DeveloperSettingsViewModel(
     proximityRepository: ProximityRepository,
     workLocationRepository: WorkLocationRepository,
     attendanceRepository: AttendanceRepository,
+    onboardingStore: OnboardingStore,
 ) : ViewModel() {
 
     private val _isExportingLog = MutableStateFlow(false)
@@ -90,7 +94,10 @@ class DeveloperSettingsViewModel(
         settingsStore.permissionOverride,
         settingsStore.logRecipient,
         _isExportingLog,
-    ) { override, recipient, exporting -> Triple(override, recipient, exporting) }
+        onboardingStore.resetPending,
+    ) { override, recipient, exporting, onboardingResetPending ->
+        DeveloperConfig(override, recipient, exporting, onboardingResetPending)
+    }
 
     private val appState = combine(
         permissionRepository.permissionState,
@@ -111,11 +118,12 @@ class DeveloperSettingsViewModel(
     }
 
     val uiState: StateFlow<DeveloperSettingsUiState> =
-        combine(developerConfig, appState) { (override, recipient, exporting), state ->
+        combine(developerConfig, appState) { config, state ->
             state.copy(
-                permissionOverride = override,
-                logRecipient = recipient,
-                isExportingLog = exporting,
+                permissionOverride = config.permissionOverride,
+                logRecipient = config.logRecipient,
+                isExportingLog = config.isExportingLog,
+                onboardingResetPending = config.onboardingResetPending,
             )
         }.stateIn(
             scope = viewModelScope,
@@ -158,6 +166,12 @@ class DeveloperSettingsViewModel(
 
     fun onLogRecipientChanged(address: String) = settingsStore.setLogRecipient(address)
 
+    /** Its own message, because the generic "Done" would not say that a restart is still needed. */
+    fun onResetOnboarding() {
+        report(controller.resetOnboarding())
+        _message.value = DevMessage(R.string.dev_onboarding_reset_done)
+    }
+
     fun onResetDeveloperConfiguration() {
         report(controller.resetDeveloperConfiguration())
         _message.value = DevMessage(R.string.dev_reset_done)
@@ -197,6 +211,14 @@ class DeveloperSettingsViewModel(
         }
     }
 
+    /** The developer-owned half of [uiState], named so its four fields don't travel as a tuple. */
+    private data class DeveloperConfig(
+        val permissionOverride: PermissionOverride,
+        val logRecipient: String,
+        val isExportingLog: Boolean,
+        val onboardingResetPending: Boolean,
+    )
+
     companion object {
         private const val STOP_TIMEOUT_MILLIS = 5_000L
 
@@ -211,6 +233,7 @@ class DeveloperSettingsViewModel(
                     proximityRepository = container.proximityRepository,
                     workLocationRepository = container.workLocationRepository,
                     attendanceRepository = container.attendanceRepository,
+                    onboardingStore = container.onboardingStore,
                 )
             }
         }

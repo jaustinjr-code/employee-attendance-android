@@ -43,6 +43,8 @@ import com.jaustinjr.employeeattendance.location.tracking.FusedLocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationStateRepository
 import com.jaustinjr.employeeattendance.location.tracking.LocationTracker
 import com.jaustinjr.employeeattendance.location.tracking.LocationTrackingController
+import com.jaustinjr.employeeattendance.onboarding.OnboardingStore
+import com.jaustinjr.employeeattendance.onboarding.SharedPrefsOnboardingStore
 import com.jaustinjr.employeeattendance.settings.ClockNotificationSettingsStore
 import com.jaustinjr.employeeattendance.reporting.BiweeklyReportController
 import com.jaustinjr.employeeattendance.reporting.BiweeklyReportNotifier
@@ -96,6 +98,9 @@ interface AppContainer {
     val statusUpdateSettingsStore: StatusUpdateSettingsStore
     val statusUpdateRepository: StatusUpdateRepository
     val statusUpdateCoordinator: StatusUpdateCoordinator
+
+    /** Whether the first-launch onboarding carousel has been completed. */
+    val onboardingStore: OnboardingStore
 
     /**
      * The single [ClockOutListener] every clock-out/undo producer reports through — the auto-clock
@@ -236,6 +241,10 @@ class DefaultAppContainer(
         UserProfileStore(appContext)
     }
 
+    override val onboardingStore: OnboardingStore by lazy {
+        SharedPrefsOnboardingStore(appContext)
+    }
+
     override val legalDocumentSource: LegalDocumentSource by lazy {
         AssetLegalDocumentSource(appContext)
     }
@@ -365,6 +374,7 @@ class DefaultAppContainer(
             worksites = devWorksiteFacade,
             attendance = devAttendanceFacade,
             notificationPreview = devNotificationPreview,
+            onboardingStore = onboardingStore,
             logExporter = developerLogExporter,
             buildDescription = "${BuildConfig.BUILD_TYPE} ${BuildConfig.VERSION_NAME} " +
                 "(${BuildConfig.VERSION_CODE})",

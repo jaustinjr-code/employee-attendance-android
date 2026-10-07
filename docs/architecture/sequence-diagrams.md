@@ -8,7 +8,7 @@ files involved so you can jump straight to the code.
 ## 1. App startup and coordinator wiring
 
 **Files:** `EmployeeAttendanceApplication.kt`, `di/AppContainer.kt`, `statusupdate/AppForegroundTracker.kt`,
-`ui/main/StartupGate.kt`, `MainActivity.kt`
+`ui/main/StartupGate.kt`, `ui/main/OnboardingGate.kt`, `MainActivity.kt`
 
 ```mermaid
 sequenceDiagram
@@ -31,10 +31,18 @@ sequenceDiagram
     MA->>MA: StartupGate(started = false) shows StartupScreen
     IO->>C: attendanceAutoClockController.start, then awaitSubscribed()
     IO->>C: locationFeatureCoordinator.start(applicationScope)
-    IO->>C: force privacySettingsStore, userProfileStore, statusUpdateSettingsStore, statusUpdateRepository
+    IO->>C: force privacySettingsStore, userProfileStore, statusUpdateSettingsStore, statusUpdateRepository, onboardingStore
     IO-->>App: job completes (success or failure)
     App-->>MA: startupComplete = true
-    MA->>C: ViewModel factories run inside StartupGate
+    MA->>C: OnboardingViewModel.Factory runs inside StartupGate
+    alt onboardingStore.completed is false (first launch)
+        MA->>MA: OnboardingGate shows OnboardingScreen; MainContent not composed
+        Note over MA: user swipes or taps Next, then Get started
+        MA->>C: onboardingStore.markCompleted()
+        MA->>MA: OnboardingGate cross-fades to MainContent (AppNavTransitions)
+    end
+    MA->>C: MainContent's ViewModel factories run
+    MA->>MA: NavHost opens at AppNavGraph.root (home)
 ```
 
 The coordinators start **before** any UI exists and keep running when the UI is gone. The UI waits on

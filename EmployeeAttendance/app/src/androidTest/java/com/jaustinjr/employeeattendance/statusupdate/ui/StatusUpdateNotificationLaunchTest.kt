@@ -67,6 +67,9 @@ class StatusUpdateNotificationLaunchTest {
         if (!container.statusUpdateSettingsStore.enabled.value) {
             container.statusUpdateSettingsStore.setEnabled(true)
         }
+        // The app (and so the Status Update overlay) is not composed behind first-launch
+        // onboarding; this test is about the notification path, not the carousel.
+        container.onboardingStore.markCompleted()
     }
 
     private fun notificationIntent(request: StatusUpdateRequest): Intent =

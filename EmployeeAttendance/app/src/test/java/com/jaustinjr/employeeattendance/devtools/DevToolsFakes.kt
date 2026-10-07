@@ -17,6 +17,7 @@ import com.jaustinjr.employeeattendance.location.proximity.ProximityState
 import com.jaustinjr.employeeattendance.location.proximity.ProximityStateStore
 import com.jaustinjr.employeeattendance.location.registration.WorkLocation
 import com.jaustinjr.employeeattendance.location.registration.WorkLocationRepository
+import com.jaustinjr.employeeattendance.onboarding.OnboardingStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -291,4 +292,28 @@ class RecordingDevNotificationPreview(
 
     override fun previewConfirmNotification(worksite: WorkLocation, clockType: ClockType) =
         delegate.previewConfirmNotification(worksite, clockType)
+}
+
+/**
+ * Mirrors `SharedPrefsOnboardingStore`'s split: [persistedCompleted] is what the next launch would
+ * read, while [completed] is what the running process sees.
+ */
+class FakeOnboardingStore(completed: Boolean = true) : OnboardingStore {
+    private val _completed = MutableStateFlow(completed)
+    private val _resetPending = MutableStateFlow(false)
+    override val completed: StateFlow<Boolean> = _completed
+    override val resetPending: StateFlow<Boolean> = _resetPending
+    var persistedCompleted: Boolean = completed
+        private set
+
+    override fun markCompleted() {
+        _completed.value = true
+        _resetPending.value = false
+        persistedCompleted = true
+    }
+
+    override fun resetForNextLaunch() {
+        _resetPending.value = true
+        persistedCompleted = false
+    }
 }

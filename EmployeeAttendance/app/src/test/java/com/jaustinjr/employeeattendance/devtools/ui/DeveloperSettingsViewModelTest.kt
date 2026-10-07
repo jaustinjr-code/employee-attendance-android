@@ -8,6 +8,7 @@ import com.jaustinjr.employeeattendance.devtools.FakeDevAttendanceFacade
 import com.jaustinjr.employeeattendance.devtools.FakeDevWorksiteFacade
 import com.jaustinjr.employeeattendance.devtools.FakeDeveloperLogExporter
 import com.jaustinjr.employeeattendance.devtools.FakeDeveloperSettingsStore
+import com.jaustinjr.employeeattendance.devtools.FakeOnboardingStore
 import com.jaustinjr.employeeattendance.devtools.FakePermissionRepository
 import com.jaustinjr.employeeattendance.devtools.FakeProximityStateStore
 import com.jaustinjr.employeeattendance.devtools.LogExportResult
@@ -56,6 +57,7 @@ class DeveloperSettingsViewModelTest {
     private val attendanceFacade = FakeDevAttendanceFacade()
     private val attendance = attendanceFacade.repository
     private val logExporter = FakeDeveloperLogExporter()
+    private val onboardingStore = FakeOnboardingStore(completed = true)
 
     private val controller = DeveloperToolsController(
         settingsStore = settingsStore,
@@ -65,6 +67,7 @@ class DeveloperSettingsViewModelTest {
         worksites = worksiteFacade,
         attendance = attendanceFacade,
         notificationPreview = RecordingDevNotificationPreview(),
+        onboardingStore = onboardingStore,
         logExporter = logExporter,
         buildDescription = "debug 1.0 (1)",
         clock = { 1_716_552_000_000L },
@@ -78,6 +81,7 @@ class DeveloperSettingsViewModelTest {
         proximityRepository = proximityRepository,
         workLocationRepository = workLocations,
         attendanceRepository = attendance,
+        onboardingStore = onboardingStore,
     )
 
     @Test
@@ -237,5 +241,17 @@ class DeveloperSettingsViewModelTest {
         viewModel.onTrackingStatusSelected(TrackingStatus.FOREGROUND_ONLY)
 
         assertEquals(TrackingStatus.FOREGROUND_ONLY, locationState.trackingStatus.value)
+    }
+
+    @Test
+    fun `resetting onboarding says a restart is needed and shows it as pending`() = runTest {
+        val viewModel = viewModel()
+        assertFalse(viewModel.uiState.value.onboardingResetPending)
+
+        viewModel.onResetOnboarding()
+
+        assertEquals(R.string.dev_onboarding_reset_done, viewModel.message.value?.textRes)
+        assertTrue(viewModel.uiState.first { it.onboardingResetPending }.onboardingResetPending)
+        assertFalse(onboardingStore.persistedCompleted)
     }
 }
