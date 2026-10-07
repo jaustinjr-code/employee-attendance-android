@@ -23,6 +23,8 @@ import com.jaustinjr.employeeattendance.devtools.facade.DevWorksiteFacade
 import com.jaustinjr.employeeattendance.devtools.facade.RepositoryDevAttendanceFacade
 import com.jaustinjr.employeeattendance.devtools.facade.RepositoryDevWorksiteFacade
 import com.jaustinjr.employeeattendance.devtools.facade.SandboxedDevNotificationPreview
+import com.jaustinjr.employeeattendance.legal.AssetLegalDocumentSource
+import com.jaustinjr.employeeattendance.legal.LegalDocumentSource
 import com.jaustinjr.employeeattendance.location.LocationFeatureCoordinator
 import com.jaustinjr.employeeattendance.location.permission.LocationPermissionRepository
 import com.jaustinjr.employeeattendance.location.permission.SystemLocationPermissionRepository
@@ -88,6 +90,7 @@ interface AppContainer {
     val clockNotificationSettingsStore: ClockNotificationSettingsStore
     val privacySettingsStore: PrivacySettingsStore
     val userProfileStore: UserProfileStore
+    val legalDocumentSource: LegalDocumentSource
     val locationFeatureCoordinator: LocationFeatureCoordinator
     val attendanceAutoClockController: AttendanceAutoClockController
     val statusUpdateSettingsStore: StatusUpdateSettingsStore
@@ -231,6 +234,10 @@ class DefaultAppContainer(
 
     override val userProfileStore: UserProfileStore by lazy {
         UserProfileStore(appContext)
+    }
+
+    override val legalDocumentSource: LegalDocumentSource by lazy {
+        AssetLegalDocumentSource(appContext)
     }
 
     override val locationFeatureCoordinator: LocationFeatureCoordinator by lazy {
