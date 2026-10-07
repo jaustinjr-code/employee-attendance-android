@@ -39,7 +39,7 @@ sequenceDiagram
         MA->>MA: OnboardingGate shows OnboardingScreen; MainContent not composed
         Note over MA: user swipes or taps Next, then Get started
         MA->>C: onboardingStore.markCompleted()
-        MA->>MA: OnboardingGate switches to MainContent (no animation)
+        MA->>MA: OnboardingGate animates to MainContent
     end
     MA->>C: MainContent's ViewModel factories run
     MA->>MA: NavHost opens at AppNavGraph.root (home)
