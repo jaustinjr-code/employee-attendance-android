@@ -7,4 +7,10 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Brand palette (docs/employee-attendance-assets/overview-sheet.png). Mirrored for Compose in
+         ui/theme/Color.kt; ic_launcher_background is the same sky blue. -->
+    <color name="brand_sky_blue">#FFA9D2F2</color>
+    <color name="brand_apricot">#FFFFCF9E</color>
+    <color name="brand_deep_blue">#FF2E5E8C</color>
 </resources>

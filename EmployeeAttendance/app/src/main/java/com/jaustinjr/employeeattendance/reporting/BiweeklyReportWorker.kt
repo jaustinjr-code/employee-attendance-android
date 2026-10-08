@@ -101,7 +101,7 @@ class BiweeklyReportNotifier(context: Context) : ReportNotifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_agenda)
+            .setSmallIcon(R.drawable.ic_stat_notification)
             .setContentTitle(
                 appContext.getString(
                     R.string.report_notification_title,

@@ -128,7 +128,7 @@ class ClockNotifier(context: Context) : ClockNotifications {
         ensureChannel()
         return NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setContentTitle(title)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_stat_notification)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setAutoCancel(true)
     }

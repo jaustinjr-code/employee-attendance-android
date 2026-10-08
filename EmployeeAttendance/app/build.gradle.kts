@@ -62,6 +62,10 @@ tasks.withType<Test>().configureEach {
     inputs.file(layout.projectDirectory.file("src/main/AndroidManifest.xml"))
         .withPropertyName("mainManifest")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    // SplashTimingTest reads the splash theme's icon duration off the filesystem.
+    inputs.file(layout.projectDirectory.file("src/main/res/values/themes.xml"))
+        .withPropertyName("splashTheme")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
     // LegalDocumentTest reads the shipped legal text off the filesystem for the same reason.
     inputs.dir(layout.projectDirectory.dir("src/main/assets/legal"))
         .withPropertyName("legalDocuments")
@@ -77,6 +81,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

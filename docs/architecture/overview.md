@@ -24,7 +24,7 @@ one of them is a source of coupling you need to know about:
 ```mermaid
 graph TB
     subgraph Presentation["Presentation — Compose + ViewModels"]
-        MA["MainActivity<br/>StartupGate + OnboardingGate + NavHost + bottom bar: Attendance | Reports"]
+        MA["MainActivity<br/>SplashGate + StartupGate + OnboardingGate + NavHost + bottom bar: Attendance | Reports"]
         OBS["OnboardingScreen<br/>(first launch only)"]
         OBVM["OnboardingViewModel"]
         RS["ReportsScreen"]
@@ -147,7 +147,8 @@ Three composables are deliberate exceptions to "composables stay stateless":
 | `` (root) | app shell, navigation, DI bootstrap | `EmployeeAttendanceApplication`, `MainActivity` |
 | `di` | hand-wired object graph | `AppContainer`, `DefaultAppContainer` |
 | `ui.attendance` | home screen, clock in/out, live clock | `AttendanceScreen`, `AttendanceViewModel` |
-| `ui.main` | top app bar, bottom navigation bar, destination tree, the startup loading gate | `MainAppBar`, `MainBottomBar`, `AppNavGraph`, `StartupGate`, `StartupScreen` |
+| `ui.main` | top app bar, bottom navigation bar, destination tree, the splash and startup loading gates | `MainAppBar`, `MainBottomBar`, `AppNavGraph`, `SplashGate`, `StartupGate`, `StartupScreen` |
+| `ui.splash` | the in-app half of the launch animation | `BrandSplash`, `SplashTiming` |
 | `account.ui` | the Account screen and its display name section | `AccountScreen`, `AccountContent`, `AccountViewModel`, `displayNameSection` |
 | `ui.reports` | the Reports tab and its charts | `ReportsScreen`, `ReportsViewModel`, `ReportCharts` |
 | `reporting` | report periods, shift pairing, calculation, sharing, the biweekly notification | `ReportGenerator`, `ReportPeriod`, `FileReportSharer`, `BiweeklyReportController`, `BiweeklyReportWorker` |
@@ -266,7 +267,10 @@ forces `privacySettingsStore`, `userProfileStore`, `statusUpdateSettingsStore`,
 `statusUpdateRepository`, and `onboardingStore`, which the wiring does not pull in.
 `startupComplete` flips on any terminal state of `startupJob`, failure included.
 
-`MainActivity` wraps its content in `StartupGate(started)`, which does not compose its content until
+`MainActivity` first shows the in-app half of the launch animation through `SplashGate`, which
+holds the app back until `startupComplete` is `true` — see
+[features/branding-and-launch.md](../features/branding-and-launch.md). Beneath it, `MainActivity`
+wraps its content in `StartupGate(started)`, which does not compose its content until
 `startupComplete` is `true` (issue #58). Inside it, `OnboardingGate` likewise does not compose the
 app (`MainContent`) while first-launch onboarding is showing — see
 [features/onboarding.md](../features/onboarding.md). A factory reading a `by lazy` store that startup has not

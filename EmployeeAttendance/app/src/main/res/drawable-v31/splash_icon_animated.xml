@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Steps 2-4 of docs/employee-attendance-assets/splash/splash_motion_storyboard.png, played by the
+    Android 12+ system splash (950 ms, matching windowSplashScreenAnimationDuration):
+
+      0-250 ms    person assembles: head drops in, shoulders rise, both fading in (decelerate)
+      250-550 ms  clock badge pops: scale 0.3 -> 1.1 -> 1.0 about the badge centre
+      550-950 ms  the 3 o'clock hand sweeps from 12 to 3 (ease in-out)
+
+    Steps 5-6 are drawn by the activity (ui/splash/BrandSplash.kt). The final frame must match
+    drawable/splash_icon.xml exactly. v31-only: below Android 12 the compat splash cannot animate
+    its icon and would show this vector's first frame, which is empty.
+-->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector
+            android:width="288dp"
+            android:height="288dp"
+            android:viewportWidth="1024"
+            android:viewportHeight="1024">
+            <group
+                android:scaleX="0.62"
+                android:scaleY="0.62"
+                android:translateX="182.8"
+                android:translateY="192.1">
+                <group
+                    android:name="head"
+                    android:translateY="-260">
+                    <path
+                        android:name="headFill"
+                        android:fillAlpha="0"
+                        android:fillColor="@color/brand_deep_blue"
+                        android:pathData="M443,307m-161,0a161,161 0,1 1,322 0a161,161 0,1 1,-322 0" />
+                </group>
+                <group
+                    android:name="shoulders"
+                    android:translateY="260">
+                    <path
+                        android:name="shouldersFill"
+                        android:fillAlpha="0"
+                        android:fillColor="@color/brand_deep_blue"
+                        android:pathData="M158,838 H538.0 A246,246 0 0 1 538.2,515.8 A315,338 0 0 0 129.2,808.0 Q129.2,838 158,838 Z" />
+                </group>
+                <group
+                    android:name="badge"
+                    android:pivotX="724"
+                    android:pivotY="677"
+                    android:scaleX="0"
+                    android:scaleY="0">
+                    <path
+                        android:fillColor="@color/white"
+                        android:pathData="M724,677m-210,0a210,210 0,1 1,420 0a210,210 0,1 1,-420 0" />
+                    <path
+                        android:fillColor="@color/brand_apricot"
+                        android:pathData="M724,677m-166,0a166,166 0,1 1,332 0a166,166 0,1 1,-332 0" />
+                    <path
+                        android:pathData="M724,683 V583"
+                        android:strokeColor="@color/brand_deep_blue"
+                        android:strokeWidth="44"
+                        android:strokeLineCap="round" />
+                    <group
+                        android:name="hourHand"
+                        android:pivotX="724"
+                        android:pivotY="683"
+                        android:rotation="-90">
+                        <path
+                            android:pathData="M724,683 H824"
+                            android:strokeColor="@color/brand_deep_blue"
+                            android:strokeWidth="44"
+                            android:strokeLineCap="round" />
+                    </group>
+                </group>
+            </group>
+        </vector>
+    </aapt:attr>
+
+    <target android:name="head">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="250"
+                android:interpolator="@android:interpolator/decelerate_cubic"
+                android:propertyName="translateY"
+                android:valueFrom="-260"
+                android:valueTo="0"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+    <target android:name="headFill">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="250"
+                android:interpolator="@android:interpolator/decelerate_cubic"
+                android:propertyName="fillAlpha"
+                android:valueFrom="0"
+                android:valueTo="1"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+    <target android:name="shoulders">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="250"
+                android:interpolator="@android:interpolator/decelerate_cubic"
+                android:propertyName="translateY"
+                android:valueFrom="260"
+                android:valueTo="0"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+    <target android:name="shouldersFill">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="250"
+                android:interpolator="@android:interpolator/decelerate_cubic"
+                android:propertyName="fillAlpha"
+                android:valueFrom="0"
+                android:valueTo="1"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+    <target android:name="badge">
+        <aapt:attr name="android:animation">
+            <set>
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="250">
+                    <propertyValuesHolder
+                        android:propertyName="scaleX"
+                        android:valueType="floatType">
+                        <keyframe android:fraction="0" android:value="0.3" />
+                        <keyframe
+                            android:fraction="0.66"
+                            android:interpolator="@android:interpolator/decelerate_quad"
+                            android:value="1.1" />
+                        <keyframe
+                            android:fraction="1"
+                            android:interpolator="@android:interpolator/accelerate_decelerate"
+                            android:value="1" />
+                    </propertyValuesHolder>
+                </objectAnimator>
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="250">
+                    <propertyValuesHolder
+                        android:propertyName="scaleY"
+                        android:valueType="floatType">
+                        <keyframe android:fraction="0" android:value="0.3" />
+                        <keyframe
+                            android:fraction="0.66"
+                            android:interpolator="@android:interpolator/decelerate_quad"
+                            android:value="1.1" />
+                        <keyframe
+                            android:fraction="1"
+                            android:interpolator="@android:interpolator/accelerate_decelerate"
+                            android:value="1" />
+                    </propertyValuesHolder>
+                </objectAnimator>
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="hourHand">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="400"
+                android:interpolator="@android:interpolator/fast_out_slow_in"
+                android:propertyName="rotation"
+                android:startOffset="550"
+                android:valueFrom="-90"
+                android:valueTo="0"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+</animated-vector>

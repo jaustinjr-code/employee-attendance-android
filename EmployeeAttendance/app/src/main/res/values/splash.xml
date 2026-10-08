@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The system splash icon. Static below Android 12, where the compat splash cannot animate it;
+         values-v31 points it at the animated version. -->
+    <item name="splash_screen_icon" type="drawable">@drawable/splash_icon</item>
+</resources>

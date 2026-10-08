@@ -8,7 +8,7 @@ files involved so you can jump straight to the code.
 ## 1. App startup and coordinator wiring
 
 **Files:** `EmployeeAttendanceApplication.kt`, `di/AppContainer.kt`, `statusupdate/AppForegroundTracker.kt`,
-`ui/main/StartupGate.kt`, `ui/main/OnboardingGate.kt`, `MainActivity.kt`
+`ui/main/SplashGate.kt`, `ui/main/StartupGate.kt`, `ui/main/OnboardingGate.kt`, `MainActivity.kt`
 
 ```mermaid
 sequenceDiagram
@@ -28,12 +28,15 @@ sequenceDiagram
     App->>IO: applicationScope.launch(Dispatchers.IO)
     OS->>MA: onCreate()
     MA->>MA: consumeRequest(intent) if savedInstanceState == null
-    MA->>MA: StartupGate(started = false) shows StartupScreen
+    MA->>MA: installSplashScreen(); system splash plays the animated icon
+    MA->>MA: SplashGate shows BrandSplash (fresh launch only); app not composed
     IO->>C: attendanceAutoClockController.start, then awaitSubscribed()
     IO->>C: locationFeatureCoordinator.start(applicationScope)
     IO->>C: force privacySettingsStore, userProfileStore, statusUpdateSettingsStore, statusUpdateRepository, onboardingStore
     IO-->>App: job completes (success or failure)
     App-->>MA: startupComplete = true
+    MA->>MA: BrandSplash finishes; SplashGate cross-fades to StartupGate (already open)
+    Note over MA: a recreated activity skips the splash; there StartupGate<br/>shows StartupScreen until startupComplete
     MA->>C: OnboardingViewModel.Factory runs inside StartupGate
     alt onboardingStore.completed is false (first launch)
         MA->>MA: OnboardingGate shows OnboardingScreen; MainContent not composed

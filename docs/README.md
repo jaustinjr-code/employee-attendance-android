@@ -39,6 +39,9 @@ touch.
 
 - [features/onboarding.md](features/onboarding.md) — the first-launch carousel introducing
   Attendance, Worksites and Reporting, and the gate that holds the app back until it is finished.
+- [features/branding-and-launch.md](features/branding-and-launch.md) — the launcher and
+  notification icons, the brand palette, and the animated splash screen split between the system
+  splash and the app.
 - [features/attendance.md](features/attendance.md) — the home screen, clock in/out, live clock.
 - [features/account.md](features/account.md) — the Account screen: display name and status update
   history, the hold-to-peek gesture, and the read-only/edit screens.

@@ -45,7 +45,7 @@ class StatusUpdateNotifier(context: Context) : StatusUpdateNotifications {
         val builder = NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setContentTitle(appContext.getString(R.string.status_update_notification_title))
             .setContentText(appContext.getString(R.string.status_update_notification_text))
-            .setSmallIcon(android.R.drawable.ic_menu_edit)
+            .setSmallIcon(R.drawable.ic_stat_notification)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(contentIntent(request, id))
