@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The splash-screen icon at rest: the launcher foreground artwork, on the 288dp splash canvas whose
+    visible 192dp circle is the same two-thirds proportion as the adaptive icon's safe zone, so the
+    source geometry (docs/employee-attendance-assets/android-icons/source-svg/ic_launcher_foreground.svg)
+    is used unchanged.
+
+    This is the state drawable-v31/splash_icon_animated.xml ends on. It is what the compat splash
+    shows below Android 12, and what BrandSplash draws so the hand-off from the system splash is
+    seamless. Keep the two in step.
+
+    VectorRaster is ignored because 288dp is the size the splash spec requires; it is always drawn
+    at that size, so a smaller intrinsic size would not make it cheaper.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024"
+    tools:ignore="VectorRaster">
+    <group
+        android:scaleX="0.62"
+        android:scaleY="0.62"
+        android:translateX="182.8"
+        android:translateY="192.1">
+        <path
+            android:fillColor="@color/brand_deep_blue"
+            android:pathData="M443,307m-161,0a161,161 0,1 1,322 0a161,161 0,1 1,-322 0" />
+        <path
+            android:fillColor="@color/brand_deep_blue"
+            android:pathData="M158,838 H538.0 A246,246 0 0 1 538.2,515.8 A315,338 0 0 0 129.2,808.0 Q129.2,838 158,838 Z" />
+        <path
+            android:fillColor="@color/white"
+            android:pathData="M724,677m-210,0a210,210 0,1 1,420 0a210,210 0,1 1,-420 0" />
+        <path
+            android:fillColor="@color/brand_apricot"
+            android:pathData="M724,677m-166,0a166,166 0,1 1,332 0a166,166 0,1 1,-332 0" />
+        <path
+            android:pathData="M724,683 V583 M724,683 H824"
+            android:strokeColor="@color/brand_deep_blue"
+            android:strokeWidth="44"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

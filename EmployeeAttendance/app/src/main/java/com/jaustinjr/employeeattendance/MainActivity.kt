@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -57,7 +58,10 @@ import com.jaustinjr.employeeattendance.ui.main.destinationOrRoot
 import com.jaustinjr.employeeattendance.ui.main.navigateToTab
 import com.jaustinjr.employeeattendance.ui.main.OnboardingGate
 import com.jaustinjr.employeeattendance.ui.main.selectTab
+import com.jaustinjr.employeeattendance.ui.main.SplashGate
 import com.jaustinjr.employeeattendance.ui.reports.ReportsScreen
+import com.jaustinjr.employeeattendance.ui.splash.BrandSplash
+import com.jaustinjr.employeeattendance.ui.splash.SplashTiming
 import com.jaustinjr.employeeattendance.ui.main.StartupGate
 import com.jaustinjr.employeeattendance.ui.main.appBarTitleResFor
 import com.jaustinjr.employeeattendance.ui.main.isChildDestination
@@ -119,8 +123,42 @@ class MainActivity : ComponentActivity() {
     // stays at its default `null`.
     private var pendingStatusUpdateRequest by mutableStateOf<StatusUpdateRequest?>(null)
 
+    // Whether the system splash is off screen, so BrandSplash can start: until then it is drawn
+    // underneath, and animating there would play the wordmark where no one can see it.
+    private var systemSplashGone by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Before super.onCreate: swaps the launch theme (Theme.EmployeeAttendance.Starting) for the
+        // app theme. The system splash plays the animated icon; BrandSplash below continues from
+        // its last frame.
+        installSplashScreen().setOnExitAnimationListener { provider ->
+            // The system removes its splash as soon as the first frame is ready, which on a warm
+            // start is mid-animation. Hold it until the icon animation has played; then drop it with
+            // no exit animation, since BrandSplash is already drawing the same frame underneath.
+            val remaining = SplashTiming.remainingIconAnimationMillis(
+                iconAnimationStartMillis = provider.iconAnimationStartMillis,
+                iconAnimationDurationMillis = provider.iconAnimationDurationMillis,
+                nowEpochMillis = System.currentTimeMillis(),
+            )
+            provider.view.postDelayed(
+                {
+                    provider.remove()
+                    systemSplashGone = true
+                },
+                remaining,
+            )
+        }
         super.onCreate(savedInstanceState)
+        if (savedInstanceState != null) {
+            systemSplashGone = true
+        } else {
+            // A launch the system shows no splash for never calls the exit listener; don't leave
+            // BrandSplash waiting on it.
+            window.decorView.postDelayed(
+                { systemSplashGone = true },
+                SplashTiming.SYSTEM_SPLASH_FALLBACK_MILLIS,
+            )
+        }
         enableEdgeToEdge()
         val application = application as EmployeeAttendanceApplication
         // Only on a fresh launch: after recreation the restored back stack already says where the
@@ -130,6 +168,9 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             pendingStatusUpdateRequest = StatusUpdateIntents.consumeRequest(intent)
         }
+        // The in-app half of the launch sequence plays only when the system splash did: on a
+        // fresh launch, not when the activity is recreated.
+        val playBrandSplash = savedInstanceState == null
         setContent {
             EmployeeAttendanceTheme {
                 // Gate every ViewModel construction on startup wiring being finished (issue #58).
@@ -145,21 +186,37 @@ class MainActivity : ComponentActivity() {
                 // startupComplete flips on any terminal state of the startup job, failure included,
                 // so this cannot strand the user on a loading screen.
                 val started by application.startupComplete.collectAsStateWithLifecycle()
-                StartupGate(started) {
-                    // First launch shows the onboarding carousel in place of the app. Built inside
-                    // the startup gate like every other factory: OnboardingViewModel.Factory reads
-                    // an EncryptedSharedPreferences-backed store that startup forces beforehand.
-                    val onboardingViewModel: OnboardingViewModel =
-                        viewModel(factory = OnboardingViewModel.Factory)
-                    val showOnboarding by
-                        onboardingViewModel.showOnboarding.collectAsStateWithLifecycle()
-                    OnboardingGate(
-                        showOnboarding = showOnboarding,
-                        onboarding = {
-                            OnboardingScreen(onFinished = onboardingViewModel::complete)
-                        },
-                    ) {
-                        MainContent(openReportsOnStart)
+                // BrandSplash waits for `started` before handing off, so on a fresh launch the
+                // StartupGate below is already open by the time it composes. It still guards a
+                // recreated activity, which skips the splash.
+                var showSplash by rememberSaveable { mutableStateOf(playBrandSplash) }
+                SplashGate(
+                    showSplash = showSplash,
+                    splash = {
+                        BrandSplash(
+                            begin = systemSplashGone,
+                            ready = started,
+                            onFinished = { showSplash = false },
+                        )
+                    },
+                ) {
+                    StartupGate(started) {
+                        // First launch shows the onboarding carousel in place of the app. Built
+                        // inside the startup gate like every other factory:
+                        // OnboardingViewModel.Factory reads an EncryptedSharedPreferences-backed
+                        // store that startup forces beforehand.
+                        val onboardingViewModel: OnboardingViewModel =
+                            viewModel(factory = OnboardingViewModel.Factory)
+                        val showOnboarding by
+                            onboardingViewModel.showOnboarding.collectAsStateWithLifecycle()
+                        OnboardingGate(
+                            showOnboarding = showOnboarding,
+                            onboarding = {
+                                OnboardingScreen(onFinished = onboardingViewModel::complete)
+                            },
+                        ) {
+                            MainContent(openReportsOnStart)
+                        }
                     }
                 }
             }

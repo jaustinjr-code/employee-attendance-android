@@ -170,6 +170,10 @@
 
     <!-- Shown while startup wiring completes; see EmployeeAttendanceApplication.startupComplete. -->
     <string name="cd_startup_loading">Starting\u2026</string>
+    <!-- Splash wordmark: a small spaced-out eyebrow over the large title. Shown as one image to
+         accessibility services, announced as app_name. -->
+    <string name="splash_wordmark_eyebrow">Employee</string>
+    <string name="splash_wordmark_title">Attendance</string>
     <!--
         Developer settings (debug builds only). Reached by tapping the attendance app bar title five
         times; the destination is gated on BuildConfig.DEBUG in both MainActivity and AppNavGraph.

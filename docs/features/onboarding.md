@@ -38,7 +38,8 @@ All paths are under `EmployeeAttendance/app/src/main/java/com/jaustinjr/employee
 
 ```mermaid
 graph TB
-    MA["MainActivity.setContent"] --> SG["StartupGate(started)"]
+    MA["MainActivity.setContent"] --> SPG["SplashGate<br/>(fresh launch only)"]
+    SPG -->|splash finished| SG["StartupGate(started)"]
     SG -->|started| OVM["OnboardingViewModel.showOnboarding"]
     OVM --> OG["OnboardingGate"]
     OG -->|true| OS["OnboardingScreen"]
@@ -47,7 +48,8 @@ graph TB
     OVM --> STORE["OnboardingStore"]
 ```
 
-The gates nest. `StartupGate` waits for startup wiring (issue #58). `OnboardingGate` then picks the
+The gates nest. `SplashGate` plays the end of the launch animation
+([branding-and-launch.md](branding-and-launch.md)). `StartupGate` waits for startup wiring (issue #58). `OnboardingGate` then picks the
 carousel or the app.
 
 - **The app is not composed behind the carousel.** This works the same way as `StartupGate`: while
